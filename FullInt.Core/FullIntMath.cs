@@ -192,7 +192,7 @@ namespace FullInt.Core
             return result;
         }
 
-        public static bool jb(FullInt value1, FullInt value2)
+        public static bool IsABiggerB(FullInt value1, FullInt value2)
         {
             toEqualBase(value1, value2);
             bool result = true;
@@ -231,10 +231,10 @@ namespace FullInt.Core
                 }
             }
 
-            return result && !je(value1, value2);
+            return result && !IsEquals(value1, value2);
         }
 
-        public static bool jbe(FullInt value1, FullInt value2)
+        public static bool IsABiggerOrEqualsB(FullInt value1, FullInt value2)
         {
             toEqualBase(value1, value2);
             bool result = true;
@@ -275,7 +275,7 @@ namespace FullInt.Core
             return result;
         }
 
-        public static bool je(FullInt value1, FullInt value2)
+        public static bool IsEquals(FullInt value1, FullInt value2)
         {
             toEqualBase(value1, value2);
             bool result = true;
@@ -381,17 +381,19 @@ namespace FullInt.Core
                 {
                     if (value1.value.Length - zeros1 >= 1)
                     {
-                        divs.value = new byte[cc.value.Length + 1];
-                        for (int i = 0; i < cc.value.Length; i++) divs.value[i] = cc.value[i];
-                        for (int i = cc.value.Length; i - cc.value.Length < 1/*value2.Length - 1 - zeros2*/; i++) divs.value[i] = value1.value[i - cc.value.Length + zeros1]; //System.IndexOutOfRangeException: 'Index was outside the bounds of the array.'
+                        var ccValue = cc.value;
+                        divs.value = new byte[ccValue.Length + 1];
+                        for (int i = 0; i < ccValue.Length; i++) divs.value[i] = ccValue[i];
+                        for (int i = ccValue.Length; i - ccValue.Length < 1/*value2.Length - 1 - zeros2*/; i++) divs.value[i] = value1.value[i - ccValue.Length + zeros1]; //System.IndexOutOfRangeException: 'Index was outside the bounds of the array.'
 
                         zeros1 += 1;
                     }
-                    else
+                    else //useless 
                     {
-                        divs.value = new byte[cc.value.Length + value1.value.Length - zeros1];
-                        for (int i = 0; i < cc.value.Length; i++) divs.value[i] = cc.value[i];
-                        for (int i = cc.value.Length; i - cc.value.Length < value1.value.Length - zeros1; i++) divs.value[i] = value1.value[i - cc.value.Length + zeros1];
+                        var ccValue = cc.value;
+                        divs.value = new byte[ccValue.Length + value1.value.Length - zeros1];
+                        for (int i = 0; i < ccValue.Length; i++) divs.value[i] = ccValue[i];
+                        for (int i = ccValue.Length; i - ccValue.Length < value1.value.Length - zeros1; i++) divs.value[i] = value1.value[i - ccValue.Length + zeros1];
                         break;
                     }
                 }
@@ -480,35 +482,40 @@ namespace FullInt.Core
                 cc = deleteZeros(divs);
                 if (cc > 0) //если есть остаток
                 {
+                    //если есть еще байти из делимого числа
                     if (value1.value.Length - zeros1 >= 1)
                     {
-                        divs.value = new byte[cc.value.Length + 1];
-                        for (int i = 0; i < cc.value.Length; i++)
+                        var ccValue = cc.value;
+                        divs.value = new byte[ccValue.Length + 1];
+                        //копируем дание остатка в старшем байте
+                        for (int i = 0; i < ccValue.Length; i++)
                         {
-                            divs.value[i] = cc.value[i];
+                            divs.value[i] = ccValue[i];
                         }
-                        for (int i = cc.value.Length; i - cc.value.Length < 1/*value2.Length - 1 - zeros2*/; i++)
+                        //и берем след байт
+                        for (int i = ccValue.Length; i - ccValue.Length < 1/*value2.Length - 1 - zeros2*/; i++)
                         {
                             if (i < divs.value.Length) //added to avodi //System.IndexOutOfRangeException: 'Index was outside the bounds of the array.'
                             {
-                                divs.value[i] = value1.value[i - cc.value.Length + zeros1];
+                                divs.value[i] = value1.value[i - ccValue.Length + zeros1];
                             }
                         }
 
                         zeros1 += 1;
                     }
-                    else
+                    else //useless ?
                     {
-                        divs.value = new byte[cc.value.Length + value1.value.Length - zeros1];
-                        for (int i = 0; i < cc.value.Length; i++)
+                        var ccValue = cc.value;
+                        divs.value = new byte[ccValue.Length + value1.value.Length - zeros1];//?? value1.value.Length - zeros1 < 1 !
+                        for (int i = 0; i < ccValue.Length; i++)
                         {
-                            divs.value[i] = cc.value[i];
+                            divs.value[i] = ccValue[i];
                         }
-                        for (int i = cc.value.Length; i - cc.value.Length < value1.value.Length - zeros1; i++)
+                        for (int i = ccValue.Length; i - ccValue.Length < value1.value.Length - zeros1; i++)// always false
                         {
                             if (i < divs.value.Length) //added to avodi //System.IndexOutOfRangeException: 'Index was outside the bounds of the array.'
                             {
-                                divs.value[i] = value1.value[i - cc.value.Length + zeros1];
+                                divs.value[i] = value1.value[i - ccValue.Length + zeros1];
                             }
                         }
                         break;

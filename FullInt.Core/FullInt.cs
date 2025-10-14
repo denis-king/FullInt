@@ -131,7 +131,7 @@ namespace FullInt.Core
         {
             if (obj is FullInt || obj is byte || obj is int || obj is long)
             {
-                return FullIntMath.je(this, (FullInt)obj);
+                return FullIntMath.IsEquals(this, (FullInt)obj);
             }
             else
             {
@@ -178,27 +178,27 @@ namespace FullInt.Core
         }
         public static bool operator >(FullInt a, FullInt b)
         {
-            return FullIntMath.jb(a, b);
+            return FullIntMath.IsABiggerB(a, b);
         }
         public static bool operator <(FullInt a, FullInt b)
         {
-            return FullIntMath.jb(b, a);
+            return FullIntMath.IsABiggerB(b, a);
         }
         public static bool operator >=(FullInt a, FullInt b)
         {
-            return FullIntMath.jbe(a, b);
+            return FullIntMath.IsABiggerOrEqualsB(a, b);
         }
         public static bool operator <=(FullInt a, FullInt b)
         {
-            return FullIntMath.jbe(b, a);
+            return FullIntMath.IsABiggerOrEqualsB(b, a);
         }
         public static bool operator ==(FullInt a, FullInt b)
         {
-            return FullIntMath.je(a, b);
+            return FullIntMath.IsEquals(a, b);
         }
         public static bool operator !=(FullInt a, FullInt b)
         {
-            return !FullIntMath.je(a, b);
+            return !FullIntMath.IsEquals(a, b);
         }
         public static FullInt operator ++(FullInt a)
         {

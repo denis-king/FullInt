@@ -115,40 +115,40 @@ namespace FullInt.Tests
         }
 
         [TestMethod]
-        public void Jb_A_GreaterThan_B_ReturnsTrue()
+        public void IsABiggerB_A_GreaterThan_B_ReturnsTrue()
         {
             var a = new FullIntCore(10L, toBase.dec);
             var b = new FullIntCore(5L, toBase.dec);
-            Assert.IsTrue(FullIntMath.jb(a, b));
+            Assert.IsTrue(FullIntMath.IsABiggerB(a, b));
         }
 
         [TestMethod]
-        public void Jb_A_NotLessThan_B_ReturnsFalse()
+        public void IsABiggerB_A_NotLessThan_B_ReturnsFalse()
         {
             var a = new FullIntCore(5L, toBase.dec);
             var b = new FullIntCore(10L, toBase.dec);
-            Assert.IsFalse(FullIntMath.jb(a, b));
+            Assert.IsFalse(FullIntMath.IsABiggerB(a, b));
         }
 
         [TestMethod]
-        public void Jb_A_LessOrEqual_B_ReturnsFalse()
+        public void IsABiggerB_A_LessOrEqual_B_ReturnsFalse()
         {
             var a = new FullIntCore(5L, toBase.dec);
             var b = new FullIntCore(10L, toBase.dec);
-            Assert.IsFalse(FullIntMath.jb(a, b));
+            Assert.IsFalse(FullIntMath.IsABiggerB(a, b));
 
             a = new FullIntCore(10L, toBase.dec);
             b = new FullIntCore(10L, toBase.dec);
-            Assert.IsFalse(FullIntMath.jb(a, b));
+            Assert.IsFalse(FullIntMath.IsABiggerB(a, b));
         }
 
         [TestMethod]
-        public void Jbe_LessOrEqual_ReturnsTrue()
+        public void IsABiggerOrEqualsB_LessOrEqual_ReturnsTrue()
         {
             var a = new FullIntCore(5L, toBase.dec);
             var b = new FullIntCore(5L, toBase.dec);
-            Assert.IsTrue(FullIntMath.jbe(a, b));
-            Assert.IsTrue(FullIntMath.jbe(a, new FullIntCore(4L, toBase.dec)));
+            Assert.IsTrue(FullIntMath.IsABiggerOrEqualsB(a, b));
+            Assert.IsTrue(FullIntMath.IsABiggerOrEqualsB(a, new FullIntCore(4L, toBase.dec)));
         }
 
         [TestMethod]
@@ -156,7 +156,7 @@ namespace FullInt.Tests
         {
             var a = new FullIntCore(123L, toBase.dec);
             var b = new FullIntCore(123L, toBase.dec);
-            Assert.IsTrue(FullIntMath.je(a, b));
+            Assert.IsTrue(FullIntMath.IsEquals(a, b));
         }
 
         [TestMethod]
@@ -164,7 +164,7 @@ namespace FullInt.Tests
         {
             var a = new FullIntCore(123L, toBase.dec);
             var b = new FullIntCore(124L, toBase.dec);
-            Assert.IsFalse(FullIntMath.je(a, b));
+            Assert.IsFalse(FullIntMath.IsEquals(a, b));
         }
 
         [TestMethod]
@@ -193,7 +193,7 @@ namespace FullInt.Tests
         {
             var a = new FullIntCore(long.MaxValue, toBase.dec);
             var b = new FullIntCore(long.MaxValue - 1, toBase.dec);
-            Assert.IsTrue(FullIntMath.jb(a, b));
+            Assert.IsTrue(FullIntMath.IsABiggerB(a, b));
         }
 
         [TestMethod]
@@ -201,11 +201,11 @@ namespace FullInt.Tests
         {
             var a = new FullIntCore(long.MinValue, toBase.dec);
             var b = new FullIntCore(long.MaxValue, toBase.dec);
-            Assert.IsFalse(FullIntMath.jb(a, b));
+            Assert.IsFalse(FullIntMath.IsABiggerB(a, b));
 
             a = new FullIntCore(long.MaxValue, toBase.dec);
             b = new FullIntCore(long.MaxValue, toBase.dec);
-            Assert.IsFalse(FullIntMath.jb(a, b));
+            Assert.IsFalse(FullIntMath.IsABiggerB(a, b));
         }
 
         [TestMethod]
@@ -238,19 +238,34 @@ namespace FullInt.Tests
         [TestMethod]
         public void Div_Long_DividesCorrectly()
         {
-            var a = new FullIntCore(9223372036854775806L, toBase.dec);
-            var b = new FullIntCore(2L, toBase.dec);
+            long a0 = 9223372036854775806L;
+            long b0 = 2L;
+            var a = new FullIntCore(a0, toBase.dec);
+            var b = new FullIntCore(b0, toBase.dec);
             var result = FullIntMath.div(a, b);
-            Assert.AreEqual(new FullIntCore(4611686018427387903L, toBase.dec), result);
+            Assert.AreEqual(new FullIntCore(a0 / b0, toBase.dec), result);
+        }
+
+        [TestMethod]
+        public void Div_mod_Long_DividesCorrectly()
+        {
+            long a0 = 9223372036854775806L;
+            long b0 = 2L;
+            var a = new FullIntCore(a0, toBase.dec);
+            var b = new FullIntCore(b0, toBase.dec);
+            var result = FullIntMath.div_mod(a, (byte)2);
+            Assert.AreEqual(new FullIntCore(a0 / b0, toBase.dec), result[0]);
         }
 
         [TestMethod]
         public void Mod_Long_ReturnsRemainder()
         {
-            var a = new FullIntCore(9223372036854775806L, toBase.dec);
-            var b = new FullIntCore(123456789L, toBase.dec);
+            long a0 = 9223372036854775806L;
+            long b0 = 123456789L;
+            var a = new FullIntCore(a0, toBase.dec);
+            var b = new FullIntCore(b0, toBase.dec);
             var result = FullIntMath.mod(a, b);
-            Assert.AreEqual(new FullIntCore(108215406L, toBase.dec), result);
+            Assert.AreEqual(new FullIntCore(a0 % b0, toBase.dec), result);
         }
         #endregion
     }
