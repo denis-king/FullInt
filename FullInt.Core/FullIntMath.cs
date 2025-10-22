@@ -194,6 +194,9 @@ namespace FullInt.Core
 
         public static bool IsABiggerB(FullInt value1, FullInt value2)
         {
+            var value1Length = value1.value.Length - countZeros(value1);
+            var value2Length = value2.value.Length - countZeros(value2);
+
             toEqualBase(value1, value2);
             bool result = true;
 
@@ -203,15 +206,15 @@ namespace FullInt.Core
             }
             else
             {
-                if ((value1.value.Length < value2.value.Length && value1.s == false && value2.s == false) || (value1.value.Length > value2.value.Length && value1.s == true && value2.s == true))
+                if ((value1Length < value2Length && value1.s == false && value2.s == false) || (value1Length > value2Length && value1.s == true && value2.s == true))
                 {
                     result = false;
                 }
                 else
                 {
-                    if (value1.value.Length == value2.value.Length)
+                    if (value1Length == value2Length)
                     {
-                        for (int i = 0; i < value1.value.Length; i++)
+                        for (int i = 0; i < value1Length; i++)
                         {
                             if ((value1.value[i] < value2.value[i] && value1.s == false && value2.s == false) || (value1.value[i] > value2.value[i] && value1.s == true && value2.s == true))
                             {
@@ -337,8 +340,7 @@ namespace FullInt.Core
         {
 
             //пропуск старших нулей операнда
-            int zeros = 0;
-            for (zeros = 0; zeros < value.value.Length - 1 && value.value[zeros] == 0; zeros++) { }
+            int zeros = countZeros(value);
 
             if (zeros == 0) return value;
 
@@ -350,6 +352,14 @@ namespace FullInt.Core
                 result.value[i - zeros] = value.value[i];
 
             return result;
+        }
+
+        private static int countZeros(FullInt value)
+        {
+            int zeros = 0;
+            for (zeros = 0; zeros < value.value.Length - 1 && value.value[zeros] == 0; zeros++) { }
+
+            return zeros;
         }
 
         //быстрое деление на байтовое число (для преобразования числа в строку)
@@ -554,12 +564,29 @@ namespace FullInt.Core
                 }
 
                 //находим частичный результат
-                byte b = 0;
-                while (divs >= abs(value2))
+                byte b = 128;
+                byte bMax = 255;
+                byte bMin = 0;
+                FullInt temp1;
+                while ((temp1 = divs - mult(abs(value2), b)) >= value2 || temp1.s)
                 {
-                    b++;
-                    divs = FullIntMath.sub(divs, abs(value2));
+                    if(temp1.s == false)
+                    {
+                        //if (temp1 == value2) { b++; break; }
+                        bMin = b;
+                        if (b == bMax) break;
+                        if (b == bMax - 1) b++;
+                        b = (byte)((b + bMax) / 2);
+                    }
+                    else
+                    {
+                        bMax = b;
+                        if (b == bMin) break;
+                        if (b == bMin + 1) b--;
+                        b = (byte)((b + bMin) / 2);
+                    }
                 }
+                divs = temp1;
                 bytes.Add(b);
 
             }

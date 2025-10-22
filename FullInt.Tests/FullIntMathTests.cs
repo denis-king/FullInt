@@ -2,12 +2,15 @@ using FullInt.Core;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
 using FullIntCore = FullInt.Core.FullInt;
+using System.Diagnostics;
 
 namespace FullInt.Tests
 {
     [TestClass]
     public class FullIntMathTests
     {
+        public TestContext TestContext { get; set; }
+
         [TestMethod]
         public void Add_PositiveNumbers_ReturnsSum()
         {
@@ -15,6 +18,15 @@ namespace FullInt.Tests
             var b = new FullIntCore(456L, toBase.dec);
             var result = FullIntMath.add(a, b);
             Assert.AreEqual(new FullIntCore(579L, toBase.dec), result);
+        }
+
+        [TestMethod]
+        public void Sub_zore_make_negative_ReturnsSum()
+        {
+            var a = new FullIntCore(false, [0, 0]);
+            var b = new FullIntCore(128, toBase.dec);
+            var result = FullIntMath.sub(a, b);
+            Assert.AreEqual(new FullIntCore(-128, toBase.dec), result);
         }
 
         [TestMethod]
@@ -266,6 +278,58 @@ namespace FullInt.Tests
             var b = new FullIntCore(b0, toBase.dec);
             var result = FullIntMath.mod(a, b);
             Assert.AreEqual(new FullIntCore(a0 % b0, toBase.dec), result);
+        }
+        #endregion
+
+        #region Speed test
+        [TestMethod]
+        public void Speed_Pow_2Pow100_LogDuration()
+        {
+            // Measure performance of FullIntMath.pow for 2^100
+            var baseValue = new FullIntCore(2L, toBase.dec);
+            var exponent = new FullIntCore(10000L, toBase.dec);
+
+            const int iterations = 100;
+            var sw = new Stopwatch();
+            FullIntCore lastResult = null;
+
+            sw.Start();
+            for (int i = 0; i < iterations; i++)
+            {
+                lastResult = FullIntMath.pow(baseValue, exponent);
+            }
+            sw.Stop();
+
+            var total = sw.Elapsed;
+            var avg = TimeSpan.FromTicks(total.Ticks / iterations);
+
+            TestContext?.WriteLine($"Speed_Pow_2Pow100: iterations={iterations}, total={total.TotalMilliseconds}, avg={avg.TotalMilliseconds}");
+            //Speed_Pow_2Pow100: iterations = 100, total = 8851,9205, avg = 88,5192
+            Assert.IsNotNull(lastResult);
+        }
+
+        [TestMethod]
+        public void Speed_Div_bigvalue_LogDuration()
+        {
+            // Measure performance of FullIntMath.div for division involving long.MaxValue
+            FullIntCore lastResult = FullIntMath.pow(2, 10000);
+
+            const int iterations = 100;
+            var sw = new Stopwatch();
+
+            sw.Start();
+            for (int i = 0; i < iterations; i++)
+            {
+                lastResult = FullIntMath.div(lastResult, 2);
+            }
+            sw.Stop();
+
+            var total = sw.Elapsed;
+            var avg = TimeSpan.FromTicks(total.Ticks / iterations);
+
+            TestContext?.WriteLine($"Speed_Div_MaxLong: iterations={iterations}, total={total.TotalMilliseconds}, avg={avg.TotalMilliseconds}");
+            //Speed_Div_MaxLong: iterations = 100, total = 883,7553, avg = 8,8375
+            Assert.AreEqual(FullIntMath.pow(2, 9900), lastResult);
         }
         #endregion
     }
