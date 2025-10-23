@@ -331,6 +331,58 @@ namespace FullInt.Tests
             //Speed_Div_MaxLong: iterations = 100, total = 883,7553, avg = 8,8375
             Assert.AreEqual(FullIntMath.pow(2, 9900), lastResult);
         }
+
+        [TestMethod]
+        public void Speed_Div_bigvalue_to_byte_LogDuration()
+        {
+            // Measure performance of FullIntMath.div for division involving long.MaxValue
+            FullIntCore lastResult = FullIntMath.pow(2, 10000);
+
+            const int iterations = 100;
+            var sw = new Stopwatch();
+
+            sw.Start();
+            for (int i = 0; i < iterations; i++)
+            {
+                lastResult = FullIntMath.div_mod(lastResult, (byte)2)[0];
+            }
+            sw.Stop();
+
+            var total = sw.Elapsed;
+            var avg = TimeSpan.FromTicks(total.Ticks / iterations);
+
+            TestContext?.WriteLine($"Speed_Div_MaxLong: iterations={iterations}, total={total.TotalMilliseconds}, avg={avg.TotalMilliseconds}");
+            //Speed_Div_MaxLong: iterations = 100, total = 883,7553, avg = 8,8375
+            Assert.AreEqual(FullIntMath.pow(2, 9900), lastResult);
+        }
+
+        [TestMethod]
+        public void Speed_Div_bigvalue_to_bigger_one_LogDuration()
+        {
+            // Measure performance of FullIntMath.div for division involving long.MaxValue
+            FullIntCore lastResult = FullIntMath.pow(2, 10000);
+
+            const int iterations = 100;
+            var sw = new Stopwatch();
+
+            sw.Start();
+            for (int i = 0; i < iterations; i++)
+            {
+                lastResult = FullIntMath.div(lastResult, 1024);
+                sw.Stop();
+                var expResult = FullIntMath.pow(2, 10000 - ((i + 1) * 10));
+                Assert.AreEqual(expResult, lastResult);
+                sw.Start();
+            }
+            sw.Stop();
+
+            var total = sw.Elapsed;
+            var avg = TimeSpan.FromTicks(total.Ticks / iterations);
+
+            TestContext?.WriteLine($"Speed_Div_MaxLong: iterations={iterations}, total={total.TotalMilliseconds}, avg={avg.TotalMilliseconds}");
+            //Speed_Div_MaxLong: iterations = 100, total = 883,7553, avg = 8,8375
+            Assert.AreEqual(FullIntMath.pow(2, 9000), lastResult);
+        }
         #endregion
     }
 }

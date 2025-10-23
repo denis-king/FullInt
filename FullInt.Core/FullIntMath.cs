@@ -65,7 +65,7 @@ namespace FullInt.Core
                     result.s = value2.s;
 
                 }
-                else // |value1| >= |value2|
+                else if (abs(value1) > abs(value2))// |value1| > |value2|
                 {
                     for (int i = 0; i < value2.value.Length || i < value1.value.Length; i++)
                     {
@@ -89,6 +89,10 @@ namespace FullInt.Core
 
                     result = bytes.ToArray();
                     result.s = value1.s;
+                }
+                else // |value1| == |value2|
+                {
+                    result = new FullInt(false, new byte[] { 0 });
                 }
             }
 
@@ -194,121 +198,74 @@ namespace FullInt.Core
 
         public static bool IsABiggerB(FullInt value1, FullInt value2)
         {
-            var value1Length = value1.value.Length - countZeros(value1);
-            var value2Length = value2.value.Length - countZeros(value2);
-
+            var result = Compare(value1, value2);
+            return result > 0;
+        }
+        public static int Compare(FullInt value1, FullInt value2) 
+        {
+            int result = 0;
             toEqualBase(value1, value2);
-            bool result = true;
 
+            var zeros1 = countZeros(value1);
+            var zeros2 = countZeros(value2);
+            var value1Length = value1.value.Length - zeros1;
+            var value2Length = value2.value.Length - zeros2;
+
+            //cpmparison by sign
             if (value1.s == true && value2.s == false)
             {
-                result = false;
+                result = -1;
+            }
+            else if(value1.s == false && value2.s == true)
+            {
+                result = 1;
             }
             else
             {
-                if ((value1Length < value2Length && value1.s == false && value2.s == false) || (value1Length > value2Length && value1.s == true && value2.s == true))
+                //comparison by length
+                if (value1Length < value2Length)
                 {
-                    result = false;
+                    result = -1;
+                }
+                else if (value1Length > value2Length)
+                {
+                    result = 1;
                 }
                 else
                 {
-                    if (value1Length == value2Length)
+                    //comparison by value
+                    for (int i = 0; i < value1Length; i++)
                     {
-                        for (int i = 0; i < value1Length; i++)
+                        if (value1.value[i + zeros1] < value2.value[i + zeros2])
                         {
-                            if ((value1.value[i] < value2.value[i] && value1.s == false && value2.s == false) || (value1.value[i] > value2.value[i] && value1.s == true && value2.s == true))
-                            {
-                                result = false;
-                                break;
-                            }
-                            else
-                            {
-                                if ((value1.value[i] > value2.value[i] && value1.s == false && value2.s == false) || (value1.value[i] < value2.value[i] && value1.s == true && value2.s == true))
-                                {
-                                    break;
-                                }
-                            }
-
+                            result = -1;
+                            break;
                         }
-                    }
-                }
-            }
-
-            return result && !IsEquals(value1, value2);
-        }
-
-        public static bool IsABiggerOrEqualsB(FullInt value1, FullInt value2)
-        {
-            toEqualBase(value1, value2);
-            bool result = true;
-
-            if (value1.s == true && value2.s == false)
-            {
-                result = false;
-            }
-            else
-            {
-                if ((value1.value.Length < value2.value.Length && value1.s == false && value2.s == false) || (value1.value.Length > value2.value.Length && value1.s == true && value2.s == true))
-                {
-                    result = false;
-                }
-                else
-                {
-                    if (value1.value.Length == value2.value.Length)
-                    {
-                        for (int i = 0; i < value1.value.Length; i++)
+                        else if (value1.value[i + zeros1] > value2.value[i + zeros2])
                         {
-                            if ((value1.value[i] < value2.value[i] && value1.s == false && value2.s == false) || (value1.value[i] > value2.value[i] && value1.s == true && value2.s == true))
-                            {
-                                result = false;
-                                break;
-                            }
-                            else
-                            {
-                                if ((value1.value[i] > value2.value[i] && value1.s == false && value2.s == false) || (value1.value[i] < value2.value[i] && value1.s == true && value2.s == true))
-                                {
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            return result;
-        }
-
-        public static bool IsEquals(FullInt value1, FullInt value2)
-        {
-            toEqualBase(value1, value2);
-            bool result = true;
-
-
-            if (value1.s != value2.s)
-            {
-                result = false;
-            }
-            else
-            {
-                if (value1.value.Length != value2.value.Length)
-                {
-                    result = false;
-                }
-                else
-                {
-                    for (int i = 0; i < value1.value.Length; i++)
-                    {
-                        if (value1.value[i] != value2.value[i])
-                        {
-                            result = false;
+                            result = 1;
                             break;
                         }
                     }
                 }
+
+                //inversion for negative numbers
+                if (value1.s == true && value2.s == true)
+                {
+                    result = -result;
+                }
             }
-
-
             return result;
+        }
+        public static bool IsABiggerOrEqualsB(FullInt value1, FullInt value2)
+        {
+            var result = Compare(value1, value2);
+            return result >= 0;
+        }
+
+        public static bool IsEquals(FullInt value1, FullInt value2)
+        {
+            return Compare(value1, value2) == 0;
         }
 
         public static toBase toEqualBase(FullInt value1, FullInt value2)
@@ -335,23 +292,30 @@ namespace FullInt.Core
             }
             return Base;
         }
+        private static FullInt Copy(FullInt value) 
+        {
+            return Copy(value, value.Base);
+        }
 
+        private static FullInt Copy(FullInt value, toBase toBase)
+        {
+            var result = FullIntConvertor.ConvertToBase(value, toBase);
+            deleteZeros(result);
+            return result;
+        }
         private static FullInt deleteZeros(FullInt value)
         {
-
             //пропуск старших нулей операнда
             int zeros = countZeros(value);
 
-            if (zeros == 0) return value;
+            if (zeros == 0)
+            {
+                return value;
+            }
 
             var span = value.value.AsSpan();
-
-            FullInt result = new FullInt(value.s, new byte[value.value.Length - zeros], value.Base);
-
-            for (int i = zeros; i - zeros < result.value.Length; i++)
-                result.value[i - zeros] = value.value[i];
-
-            return result;
+            value.value = span.Slice(zeros).ToArray();
+            return value;
         }
 
         private static int countZeros(FullInt value)
@@ -371,6 +335,7 @@ namespace FullInt.Core
             {
                 throw new System.DivideByZeroException();
             }
+            var value2FullInt = new FullInt((int)value2, Base);
 
             List<byte> bytes = new List<byte>();
             FullInt[] result = new FullInt[2];
@@ -378,97 +343,53 @@ namespace FullInt.Core
             FullInt divs = new FullInt(0, Base);
 
             //пропуск старших нулей операндов
-            int zeros1 = 0;
-            for (zeros1 = 0; zeros1 < value1.value.Length - 1 && value1.value[zeros1] == 0; zeros1++) { }
-
-            FullInt cc = null;
+            int zeros1 = countZeros(value1);
 
             while (value1.value.Length - zeros1 > 0)
             {
-                //получение частичного делимого
-                cc = deleteZeros(divs);
-                if (cc > 0) //если есть остаток
+                if (value1.value.Length - zeros1 >= 1)
                 {
-                    if (value1.value.Length - zeros1 >= 1)
-                    {
-                        var ccValue = cc.value;
-                        divs.value = new byte[ccValue.Length + 1];
-                        for (int i = 0; i < ccValue.Length; i++) divs.value[i] = ccValue[i];
-                        for (int i = ccValue.Length; i - ccValue.Length < 1/*value2.Length - 1 - zeros2*/; i++) divs.value[i] = value1.value[i - ccValue.Length + zeros1]; //System.IndexOutOfRangeException: 'Index was outside the bounds of the array.'
+                    var newDiv = new List<byte>(divs.value);
+                    newDiv.Add(value1.value[zeros1]);
+                    divs.value = newDiv.ToArray();
 
-                        zeros1 += 1;
-                    }
-                    else //useless 
-                    {
-                        var ccValue = cc.value;
-                        divs.value = new byte[ccValue.Length + value1.value.Length - zeros1];
-                        for (int i = 0; i < ccValue.Length; i++) divs.value[i] = ccValue[i];
-                        for (int i = ccValue.Length; i - ccValue.Length < value1.value.Length - zeros1; i++) divs.value[i] = value1.value[i - ccValue.Length + zeros1];
-                        break;
-                    }
+                    zeros1 += 1;
                 }
-                else //если нет остатка
+                else 
                 {
-                    if (value1.value.Length - zeros1 >= 1)
-                    {
-                        divs.value = new byte[1];
-
-                        for (int i = 0; i < divs.value.Length; i++) divs.value[i] = value1.value[i + zeros1];
-                        zeros1 += 1;
-                    }
-                    else
-                    {
-                        divs.value = new byte[value1.value.Length - zeros1];
-                        for (int i = 0; i < divs.value.Length; i++) divs.value[i] = value1.value[i + zeros1];
-                        break;
-                    }
+                    break;
                 }
-
+                
                 //если делимое меньше частичного делителя, то добавляем к нему еще один байт
-                if (divs < new FullInt(value2, Base))
+                if (divs < value2FullInt)
                 {
-                    if (value1.value.Length - zeros1 >= 1)
-                    {
-                        byte[] temp = divs.value;
-                        divs.value = new byte[temp.Length + 1];
-                        for (int i = 0; i < temp.Length; i++) divs.value[i] = temp[i];
-
-                        divs.value[temp.Length] = value1.value[zeros1];
-                        zeros1++;
-                        bytes.Add(0);//!!!!!!!!!!!
-                    }
-
-                }
-
-                int b;
-                if (divs.value.Length > 1)
-                {
-                    b = divs.value[divs.value.Length - 1] + ((int)Base * (int)Base) * divs.value[divs.value.Length - 2];
+                    bytes.Add(0);//!!!!!!!!!!!
                 }
                 else
                 {
-                    b = divs.value[divs.value.Length - 1];
+                    int b;
+                    if (divs.value.Length > 1)
+                    {
+                        b = divs.value[divs.value.Length - 1] + ((int)Base * (int)Base) * divs.value[divs.value.Length - 2];
+                    }
+                    else
+                    {
+                        b = divs.value[divs.value.Length - 1];
+                    }
+                    bytes.Add((byte)(b / value2));
+                    divs.value = new byte[1] { (byte)(b % value2) };
                 }
-                bytes.Add((byte)(b / value2));
-                divs.value = new byte[1] { (byte)(b % value2) };
-
             }
 
             //сохранение целой части
-            result[0] = deleteZeros(bytes.ToArray());
-            result[0].Base = Base;
-
-            //определения знака результата
-            if (value1.s) { result[0].s = true; }
-
+            result[0] = deleteZeros(new FullInt( value1.s, bytes.ToArray(), Base));
 
             //сохранение остатка от деления
-            result[1] = deleteZeros(divs);
-            result[1].s = false;
-            result[1].Base = Base;
+            result[1] = deleteZeros(new FullInt(false, divs.value, Base));
 
             return result;
         }
+        
         //метод деления двух больших чисел 
         private static FullInt[] div_mod(FullInt value1, FullInt value2)
         {
@@ -479,116 +400,58 @@ namespace FullInt.Core
             FullInt divs = new FullInt(0, Base);
 
             //пропуск старших нулей операндов
-            int zeros1 = 0, zeros2 = 0;
-            for (zeros1 = 0; zeros1 < value1.value.Length - 1 && value1.value[zeros1] == 0; zeros1++) { }
-            for (zeros2 = 0; zeros2 < value2.value.Length - 1 && value2.value[zeros2] == 0; zeros2++) { }
-
-            FullInt cc = null;
-
+            int zeros1 = countZeros(value1), zeros2 = countZeros(value2);
 
             while (value1.value.Length - zeros1 > 0)
             {
-                //получение частичного делимого
-                cc = deleteZeros(divs);
-                if (cc > 0) //если есть остаток
+                //если есть еще байти из делимого числа
+                if (value1.value.Length - zeros1 >= 1)
                 {
-                    //если есть еще байти из делимого числа
-                    if (value1.value.Length - zeros1 >= 1)
-                    {
-                        var ccValue = cc.value;
-                        divs.value = new byte[ccValue.Length + 1];
-                        //копируем дание остатка в старшем байте
-                        for (int i = 0; i < ccValue.Length; i++)
-                        {
-                            divs.value[i] = ccValue[i];
-                        }
-                        //и берем след байт
-                        for (int i = ccValue.Length; i - ccValue.Length < 1/*value2.Length - 1 - zeros2*/; i++)
-                        {
-                            if (i < divs.value.Length) //added to avodi //System.IndexOutOfRangeException: 'Index was outside the bounds of the array.'
-                            {
-                                divs.value[i] = value1.value[i - ccValue.Length + zeros1];
-                            }
-                        }
+                    var newDiv = new List<byte>(divs.value);
+                    newDiv.Add(value1.value[zeros1]);
+                    divs.value = newDiv.ToArray();
 
-                        zeros1 += 1;
-                    }
-                    else //useless ?
-                    {
-                        var ccValue = cc.value;
-                        divs.value = new byte[ccValue.Length + value1.value.Length - zeros1];//?? value1.value.Length - zeros1 < 1 !
-                        for (int i = 0; i < ccValue.Length; i++)
-                        {
-                            divs.value[i] = ccValue[i];
-                        }
-                        for (int i = ccValue.Length; i - ccValue.Length < value1.value.Length - zeros1; i++)// always false
-                        {
-                            if (i < divs.value.Length) //added to avodi //System.IndexOutOfRangeException: 'Index was outside the bounds of the array.'
-                            {
-                                divs.value[i] = value1.value[i - ccValue.Length + zeros1];
-                            }
-                        }
-                        break;
-                    }
+                    zeros1 += 1;
                 }
-                else //если нет остатка
+                else
                 {
-                    if (value1.value.Length - zeros1 >= value2.value.Length - zeros2)
-                    {
-                        divs.value = new byte[value2.value.Length - zeros2];
-                        for (int i = 0; i < divs.value.Length; i++) divs.value[i] = value1.value[i + zeros1];
-                        zeros1 += value2.value.Length - zeros2;
-                    }
-                    else
-                    {
-                        divs.value = new byte[value1.value.Length - zeros1];
-                        for (int i = 0; i < divs.value.Length; i++) divs.value[i] = value1.value[i + zeros1];
-                        break;
-                    }
+                        
+                    break;
                 }
 
                 //если делимое меньше частичного делителя, то добавляем к нему еще один байт
                 if (divs < value2)
                 {
-                    if (value1.value.Length - zeros1 >= 1)
-                    {
-                        byte[] temp = divs.value;
-                        divs.value = new byte[temp.Length + 1];
-                        for (int i = 0; i < temp.Length; i++) divs.value[i] = temp[i];
-
-                        divs.value[temp.Length] = value1.value[zeros1];
-                        zeros1++;
-                        bytes.Add(0);//!!!!!!!!!!!
-                    }
-
+                    bytes.Add(0);//!!!!!!!!!!!
                 }
-
-                //находим частичный результат
-                byte b = 128;
-                byte bMax = 255;
-                byte bMin = 0;
-                FullInt temp1;
-                while ((temp1 = divs - mult(abs(value2), b)) >= value2 || temp1.s)
+                else
                 {
-                    if(temp1.s == false)
+                    //находим частичный результат
+                    byte b = 128;
+                    byte bMax = 255;
+                    byte bMin = 0;
+                    FullInt temp1;
+                    while ((temp1 = divs - mult(abs(value2), b)) >= value2 || temp1.s)
                     {
-                        //if (temp1 == value2) { b++; break; }
-                        bMin = b;
-                        if (b == bMax) break;
-                        if (b == bMax - 1) b++;
-                        b = (byte)((b + bMax) / 2);
+                        if (temp1.s == false)
+                        {
+                            //if (temp1 == value2) { b++; break; }
+                            bMin = b;
+                            if (b == bMax) break;
+                            if (b == bMax - 1) b++;
+                            b = (byte)((b + bMax) / 2);
+                        }
+                        else
+                        {
+                            bMax = b;
+                            if (b == bMin) break;
+                            if (b == bMin + 1) b--;
+                            b = (byte)((b + bMin) / 2);
+                        }
                     }
-                    else
-                    {
-                        bMax = b;
-                        if (b == bMin) break;
-                        if (b == bMin + 1) b--;
-                        b = (byte)((b + bMin) / 2);
-                    }
+                    divs = temp1;
+                    bytes.Add(b);
                 }
-                divs = temp1;
-                bytes.Add(b);
-
             }
 
             if (bytes.Count == 0)

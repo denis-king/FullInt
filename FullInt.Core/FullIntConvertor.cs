@@ -6,11 +6,11 @@ namespace FullInt.Core
     {
         public static FullInt ConvertToBase(FullInt value, toBase Base)
         {
-            FullInt result = new FullInt(value.s, new byte[1] { 0 }, Base);
+            FullInt result = new FullInt(value.s, new byte[] { }, Base);
 
             if (value.Base == Base)
             {
-                result.value = value.value;
+                result.value = (byte[])value.value.Clone();
             }
             else
             {
