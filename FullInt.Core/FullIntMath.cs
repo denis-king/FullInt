@@ -5,97 +5,69 @@ namespace FullInt.Core
 {
     public static class FullIntMath
     {
-
         public static FullInt add(FullInt value1, FullInt value2)
         {
             toBase Base = toEqualBase(value1, value2);
+            
+            int b1Sign = 1;
+            int b2Sign = 1;
 
-            Stack<byte> bytes = new Stack<byte>();
+            FullInt result = new FullInt(0 ,Base);
+           
+            if (value1.s == value2.s)
+            {
+                result.s = value1.s;
+            }
+            else
+            {
+                var compareResult = Compare(abs(value1), abs(value2));
+
+                if (compareResult > 0)
+                {
+                    result.s = value1.s;
+                    b2Sign = -1;
+                }
+                else if (compareResult < 0)
+                {
+                    result.s = value2.s;
+                    b1Sign = -1;
+                }
+                else
+                {
+                    return result;
+                }
+            }
 
             int sum = 0;
             byte b1 = 0, b2 = 0;
-
-            FullInt result = null;
-
-
-            if (value1.s == value2.s)//++
+            int baseMaxValue = (int)Base * (int)Base;
+            var bytes = new byte[Math.Max(value1.value.Length, value2.value.Length) + 1];
+           
+            for (int i = 0; i < value2.value.Length || i < value1.value.Length; i++)
             {
+                if (i < value1.value.Length) { b1 = value1.value[value1.value.Length - 1 - i]; } else { b1 = 0; }
+                if (i < value2.value.Length) { b2 = value2.value[value2.value.Length - 1 - i]; } else { b2 = 0; }
 
-                for (int i = 0; i < value2.value.Length || i < value1.value.Length; i++)
+                sum += b1Sign * b1 + b2Sign * b2;
+                if(sum >= baseMaxValue)
                 {
-                    if (i < value1.value.Length) { b1 = value1.value[value1.value.Length - 1 - i]; } else { b1 = 0; }
-                    if (i < value2.value.Length) { b2 = value2.value[value2.value.Length - 1 - i]; } else { b2 = 0; }
-
-                    sum += b1 + b2;
-                    bytes.Push((byte)(sum % ((int)Base * (int)Base)));
-                    sum = sum / ((int)Base * (int)Base);
+                    bytes[bytes.Length - 1 - i] = (byte)(sum - baseMaxValue);
+                    sum = 1;
                 }
-                if (sum > 0) bytes.Push((byte)(sum % ((int)Base * (int)Base)));
-
-                result = bytes.ToArray();
-                result.s = value1.s;
-
-            }
-
-            else
-            {
-                if (abs(value1) < abs(value2)) // |value1| < |value2|
+                else if (sum < 0)
                 {
-                    for (int i = 0; i < value2.value.Length || i < value1.value.Length; i++)
-                    {
-                        if (i < value1.value.Length) { b1 = value1.value[value1.value.Length - 1 - i]; } else { b1 = 0; }
-                        if (i < value2.value.Length) { b2 = value2.value[value2.value.Length - 1 - i]; } else { b2 = 0; }
-
-                        sum += b2 - b1; // |value1| < |value2|
-
-                        if (sum >= 0)
-                        {
-                            bytes.Push((byte)(sum % ((int)Base * (int)Base)));
-                            sum = 0;
-                        }
-                        else
-                        {
-                            bytes.Push((byte)((sum + ((int)Base * (int)Base)) % ((int)Base * (int)Base)));
-                            sum = -1;
-                        }
-                    }
-                    if (sum > 0) bytes.Push((byte)(sum % ((int)Base * (int)Base)));
-
-                    result = bytes.ToArray();
-                    result.s = value2.s;
-
+                    bytes[bytes.Length - 1 - i] = (byte)(sum + baseMaxValue);
+                    sum = -1;
                 }
-                else if (abs(value1) > abs(value2))// |value1| > |value2|
+                else
                 {
-                    for (int i = 0; i < value2.value.Length || i < value1.value.Length; i++)
-                    {
-                        if (i < value1.value.Length) { b1 = value1.value[value1.value.Length - 1 - i]; } else { b1 = 0; }
-                        if (i < value2.value.Length) { b2 = value2.value[value2.value.Length - 1 - i]; } else { b2 = 0; }
-
-                        sum += b1 - b2; // |value1| >= |value2|
-
-                        if (sum >= 0)
-                        {
-                            bytes.Push((byte)(sum % ((int)Base * (int)Base)));
-                            sum = 0;
-                        }
-                        else
-                        {
-                            bytes.Push((byte)((sum + ((int)Base * (int)Base)) % ((int)Base * (int)Base)));
-                            sum = -1;
-                        }
-                    }
-                    if (sum > 0) bytes.Push((byte)(sum % ((int)Base * (int)Base)));
-
-                    result = bytes.ToArray();
-                    result.s = value1.s;
-                }
-                else // |value1| == |value2|
-                {
-                    result = new FullInt(false, new byte[] { 0 });
+                    bytes[bytes.Length - 1 - i] = (byte)sum;
+                    sum = 0;
                 }
             }
+            if (sum > 0) bytes[0] = (byte)sum;
 
+            result.value = bytes;
             result.Base = Base;
             return deleteZeros(result);
         }
