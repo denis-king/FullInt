@@ -8,12 +8,15 @@ namespace FullInt.Core
         public static FullInt add(FullInt value1, FullInt value2)
         {
             toBase Base = toEqualBase(value1, value2);
-            
+            FullInt result = new FullInt(false, new byte[Math.Max(value1.value.Length, value2.value.Length) + 1], Base);
+            add(value1, value2, result, Base);
+            return deleteZeros(result);
+        }
+        public static void add(FullInt value1, FullInt value2, FullInt result, toBase Base)
+        {
             int b1Sign = 1;
             int b2Sign = 1;
 
-            FullInt result = new FullInt(0 ,Base);
-           
             if (value1.s == value2.s)
             {
                 result.s = value1.s;
@@ -34,14 +37,19 @@ namespace FullInt.Core
                 }
                 else
                 {
-                    return result;
+                    //prepare the zero result
+                    for (int i = 0; i < result.value.Length; i++)
+                    {
+                        result.value[i] = 0;
+                    }
+                    return;
                 }
             }
 
             int sum = 0;
             byte b1 = 0, b2 = 0;
             int baseMaxValue = (int)Base * (int)Base;
-            var bytes = new byte[Math.Max(value1.value.Length, value2.value.Length) + 1];
+            var bytes = result.value;// new byte[Math.Max(value1.value.Length, value2.value.Length) + 1];
            
             for (int i = 0; i < value2.value.Length || i < value1.value.Length; i++)
             {
@@ -65,11 +73,17 @@ namespace FullInt.Core
                     sum = 0;
                 }
             }
-            if (sum > 0) bytes[0] = (byte)sum;
+            if (sum > 0)
+            {
+                bytes[0] = (byte)sum;
+            }
+            else
+            {
+                bytes[0] = 0;
+            }
 
             result.value = bytes;
             result.Base = Base;
-            return deleteZeros(result);
         }
 
         public static FullInt div(FullInt value1, FullInt value2)
@@ -93,9 +107,18 @@ namespace FullInt.Core
         public static FullInt mult(FullInt value1, FullInt value2)
         {
             toBase Base = toEqualBase(value1, value2);
+            var bytes = new byte[value1.value.Length + value2.value.Length];
 
-            Stack<byte> bytes = new Stack<byte>();
-            FullInt result = null;
+            mult(value1, value2, bytes, Base);
+            return new FullInt(value1.s != value2.s, deleteZeros(bytes), Base);
+        }
+
+        public static void mult(FullInt value1, FullInt value2, byte[] bytes, toBase Base)
+        {
+            if (bytes.Length < value1.value.Length + value2.value.Length)
+            {
+                throw new ArgumentException("Byte array length is not enought");
+            }
 
             ulong sum = 0;
 
@@ -111,25 +134,21 @@ namespace FullInt.Core
                     }
                 }
 
-                bytes.Push((byte)(sum % ((uint)Base * (uint)Base)));
+                bytes[value1.value.Length + value2.value.Length - 1 - i] = (byte)(sum % ((uint)Base * (uint)Base));
                 sum = sum / ((uint)Base * (uint)Base);
             }
 
+            //there was a loop
             //учёт переносов
-            while (sum > 0)
+            if (sum > 0)
             {
-                bytes.Push((byte)(sum % ((uint)Base * (uint)Base)));
+                bytes[0] = (byte)(sum % ((uint)Base * (uint)Base));
                 sum = sum / ((uint)Base * (uint)Base);
             }
-
-
-            result = bytes.ToArray();
-
-            result = bytes.ToArray();
-            if (value1.s != value2.s) { result.s = true; }
-
-            result.Base = Base;
-            return deleteZeros(result);
+            else
+            {
+                bytes[0] = 0;
+            }
         }
 
         public static FullInt pow(FullInt value1, FullInt value2)
@@ -178,8 +197,8 @@ namespace FullInt.Core
             int result = 0;
             toEqualBase(value1, value2);
 
-            var zeros1 = countZeros(value1);
-            var zeros2 = countZeros(value2);
+            var zeros1 = countZeros(value1.value);
+            var zeros2 = countZeros(value2.value);
             var value1Length = value1.value.Length - zeros1;
             var value2Length = value2.value.Length - zeros2;
 
@@ -277,6 +296,12 @@ namespace FullInt.Core
         }
         private static FullInt deleteZeros(FullInt value)
         {
+            value.value = deleteZeros(value.value);
+            return value;
+        }
+
+        private static byte[] deleteZeros(byte[] value)
+        {
             //пропуск старших нулей операнда
             int zeros = countZeros(value);
 
@@ -285,15 +310,13 @@ namespace FullInt.Core
                 return value;
             }
 
-            var span = value.value.AsSpan();
-            value.value = span.Slice(zeros).ToArray();
-            return value;
+            return value.AsSpan().Slice(zeros).ToArray();
         }
 
-        private static int countZeros(FullInt value)
+        private static int countZeros(byte[] value)
         {
             int zeros = 0;
-            for (zeros = 0; zeros < value.value.Length - 1 && value.value[zeros] == 0; zeros++) { }
+            for (zeros = 0; zeros < value.Length - 1 && value[zeros] == 0; zeros++) { }
 
             return zeros;
         }
@@ -315,7 +338,7 @@ namespace FullInt.Core
             FullInt divs = new FullInt(0, Base);
 
             //пропуск старших нулей операндов
-            int zeros1 = countZeros(value1);
+            int zeros1 = countZeros(value1.value);
 
             while (value1.value.Length - zeros1 > 0)
             {
@@ -366,22 +389,28 @@ namespace FullInt.Core
         private static FullInt[] div_mod(FullInt value1, FullInt value2)
         {
             toBase Base = toEqualBase(value1, value2);
-            List<byte> bytes = new List<byte>();
+            var bytes = new byte[value1.value.Length - value2.value.Length + 1];
+            int bytesIndex = 0;
             FullInt[] result = new FullInt[2];
 
-            FullInt divs = new FullInt(0, Base);
+            FullInt divs = new FullInt(false, new byte[value2.value.Length + 1], Base);
+            FullInt divMult = new FullInt(false, new byte[value2.value.Length + 1], Base);
+            FullInt temp1 = new FullInt(false, new byte[value2.value.Length + 1]);
 
             //пропуск старших нулей операндов
-            int zeros1 = countZeros(value1), zeros2 = countZeros(value2);
+            int zeros1 = countZeros(value1.value), zeros2 = countZeros(value2.value);
 
             while (value1.value.Length - zeros1 > 0)
             {
                 //если есть еще байти из делимого числа
                 if (value1.value.Length - zeros1 >= 1)
                 {
-                    var newDiv = new List<byte>(divs.value);
-                    newDiv.Add(value1.value[zeros1]);
-                    divs.value = newDiv.ToArray();
+                    //move divs left and add new byte
+                    for (int i= 0; i < divs.value.Length - 1; i++)
+                    {
+                        divs.value[i] = divs.value[i + 1];
+                    }
+                    divs.value[divs.value.Length - 1] = value1.value[zeros1];
 
                     zeros1 += 1;
                 }
@@ -394,7 +423,11 @@ namespace FullInt.Core
                 //если делимое меньше частичного делителя, то добавляем к нему еще один байт
                 if (divs < value2)
                 {
-                    bytes.Add(0);//!!!!!!!!!!!
+                    //skip the zeros befor the result
+                    if (bytesIndex > 0)
+                    {
+                        bytes[bytesIndex++] = 0;//!!!!!!!!!!!
+                    }
                 }
                 else
                 {
@@ -402,12 +435,21 @@ namespace FullInt.Core
                     byte b = 128;
                     byte bMax = 255;
                     byte bMin = 0;
-                    FullInt temp1;
-                    while ((temp1 = divs - mult(abs(value2), b)) >= value2 || temp1.s)
+                    
+                    while (true)
                     {
+                        //mult abs(value2) and b into divMult
+                        mult(abs(value2), b, divMult.value, Base);
+                        //substract divMult from divs into temp1
+                        add(divs, -divMult, temp1, Base);
+                        //temp1 = divs - (abs(value2) * b)
+                        if (temp1 < value2 && !temp1.s)
+                        {
+                            break;
+                        }
+
                         if (temp1.s == false)
                         {
-                            //if (temp1 == value2) { b++; break; }
                             bMin = b;
                             if (b == bMax) break;
                             if (b == bMax - 1) b++;
@@ -421,16 +463,29 @@ namespace FullInt.Core
                             b = (byte)((b + bMin) / 2);
                         }
                     }
-                    divs = temp1;
-                    bytes.Add(b);
+
+                    //copy temp1 to divs
+                    for (int i = 0; i < divs.value.Length; i++)
+                    {
+                        divs.value[i] = temp1.value[i];
+                    }
+                    
+                    bytes[bytesIndex++] = b;
                 }
             }
 
-            if (bytes.Count == 0)
-                bytes.Add(0);
+            //сдвиг результата в начало массива
+            if (bytesIndex < bytes.Length)
+            {
+                for(int i = 0; i < bytesIndex; i++)
+                {
+                    bytes[bytes.Length - 1 - i] = bytes[bytesIndex - 1 - i];
+                    bytes[bytesIndex - 1 - i] = 0;
+                }
+            }
 
             //сохранение целой части
-            result[0] = deleteZeros(new FullInt(false, bytes.ToArray(), Base));
+            result[0] = deleteZeros(new FullInt(false, bytes, Base));
 
             //определения знака результата
             if (value1.s != value2.s) { result[0].s = true; }
