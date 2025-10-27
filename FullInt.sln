@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FullInt.Core", "FullInt.Cor
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FullMiner", "FullMiner\FullMiner.csproj", "{4496BC09-C3AF-4704-AA5D-594BFC007A2D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FullInt.Net", "FullInt.Net\FullInt.Net.csproj", "{7070CD96-10EC-4733-87C5-C285B0F4EF8E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -27,6 +29,10 @@ Global
 		{4496BC09-C3AF-4704-AA5D-594BFC007A2D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4496BC09-C3AF-4704-AA5D-594BFC007A2D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{4496BC09-C3AF-4704-AA5D-594BFC007A2D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7070CD96-10EC-4733-87C5-C285B0F4EF8E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7070CD96-10EC-4733-87C5-C285B0F4EF8E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7070CD96-10EC-4733-87C5-C285B0F4EF8E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7070CD96-10EC-4733-87C5-C285B0F4EF8E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
