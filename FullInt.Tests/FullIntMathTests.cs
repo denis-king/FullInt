@@ -3,6 +3,8 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
 using FullIntCore = FullInt.Core.FullInt;
 using System.Diagnostics;
+using System.Numerics;
+using System.Security.Cryptography;
 
 namespace FullInt.Tests
 {
@@ -23,7 +25,7 @@ namespace FullInt.Tests
         [TestMethod]
         public void Sub_zore_make_negative_ReturnsSum()
         {
-            var a = new FullIntCore(false, [0, 0]);
+            var a = new FullIntCore(false, new byte[] { 0, 0 });
             var b = new FullIntCore(128, toBase.dec);
             var result = FullIntMath.sub(a, b);
             Assert.AreEqual(new FullIntCore(-128, toBase.dec), result);
@@ -230,6 +232,184 @@ namespace FullInt.Tests
         }
 
         [TestMethod]
+        public void Add_into_operand_Long_PositiveNumbers_ReturnsSum()
+        {
+            var a = new FullIntCore(9223372036854775800L, toBase.dec);
+            var b = new FullIntCore(5L, toBase.dec);
+            FullIntMath.add(a, b, a, toBase.dec, false);
+            Assert.AreEqual(new FullIntCore(9223372036854775805L, toBase.dec), a);
+        }
+
+        [TestMethod]
+        public void Test_Add_with_random_Longs()
+        {
+            Stopwatch bigStopwatch = new Stopwatch();
+            Stopwatch fullStopwatch = new Stopwatch();
+
+            const int iterations = 10;
+            using (var rng = RandomNumberGenerator.Create())
+            {
+                for (int i = 0; i < iterations; i++)
+                {
+                    var buf = new byte[8];
+                    rng.GetBytes(buf);
+                    long a = BitConverter.ToInt64(buf, 0);
+
+                    rng.GetBytes(buf);
+                    long b = BitConverter.ToInt64(buf, 0);
+
+                    var fa = new FullIntCore(a, toBase.dec);
+                    var fb = new FullIntCore(b, toBase.dec);
+
+                    fullStopwatch.Start();
+                    var sumFull = FullIntMath.add(fa, fb);
+                    fullStopwatch.Stop();
+
+                    bigStopwatch.Start();
+                    BigInteger expected = (BigInteger)a + (BigInteger)b;
+                    bigStopwatch.Stop();
+
+                    FullIntCore expectedFull = expected.ToString();
+
+                    Assert.AreEqual(expectedFull, sumFull, $"Mismatch for a={a}, b={b}");
+                }
+                var bigTotal = bigStopwatch.Elapsed;
+                var bigAvg = TimeSpan.FromTicks(bigTotal.Ticks / iterations);
+                var fullTotal = fullStopwatch.Elapsed;
+                var fullAvg = TimeSpan.FromTicks(fullTotal.Ticks / iterations);
+                TestContext?.WriteLine($"Speed for BigInt: iterations={iterations}, total={bigTotal}, avg={bigAvg.TotalMilliseconds}");
+                TestContext?.WriteLine($"Speed for FullInt: iterations={iterations}, total={fullTotal}, avg={fullAvg.TotalMilliseconds}");
+            }
+        }
+
+        [TestMethod]
+        public void Test_Mult_with_random_Longs()
+        {
+            Stopwatch bigStopwatch = new Stopwatch();
+            Stopwatch fullStopwatch = new Stopwatch();
+            
+            const int iterations = 10;
+            using (var rng = RandomNumberGenerator.Create())
+            {
+                for (int i = 0; i < iterations; i++)
+                {
+                    var buf = new byte[8];
+                    rng.GetBytes(buf);
+                    long a = BitConverter.ToInt64(buf, 0);
+
+                    rng.GetBytes(buf);
+                    long b = BitConverter.ToInt64(buf, 0);
+
+                    var fa = new FullIntCore(a, toBase.dec);
+                    var fb = new FullIntCore(b, toBase.dec);
+                    
+                    fullStopwatch.Start();
+                    var multFull = FullIntMath.mult(fa, fb);
+                    fullStopwatch.Stop();
+                    
+                    bigStopwatch.Start();
+                    BigInteger expected = (BigInteger)a * (BigInteger)b;
+                    bigStopwatch.Stop();
+                    
+                    FullIntCore expectedFull = expected.ToString();
+
+                    Assert.AreEqual(expectedFull, multFull, $"Mismatch for a={a}, b={b}");
+                }
+                var bigTotal = bigStopwatch.Elapsed;
+                var bigAvg = TimeSpan.FromTicks(bigTotal.Ticks / iterations);
+                var fullTotal = fullStopwatch.Elapsed;
+                var fullAvg = TimeSpan.FromTicks(fullTotal.Ticks / iterations);
+                TestContext?.WriteLine($"Speed for BigInt: iterations={iterations}, total={bigTotal}, avg={bigAvg.TotalMilliseconds}");
+                TestContext?.WriteLine($"Speed for FullInt: iterations={iterations}, total={fullTotal}, avg={fullAvg.TotalMilliseconds}");
+            }
+        }
+
+        [TestMethod]
+        public void Test_Div_with_random_Longs()
+        {
+            Stopwatch bigStopwatch = new Stopwatch();
+            Stopwatch fullStopwatch = new Stopwatch();
+            
+            const int iterations = 10;
+            using (var rng = RandomNumberGenerator.Create())
+            {
+                for (int i = 0; i < iterations; i++)
+                {
+                    var buf = new byte[8];
+                    rng.GetBytes(buf);
+                    long a = BitConverter.ToInt64(buf, 0);
+
+                    rng.GetBytes(buf);
+                    long b = BitConverter.ToInt64(buf, 0);
+
+                    var fa = new FullIntCore(a, toBase.dec);
+                    var fb = new FullIntCore(b, toBase.dec);
+                    TestContext?.WriteLine($"FullInt a={a}, b={b}");
+                    fullStopwatch.Start();
+                    var divFull = FullIntMath.div(fa, fb);
+                    fullStopwatch.Stop();
+
+                    TestContext?.WriteLine($"BigInt a={a}, b={b}");
+                    bigStopwatch.Start();
+                    BigInteger expected = (BigInteger)a / (BigInteger)b;
+                    bigStopwatch.Stop();
+
+                    FullIntCore expectedFull = expected.ToString();
+
+                    Assert.AreEqual(expectedFull, divFull, $"Mismatch for a={a}, b={b}");
+                }
+                var bigTotal = bigStopwatch.Elapsed;
+                var bigAvg = TimeSpan.FromTicks(bigTotal.Ticks / iterations);
+                var fullTotal = fullStopwatch.Elapsed;
+                var fullAvg = TimeSpan.FromTicks(fullTotal.Ticks / iterations);
+                TestContext?.WriteLine($"Speed for BigInt: iterations={iterations}, total={bigTotal}, avg={bigAvg.TotalMilliseconds}");
+                TestContext?.WriteLine($"Speed for FullInt: iterations={iterations}, total={fullTotal}, avg={fullAvg.TotalMilliseconds}");
+            }
+        }
+
+        [TestMethod]
+        public void Test_Mod_with_random_Longs()
+        {
+            Stopwatch bigStopwatch = new Stopwatch();
+            Stopwatch fullStopwatch = new Stopwatch();
+
+            const int iterations = 10;
+            using (var rng = RandomNumberGenerator.Create())
+            {
+                for (int i = 0; i < iterations; i++)
+                {
+                    var buf = new byte[8];
+                    rng.GetBytes(buf);
+                    long a = BitConverter.ToInt64(buf, 0);
+
+                    rng.GetBytes(buf);
+                    long b = BitConverter.ToInt64(buf, 0);
+
+                    var fa = new FullIntCore(a, toBase.dec);
+                    var fb = new FullIntCore(b, toBase.dec);
+
+                    fullStopwatch.Start();
+                    var divFull = FullIntMath.mod(fa, fb);
+                    fullStopwatch.Stop();
+
+                    bigStopwatch.Start();
+                    BigInteger expected = (BigInteger)a % (BigInteger)b;
+                    bigStopwatch.Stop();
+
+                    FullIntCore expectedFull = expected.ToString();
+
+                    Assert.AreEqual(expectedFull, divFull, $"Mismatch for a={a}, b={b}");
+                }
+                var bigTotal = bigStopwatch.Elapsed;
+                var bigAvg = TimeSpan.FromTicks(bigTotal.Ticks / iterations);
+                var fullTotal = fullStopwatch.Elapsed;
+                var fullAvg = TimeSpan.FromTicks(fullTotal.Ticks / iterations);
+                TestContext?.WriteLine($"Speed for BigInt: iterations={iterations}, total={bigTotal}, avg={bigAvg.TotalMilliseconds}");
+                TestContext?.WriteLine($"Speed for FullInt: iterations={iterations}, total={fullTotal}, avg={fullAvg.TotalMilliseconds}");
+            }
+        }
+
+        [TestMethod]
         public void Sub_Long_SubtractsCorrectly()
         {
             var a = new FullIntCore(long.MaxValue, toBase.dec);
@@ -279,6 +459,62 @@ namespace FullInt.Tests
             var result = FullIntMath.mod(a, b);
             Assert.AreEqual(new FullIntCore(a0 % b0, toBase.dec), result);
         }
+
+        [TestMethod]
+        public void Div_Long_negative_ReturnsRemainder()
+        {
+            long a0 = -6163651401547877321L;
+            long b0 = -8251442412018563718L;
+            var a = new FullIntCore(a0, toBase.dec);
+            var b = new FullIntCore(b0, toBase.dec);
+            var result = FullIntMath.div(a, b);
+            Assert.AreEqual(new FullIntCore(a0 / b0, toBase.dec), result);
+        }
+
+        [TestMethod]
+        public void Div_Long_2_ReturnsRemainder()
+        {
+            long a0 = 5774879304267866471L;
+            long b0 = -838346427744435866L;
+            var a = new FullIntCore(a0, toBase.dec);
+            var b = new FullIntCore(b0, toBase.dec);
+            var result = FullIntMath.div(a, b);
+            Assert.AreEqual(new FullIntCore(a0 / b0, toBase.dec), result);
+        }
+
+        [TestMethod]
+        public void Mod_Long_2_ReturnsRemainder()
+        {
+            long a0 = 4040031482854394222L;
+            long b0 = 711194979896964872L;
+            var a = new FullIntCore(a0, toBase.dec);
+            var b = new FullIntCore(b0, toBase.dec);
+            var result = FullIntMath.mod(a, b);
+            Assert.AreEqual(new FullIntCore(a0 % b0, toBase.dec), result);
+        }
+
+        [TestMethod]
+        public void Mod_Long_3_ReturnsRemainder()
+        {
+            long a0 =  3951019230310331208L;
+            long b0 = -5188172996314720727L;
+            var a = new FullIntCore(a0, toBase.dec);
+            var b = new FullIntCore(b0, toBase.dec);
+            var result = FullIntMath.mod(a, b);
+            Assert.AreEqual(new FullIntCore(a0 % b0, toBase.dec), result);
+        }
+
+        [TestMethod]
+        public void add_Long_2_ReturnsRemainder()
+        {
+            long a0 = 5774879304267866471L;
+            long b0 = -3353385710977743464L;
+            var a = new FullIntCore(a0, toBase.dec);
+            var b = new FullIntCore(b0, toBase.dec);
+            var result = FullIntMath.add(a, b);
+            Assert.AreEqual(new FullIntCore(a0 + b0, toBase.dec), result);
+        }
+
         #endregion
 
         #region Speed test
