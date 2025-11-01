@@ -90,35 +90,22 @@ namespace FullInt.Core
         }
         public FullInt(byte value, toBase Base = toBase.hex)
         {
-            Stack<byte> bytes = new Stack<byte>();
-            this.Base = Base;
-
-            if (value == 0)
+            var baseMaxValue = (int)Base * (int)Base;
+           
+            if (value >= baseMaxValue)
             {
-                bytes.Push(0);
+                this.value = new[] { (byte)1, (byte)(value % baseMaxValue) };
             }
             else
             {
-                while (value > 0)
-                {
-                    bytes.Push((byte)(value % ((int)Base * (int)Base)));
-                    value = (byte)(value / ((int)Base * (int)Base));
-                }
+                this.value = new[] { value };
             }
-
-            this.value = bytes.ToArray();
         }
-
-
 
         public override String ToString()
         {
             return this.ToString((byte)Base);
         }
-
-
-
-
 
         public static FullInt invertor(FullInt value)
         {
