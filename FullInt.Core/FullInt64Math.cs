@@ -14,6 +14,7 @@ namespace FullInt.Core
         [DllImport("128Operations.dll", CallingConvention = CallingConvention.Cdecl)]
         public static extern ulong Div128(ulong hi, ulong lo, ulong divisor, out ulong remainder);
 
+        #region add methods
         public static FullInt64 add(FullInt64 value1, FullInt64 value2)
         {
             toBase Base = toEqualBase(ref value1, ref value2);
@@ -23,8 +24,6 @@ namespace FullInt.Core
         }
         public static void add(FullInt64 value1, FullInt64 value2, FullInt64 result, toBase Base, bool useCarry = true)
         {
-            int b1Sign = 1;
-            int b2Sign = 1;
             if(result.value.Length < Math.Max(value1.value.Length, value2.value.Length) + (useCarry ? 1 : 0))
             {
                 throw new Exception("the result bufer size is not enought");
@@ -32,7 +31,13 @@ namespace FullInt.Core
 
             if (value1.Sing == value2.Sing)
             {
+                var carry = addInternal(value1.value, value2.value, result.value, Base);
                 result.Sing = value1.Sing;
+
+                if (!useCarry && carry > 0)
+                {
+                    throw new Exception("result buffer is oveflow");
+                }
             }
             else
             {
@@ -40,13 +45,13 @@ namespace FullInt.Core
 
                 if (compareResult > 0)
                 {
+                    subInternal(value1.value, value2.value, result.value, Base);
                     result.Sing = value1.Sing;
-                    b2Sign = -1;
                 }
                 else if (compareResult < 0)
                 {
+                    subInternal(value2.value, value1.value, result.value, Base);
                     result.Sing = value2.Sing;
-                    b1Sign = -1;
                 }
                 else
                 {
@@ -58,21 +63,38 @@ namespace FullInt.Core
                     return;
                 }
             }
+        }
 
+        public static FullInt64 sub(FullInt64 value1, FullInt64 value2)
+        {
+            return add(value1, -value2);
+        }
+        //private static ulong[] add(Span<ulong> value1, Span<ulong> value2, toBase Base)
+        //{
+        //    Span<ulong> reesult = stackalloc ulong[Math.Max(value1.Length, value2.Length) + 1];
+        //    addInternal(value1, value2, reesult, Base);
+        //    return reesult.Slice(countZeros(reesult)).ToArray();
+        //}
+        //private static ulong[] sub(Span<ulong> value1, Span<ulong> value2, toBase Base)
+        //{
+        //    Span<ulong> reesult = stackalloc ulong[Math.Max(value1.Length, value2.Length) + 1];
+        //    subInternal(value1, value2, reesult, Base);
+        //    return reesult.Slice(countZeros(reesult)).ToArray();
+        //}
+        private static byte addInternal(Span<ulong> value1, Span<ulong> value2, Span<ulong> result, toBase Base) 
+        {
             ulong sum = 0;
             ulong b1 = 0, b2 = 0;
-            ulong baseMaxValue = Base == toBase.dec ? FullInt64.maxDecValue : ulong.MaxValue;
-            var bytes = result.value;// new byte[Math.Max(value1.value.Length, value2.value.Length) + 1];
+            //ulong baseMaxValue = Base == toBase.dec ? FullInt64.maxDecValue : ulong.MaxValue;
+            
             byte carry = 0;
-            byte borrow = 0;
-           
-            for (int i = 0; i < result.value.Length; i++)
-            {
-                if (i < value1.value.Length) { b1 = value1.value[value1.value.Length - 1 - i]; } else { b1 = 0; }
-                if (i < value2.value.Length) { b2 = value2.value[value2.value.Length - 1 - i]; } else { b2 = 0; }
 
-                if(b1Sign == 1 && b2Sign == 1)
-                {
+            for (int i = 0; i < result.Length; i++)
+            {
+                if (i < value1.Length) { b1 = value1[value1.Length - 1 - i]; } else { b1 = 0; }
+                if (i < value2.Length) { b2 = value2[value2.Length - 1 - i]; } else { b2 = 0; }
+
+                
                     //save adding two ulongs and carry
                     var sum1 = b1 + b2;
                     bool carry1 = sum1 < b1 || sum1 < b2;
@@ -81,150 +103,127 @@ namespace FullInt.Core
                     carry = carry1 || carry2 ? (byte)1 : (byte)0;
 
                     //decimal corrections
-                    if (Base == toBase.dec) 
+                    if (Base == toBase.dec)
                     {
-                        if(carry == 1)
+                        if (carry == 1)
                         {
                             sum = sum + (ulong.MaxValue - FullInt64.maxDecValue);
                         }
-                        else if(sum > FullInt64.maxDecValue)
+                        else if (sum > FullInt64.maxDecValue)
                         {
                             sum = sum - FullInt64.maxDecCapasity;
                             carry = 1;
                         }
                     }
 
-                    
-                }
-                //todo split into diferent substraction method
-                else if(b1Sign == -1 && b2Sign == 1)
-                {
-                    if(b1 + borrow > b2)
-                    {
-                        //todo check if we can worrow
-                        sum = baseMaxValue - b1 - borrow + b2 + 1;
-                        borrow = 1;
-                    }
-                    else 
-                    {
-                        sum = b2 - b1 - borrow;
-                        borrow = 0;
-                    }
-                        
-                }
-                else if(b1Sign == 1 && b2Sign == -1)
-                {
-                    if (b1 < b2 + borrow)
-                    {
-                        sum = baseMaxValue - b2 - borrow + b1 + 1;
-                        borrow = 1;
-                    }
-                    else
-                    {
-                        sum = b1 - b2 - borrow;
-                        borrow = 0;
-                    }
-                }
-                bytes[bytes.Length - 1 - i] = sum;
+
+                
+                result[result.Length - 1 - i] = sum;
             }
+
             
-            if (!useCarry && carry > 0)
-            {
-                throw new Exception("result buffer is oveflow");
-            }
-
-            result.value = bytes;
+            return carry;
         }
-
-        public static FullInt64 div(FullInt64 value1, FullInt64 value2)
+        //value1 > value2
+        private static void subInternal(Span<ulong> value1, Span<ulong> value2, Span<ulong> result, toBase Base)
         {
-            if (value2 == 0)
-            {
-                throw new System.DivideByZeroException();
-            }
-            return div_mod(value1, value2)[0];
-        }
+            ulong sum = 0;
+            ulong b1 = 0, b2 = 0;
+            ulong baseMaxValue = Base == toBase.dec ? FullInt64.maxDecValue : ulong.MaxValue;
+            byte borrow = 0;
 
-        public static FullInt64 mod(FullInt64 value1, FullInt64 value2)
+            for (int i = 0; i < result.Length; i++)
+            {
+                if (i < value1.Length) { b1 = value1[value1.Length - 1 - i]; } else { b1 = 0; }
+                if (i < value2.Length) { b2 = value2[value2.Length - 1 - i]; } else { b2 = 0; }
+
+                if (b1 < b2 + borrow)
+                {
+                    sum = baseMaxValue - b2 - borrow + b1 + 1;
+                    borrow = 1;
+                }
+                else
+                {
+                    sum = b1 - b2 - borrow;
+                    borrow = 0;
+                }
+                result[result.Length - 1 - i] = sum;
+            }
+        }
+        #endregion
+
+        public static FullInt64 abs(FullInt64 value)
         {
-            if (value2 == 0)
-            {
-                throw new System.DivideByZeroException();
-            }
-            return div_mod(value1, value2)[1];
+            var result = new FullInt64(value);
+            result.Sing = false;
+            return result;
         }
 
+
+        #region mult methods
         public static FullInt64 mult(FullInt64 value1, FullInt64 value2)
         {
             toBase Base = toEqualBase(ref value1, ref value2);
             var bytes = new ulong[value1.value.Length + value2.value.Length];
 
-            mult(value1, value2, bytes, Base);
-            return new FullInt64(value1.Sing != value2.Sing, deleteZeros(bytes), Base);
+            multInternal(value1.value, value2.value, bytes, Base);
+            return new FullInt64(value1.Sing != value2.Sing, deleteZeros(bytes).ToArray(), Base);
         }
 
-        public static void mult(FullInt64 value1, FullInt64 value2, ulong[] bytes, toBase Base)
+        private static void multInternal(Span<ulong> value1, Span<ulong> value2, Span<ulong> result, toBase Base)
         {
-            if (bytes.Length < value1.value.Length + value2.value.Length)
+            if (result.Length < value1.Length + value2.Length)//should we check it here? its for internal use only i should use the correct buffer size
             {
                 throw new ArgumentException("Byte array length is not enought");
             }
 
-            var sum = new FullInt64(false, new ulong[3], Base); //todo use pooling
-            //int sum = 0;
-            var mult = new FullInt64(false, new ulong[2], Base);
-            uint baseMaxValue = (uint)Base * (uint)Base;
-            ulong multA =0, multB =0;
-            ulong multHi=0, multLo = 0;
+            Span<ulong> sum = stackalloc ulong[3];
+            Span<ulong> mult = stackalloc ulong[2];
+            
+            ulong multA = 0, multB = 0;
+            ulong multHi = 0, multLo = 0;
 
-            for (int i = 0; i < value2.value.Length + value1.value.Length - 1; i++)
+            for (int i = 0; i < value2.Length + value1.Length - 1; i++)
             {
-
-                for (int j = 0; j < value2.value.Length; j++)
+                for (int j = 0; j < value2.Length; j++)
                 {
-                    if (value1.value.Length - 1 + j - i >= 0 && value1.value.Length - 1 + j - i < value1.value.Length)
+                    if (value1.Length - 1 + j - i >= 0 && value1.Length - 1 + j - i < value1.Length)
                     {
-                        multA = value1.value[value1.value.Length - 1 + j - i];
-                        multB = value2.value[value2.value.Length - 1 - j];
+                        multA = value1[value1.Length - 1 + j - i];
+                        multB = value2[value2.Length - 1 - j];
                         if(multA == 0 || multB == 0)
                         {
                             continue;
                         }
                         Multiply(multA, multB, Base == toBase.dec, out multLo, out multHi);
-                        mult.value[0] = multHi;
-                        mult.value[1] = multLo;
+                        mult[0] = multHi;
+                        mult[1] = multLo;
 
-                        //it's adding mult to sum in place of sum = sum + mult
-                        add(sum, mult, sum, Base, false); //no carry, not anought buffer size
+                        //sum = sum + mult
+                        addInternal(sum, mult, sum, Base);
 
-                        //sum += (value1.value[value1.value.Length - 1 + j - i] * value2.value[value2.value.Length - 1 - j]);
                     }
                 }
 
-                bytes[value1.value.Length + value2.value.Length - 1 - i] = //(byte)( sum % baseMaxValue); 
-                sum.value[2];
+                result[value1.Length + value2.Length - 1 - i] = sum[2];
                 //свиг суммы вправо на 1 байт
-                //использовать спаны
-                sum.value[2] = sum.value[1];
-                sum.value[1] = sum.value[0];
-                sum.value[0] = 0;
+                sum[2] = sum[1];
+                sum[1] = sum[0];
+                sum[0] = 0;
                 //sum = (int)(sum / baseMaxValue);
             }
 
-            //there was a loop
             //учёт переносов
-            if (sum.value[2] > 0)
+            if (sum[2] > 0)
             {
-                bytes[0] = sum.value[2];
+                result[0] = sum[2];
             }
             else
             {
-                bytes[0] = 0;
+                result[0] = 0;
             }
         }
 
-        //[DllImport("kernel32.dll", EntryPoint = "Multiply128", ExactSpelling = true)]
-        //private static extern ulong NativeMultiply128(ulong a, ulong b, out ulong high);
 
         private static bool _nativeAvailable = true;
 
@@ -328,18 +327,10 @@ namespace FullInt.Core
             return result;
         }
 
-        public static FullInt64 sub(FullInt64 value1, FullInt64 value2)
-        {
-            return add(value1, -value2);
-        }
+        #endregion
 
-        public static FullInt64 abs(FullInt64 value)
-        {
-            var result = new FullInt64(value);
-            result.Sing = false;
-            return result;
-        }
-
+       
+        #region comparation
         public static bool IsABiggerB(FullInt64 value1, FullInt64 value2)
         {
             var result = Compare(value1, value2);
@@ -350,10 +341,10 @@ namespace FullInt.Core
             int result = 0;
             toEqualBase(ref value1, ref value2);
 
-            var zeros1 = countZeros(value1.value);
-            var zeros2 = countZeros(value2.value);
-            var value1Length = value1.value.Length - zeros1;
-            var value2Length = value2.value.Length - zeros2;
+            //var zeros1 = countZeros(value1.value);
+            //var zeros2 = countZeros(value2.value);
+            //var value1Length = value1.value.Length - zeros1;
+            //var value2Length = value2.value.Length - zeros2;
 
             //cpmparison by sign
             if (value1.Sing == true && value2.Sing == false)
@@ -366,32 +357,34 @@ namespace FullInt.Core
             }
             else
             {
-                //comparison by length
-                if (value1Length < value2Length)
-                {
-                    result = -1;
-                }
-                else if (value1Length > value2Length)
-                {
-                    result = 1;
-                }
-                else
-                {
-                    //comparison by value
-                    for (int i = 0; i < value1Length; i++)
-                    {
-                        if (value1.value[i + zeros1] < value2.value[i + zeros2])
-                        {
-                            result = -1;
-                            break;
-                        }
-                        else if (value1.value[i + zeros1] > value2.value[i + zeros2])
-                        {
-                            result = 1;
-                            break;
-                        }
-                    }
-                }
+                //compare absolute values
+                result = CompareAbsInternal(value1.value, value2.value);
+                ////comparison by length
+                //if (value1Length < value2Length)
+                //{
+                //    result = -1;
+                //}
+                //else if (value1Length > value2Length)
+                //{
+                //    result = 1;
+                //}
+                //else
+                //{
+                //    //comparison by value
+                //    for (int i = 0; i < value1Length; i++)
+                //    {
+                //        if (value1.value[i + zeros1] < value2.value[i + zeros2])
+                //        {
+                //            result = -1;
+                //            break;
+                //        }
+                //        else if (value1.value[i + zeros1] > value2.value[i + zeros2])
+                //        {
+                //            result = 1;
+                //            break;
+                //        }
+                //    }
+                //}
 
                 //inversion for negative numbers
                 if (value1.Sing == true && value2.Sing == true)
@@ -401,6 +394,47 @@ namespace FullInt.Core
             }
             return result;
         }
+        public static int CompareAbsInternal(Span<ulong> value1, Span<ulong> value2)
+        {
+            int result = 0;
+            //toEqualBase(ref value1, ref value2);
+
+            var zeros1 = countZeros(value1);
+            var zeros2 = countZeros(value2);
+            var value1Length = value1.Length - zeros1;
+            var value2Length = value2.Length - zeros2;
+
+            
+            //comparison by length
+            if (value1Length < value2Length)
+            {
+                result = -1;
+            }
+            else if (value1Length > value2Length)
+            {
+                result = 1;
+            }
+            else
+            {
+                //comparison by value
+                for (int i = 0; i < value1Length; i++)
+                {
+                    if (value1[i + zeros1] < value2[i + zeros2])
+                    {
+                        result = -1;
+                        break;
+                    }
+                    else if (value1[i + zeros1] > value2[i + zeros2])
+                    {
+                        result = 1;
+                        break;
+                    }
+                }
+            }
+                
+            return result;
+        }
+
         public static bool IsABiggerOrEqualsB(FullInt64 value1, FullInt64 value2)
         {
             var result = Compare(value1, value2);
@@ -411,7 +445,9 @@ namespace FullInt.Core
         {
             return Compare(value1, value2) == 0;
         }
+        #endregion
 
+        #region normalization
         public static toBase toEqualBase(ref FullInt64 value1, ref FullInt64 value2)
         {
             toBase Base;
@@ -434,7 +470,42 @@ namespace FullInt.Core
             }
             return Base;
         }
-        private static FullInt64 Copy(FullInt64 value) 
+        private static FullInt64 deleteZeros(FullInt64 value)
+        {
+            value.value = deleteZeros(value.value).ToArray();
+            return value;
+        }
+
+        private static Span<ulong> deleteZeros(Span<ulong> value)
+        {
+            //пропуск старших нулей операнда
+            int zeros = countZeros(value);
+
+            if (zeros == 0)
+            {
+                return value;
+            }
+
+            return value.Slice(zeros).ToArray();
+        }
+
+        private static int countZeros(ulong[] value)
+        {
+            int zeros = 0;
+            for (zeros = 0; zeros < value.Length - 1 && value[zeros] == 0; zeros++) { }
+
+            return zeros;
+        }
+        private static int countZeros(Span<ulong> value)
+        {
+            int zeros = 0;
+            for (zeros = 0; zeros < value.Length - 1 && value[zeros] == 0; zeros++) { }
+
+            return zeros;
+        }
+        #endregion
+
+        private static FullInt64 Copy(FullInt64 value)
         {
             return Copy(value, (value.IsDec ? toBase.dec : toBase.hex));
         }
@@ -445,31 +516,25 @@ namespace FullInt.Core
             deleteZeros(result);
             return result;
         }
-        private static FullInt64 deleteZeros(FullInt64 value)
-        {
-            value.value = deleteZeros(value.value);
-            return value;
-        }
 
-        private static ulong[] deleteZeros(ulong[] value)
-        {
-            //пропуск старших нулей операнда
-            int zeros = countZeros(value);
+        #region div methods
 
-            if (zeros == 0)
+        public static FullInt64 div(FullInt64 value1, FullInt64 value2)
+        {
+            if (value2 == 0)
             {
-                return value;
+                throw new System.DivideByZeroException();
             }
-
-            return value.AsSpan().Slice(zeros).ToArray();
+            return div_mod(value1, value2)[0];
         }
 
-        private static int countZeros(ulong[] value)
+        public static FullInt64 mod(FullInt64 value1, FullInt64 value2)
         {
-            int zeros = 0;
-            for (zeros = 0; zeros < value.Length - 1 && value[zeros] == 0; zeros++) { }
-
-            return zeros;
+            if (value2 == 0)
+            {
+                throw new System.DivideByZeroException();
+            }
+            return div_mod(value1, value2)[1];
         }
 
         //быстрое деление на байтовое число (для преобразования числа в строку)
@@ -541,13 +606,13 @@ namespace FullInt.Core
         }
         
         //метод деления двух больших чисел 
-        public static FullInt64[] div_mod(FullInt64 value1, FullInt64 value2)
+        public static FullInt64[] div_mod(FullInt64 value1, FullInt64 value2) //propably need to add the internal div method
         {
             toBase Base = toEqualBase(ref value1, ref value2);
             var result = new FullInt64[2];
-            var absValue2 = abs(value2);
+            //var absValue2 = abs(value2);
 
-            if (abs(value1) < absValue2)
+            if (CompareAbsInternal(value1.value, value2.value) == -1)
             {
                 result[0] = 0;
                 result[1] = value1;
@@ -556,11 +621,11 @@ namespace FullInt.Core
             var bytes = new ulong[value1.value.Length - value2.value.Length + 1];
             int bytesIndex = 0;
             
-            var divs = new FullInt64(false, new ulong[value2.value.Length + 1], Base);
-            var partResult = new FullInt64(false, new ulong[] { 0 }, Base);
-            var divMult = new FullInt64(false, new ulong[divs.value.Length], Base);
-            var remainder = new FullInt64(false, new ulong[divs.value.Length + 1]);
-
+            Span<ulong> divs = stackalloc ulong[value2.value.Length + 1];
+            Span<ulong> partResult = stackalloc ulong[] { 0 };
+            Span<ulong> divMult = stackalloc ulong[divs.Length];
+            Span<ulong> remainder = stackalloc ulong[divs.Length + 1];
+            var remainderSing = false;
             //пропуск старших нулей операндов
             int zeros1 = countZeros(value1.value), zeros2 = countZeros(value2.value);
 
@@ -570,11 +635,11 @@ namespace FullInt.Core
                 if (value1.value.Length - zeros1 >= 1)
                 {
                     //move divs left and add new byte
-                    for (int i= 0; i < divs.value.Length - 1; i++)
+                    for (int i= 0; i < divs.Length - 1; i++)
                     {
-                        divs.value[i] = divs.value[i + 1];
+                        divs[i] = divs[i + 1];
                     }
-                    divs.value[divs.value.Length - 1] = value1.value[zeros1];
+                    divs[divs.Length - 1] = value1.value[zeros1];
 
                     zeros1 += 1;
                 }
@@ -585,7 +650,7 @@ namespace FullInt.Core
                 }
 
                 //если делимое меньше частичного делителя, то добавляем к нему еще один байт
-                if (divs < absValue2)
+                if (CompareAbsInternal(divs, value2.value) == -1)
                 {
                     //skip the zeros befor the result
                     if (bytesIndex > 0)
@@ -599,45 +664,62 @@ namespace FullInt.Core
                    
                     ulong bMax = Base == toBase.dec ? FullInt64.maxDecValue : ulong.MaxValue;
                     ulong bMin = 0;
-                    partResult.value[0] = bMax / 2;
+                    partResult[0] = bMax / 2;
 
                     while (true)
                     {
-                        //mult |value2| and partResult into divMult
-                        mult(absValue2, partResult, divMult.value, Base);
-                        //substract divMult from divs into temp1
-                        add(divs, -divMult, remainder, Base);
-                        //remainder = divs - (absValue2 * partResult)
-                        if (remainder < absValue2 && !remainder.Sing)
+                        #region remainder = divs - (absValue2 * partResult)
+                        //divMult = |value2| * partResult
+                        multInternal(value2.value, partResult, divMult, Base);
+
+                        //remainder = divs - divMult
+                        var compare = CompareAbsInternal(divs, divMult);
+                        if (compare < 0)
+                        {
+                            //divs < divMult
+                            //remainder = -(divMult - divs)
+                            remainderSing = true;
+                            subInternal(divMult, divs, remainder, Base);
+                        }
+                        else
+                        {
+                            //divs >= divMult
+                            //remainder = divs - divMult
+                            remainderSing = false;
+                            subInternal(divs, divMult, remainder, Base);
+                        }
+                        #endregion
+
+                        if (CompareAbsInternal(remainder, value2.value) == -1 && !remainderSing)
                         {
                             break;
                         }
 
-                        if (remainder.Sing == false)
+                        if (remainderSing == false)
                         {
-                            bMin = partResult.value[0];
-                            if (partResult.value[0] == bMax) break;
-                            if (partResult.value[0] == bMax - 1) partResult.value[0]++;
+                            bMin = partResult[0];
+                            if (partResult[0] == bMax) break;
+                            if (partResult[0] == bMax - 1) partResult[0]++;
                             
-                            partResult.value[0] = partResult.value[0] / 2 + bMax / 2 + (partResult.value[0] % 2 == 1 && bMax %2 == 1 ? (ulong)1 : 0); //was long overflow
+                            partResult[0] = partResult[0] / 2 + bMax / 2 + (partResult[0] % 2 == 1 && bMax %2 == 1 ? (ulong)1 : 0); //was long overflow
                         }
                         else
                         {
-                            bMax = partResult.value[0];
-                            if (partResult.value[0] == bMin) break;
-                            if (partResult.value[0] == bMin + 1) partResult.value[0]--;
-                            partResult.value[0] = partResult.value[0] / 2 + bMin / 2 + (partResult.value[0] % 2 == 1 && bMin % 2 == 1 ? (ulong)1 : 0); //was long overflow
+                            bMax = partResult[0];
+                            if (partResult[0] == bMin) break;
+                            if (partResult[0] == bMin + 1) partResult[0]--;
+                            partResult[0] = partResult[0] / 2 + bMin / 2 + (partResult[0] % 2 == 1 && bMin % 2 == 1 ? (ulong)1 : 0); //was long overflow
                             //division and wod is a bit owerhead, this the better solution
                         }
                     }
 
-                    //copy temp1 to divs
-                    for (int i = 0; i < divs.value.Length; i++)
+                    //copy remainder to divs
+                    for (int i = 0; i < divs.Length; i++)
                     {
-                        divs.value[i] = remainder.value[i + 1];
+                        divs[i] = remainder[i + 1];
                     }
                     
-                    bytes[bytesIndex++] = partResult.value[0];
+                    bytes[bytesIndex++] = partResult[0];
                 }
             }
 
@@ -658,10 +740,10 @@ namespace FullInt.Core
             if (value1.Sing != value2.Sing) { result[0].Sing = true; }
 
             //сохранение остатка от деления
-            result[1] = deleteZeros(divs);
-            result[1].Sing = value1.Sing;
+            result[1] = new FullInt64(value1.Sing, deleteZeros(divs).ToArray(), Base); //
 
             return result;
         }
+        #endregion
     }
 }
