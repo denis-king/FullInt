@@ -97,12 +97,13 @@ namespace FullInt.Core
             return result;
         }
 
-        public static String ToString(this FullInt64 fullint, byte toBase)
+        public static String ToString(this FullInt64 value, byte toBase)
         {
             String result = "";
-            var bytes = new Stack<byte>();
+            //var bytes = new Stack<byte>();
 
-            FullInt64 value = new FullInt64(fullint);
+            //FullInt64 value = new FullInt64(fullint);
+            var buffer = (ulong[])value.value.Clone();
             FullInt64[] cc;
 
             if (value.Sing)
@@ -115,7 +116,7 @@ namespace FullInt.Core
                 result += "0x";
             }
 
-            if (toBase == (byte)(fullint.IsDec ? 10 : 16))
+            if (toBase == (byte)(value.IsDec ? 10 : 16))
             {
                 int i = 0;
                 foreach (var v in value.value)
@@ -135,19 +136,20 @@ namespace FullInt.Core
             {
                 if (value > 0)
                 {
-                    while (value > 0)
+                    while (FullInt64Math.CompareAbsInternal(buffer, stackalloc ulong[] { 0 }) == 1)
                     {
                         //todo 
-                        cc = FullInt64Math.div_mod(value, (ulong)toBase);
-                        bytes.Push((byte)cc[1].value[cc[1].value.Length - 1]);
-                        value = cc[0];
+                        ulong remainder;
+
+                        FullInt64Math.div_mod_internal(buffer, toBase, buffer, out remainder);//check if div in place works
+                        result = remainder.ToString((toBase == 10 ? "D" : "X")) + result;
                     }
                 }
                 else
                 {
                     result = "0";
                 }
-                for (int i = 0; bytes.Count > 0; i++) result += bytes.Pop().ToString((toBase == 10 ? "D" : "X"));
+                //for (int i = 0; bytes.Count > 0; i++) result += bytes.Pop().ToString((toBase == 10 ? "D" : "X"));
             }
             return result;
         }
