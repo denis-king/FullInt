@@ -197,9 +197,10 @@ namespace FullInt.Tests
         {
             var a = new FullIntCore(123L, toBase.dec);
             ulong b = 10;
-            var result = FullInt64Math.div_mod(a, b);
-            Assert.AreEqual(new FullIntCore(12L, toBase.dec), result[0]);
-            Assert.AreEqual(new FullIntCore(3L, toBase.dec), result[1]);
+            ulong remainder;
+            var result = FullInt64Math.div(a, b, out remainder);
+            Assert.AreEqual(new FullIntCore(12L, toBase.dec), result);
+            Assert.AreEqual(new FullIntCore(3L, toBase.dec), new FullIntCore( remainder, toBase.dec));
         }
 
         #region bigger data tests
@@ -446,8 +447,8 @@ namespace FullInt.Tests
             long b0 = 2L;
             var a = new FullIntCore(a0, toBase.dec);
             var b = new FullIntCore(b0, toBase.dec);
-            var result = FullInt64Math.div_mod(a, (ulong)2);
-            Assert.AreEqual(new FullIntCore(a0 / b0, toBase.dec), result[0]);
+            var result = FullInt64Math.div(a, (ulong)2, out _);
+            Assert.AreEqual(new FullIntCore(a0 / b0, toBase.dec), result);
         }
 
         [TestMethod]
@@ -581,7 +582,7 @@ namespace FullInt.Tests
             sw.Start();
             for (int i = 0; i < iterations; i++)
             {
-                lastResult = FullInt64Math.div_mod(lastResult, (ulong)2)[0];
+                lastResult = FullInt64Math.div(lastResult, (ulong)2, out _);
             }
             sw.Stop();
 

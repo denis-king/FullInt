@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 namespace FullInt.Core
 {
-    internal static class FullIntConvertor
+    public static class FullIntConvertor
     {
         public static FullInt ConvertToBase(FullInt value, toBase Base)
         {
@@ -29,26 +29,67 @@ namespace FullInt.Core
         //maybe better to use only buffer in the param? and add abylity to suppor internal operation only with the buffers
         public static FullInt64 ConvertToBase(FullInt64 value, toBase Base) //use the generic or something bettor
         {
-            var result = new FullInt64(value.Sing, new ulong[] { 0 }, Base); //todo optimaze to reuse the save buffer to avoid allocations
             var isDec = Base == toBase.dec;
+            Span<ulong> zoro = stackalloc ulong[] { 0 };
 
             if (value.IsDec == isDec)
             {
-                result.value = (ulong[])value.value.Clone(); //should we clone?
+                return value;// result.value = (ulong[])value.value.Clone(); //should we clone?
             }
             else
             {
-               //todo check the logic
-                var a = new FullInt64(false, new ulong[] {1,0}, Base);//avoid creation new objects
+                Span<ulong> a = value.IsDec
+                    ? stackalloc ulong[] { 1, ulong.MaxValue - FullInt64.maxDecCapasity + 1 }
+                    : stackalloc ulong[] { FullInt64.maxDecCapasity };
 
-                for (int i = 0; i < value.value.Length; i++)
+                //calc the buf length
+                int length =  value.IsDec 
+                    ? value.value.Length //dec to hex
+                    : (int)(value.value.Length * 1.014 + 1); //hex to dec
+                
+                Span<ulong> resultBuf = length > 1024 
+                    ? new ulong[length] 
+                    : stackalloc ulong[length];
+                
+                Span<ulong> remainderBuf = length > 1024
+                    ? stackalloc ulong[a.Length + 2] // + 2 it uses internal calucation where remainder can be greate than the value 2
+                    : new ulong[a.Length + 2];
+
+                Span<ulong> valueBuf = value.value.Length > 1024 
+                    ? new ulong[value.value.Length] 
+                    : stackalloc ulong[value.value.Length];
+
+                //coppy value to the buffer
+                for(int i=0; i<value.value.Length; i++)
                 {
-                    result = FullInt64Math.mult(result, a);
-                    result = FullInt64Math.add(result, new FullInt64(value.Sing, new ulong[] { value.value[i] }, Base)); //avoid creation new arreys
+                    valueBuf[i] = value.value[i];
                 }
+                
+                ulong remainder;
+                int index = 0;
+
+                while (FullInt64Math.CompareAbsInternal(valueBuf, zoro) == 1)
+                {
+                    //hex to dec
+                    if(a.Length == 1) //possible to use only one general method
+                    {
+                        FullInt64Math.div_internal(valueBuf, a[0], valueBuf, out remainder);
+                        resultBuf[resultBuf.Length - 1 - index] = remainder;
+                    }
+                    else //dec to hex
+                    {
+                        FullInt64Math.div_internal(valueBuf, a, valueBuf, remainderBuf, value.IsDec ? toBase.dec : toBase.hex);
+                        resultBuf[resultBuf.Length - 1 - index] = remainderBuf[remainderBuf.Length - 2] * FullInt64.maxDecCapasity + remainderBuf[remainderBuf.Length - 1];
+                    }
+                    index++;
+                }
+
+                //todo normilaze the buffer
+
+                return new FullInt64(value.Sing, FullInt64Math.deleteZeros(resultBuf).ToArray(), Base);
             }
 
-            return result;
+            
         }
 
         public static String ToString(this FullInt fullint, byte toBase)
@@ -101,57 +142,72 @@ namespace FullInt.Core
         {
             String result = "";
             //var bytes = new Stack<byte>();
-
+            String prefix = string.Empty;
             //FullInt64 value = new FullInt64(fullint);
-            var buffer = (ulong[])value.value.Clone();
-            FullInt64[] cc;
+            
+            FullInt64 convertedValue = value;
+            Span<ulong> zero = stackalloc ulong[] { 0 };
 
             if (value.Sing)
             {
-                value.Sing = false;
-                result += "-";
+                //value.Sing = false;
+                prefix += "-";
             }
             if (toBase == 16)
             {
-                result += "0x";
+                prefix += "0x";
             }
 
-            if (toBase == (byte)(value.IsDec ? 10 : 16))
+            //try to conver the base
+            if(toBase != (byte)(value.IsDec ? 10 : 16) && (toBase == 10 || toBase == 16))
             {
-                int i = 0;
-                foreach (var v in value.value)
+                convertedValue = ConvertToBase(value, (toBase)toBase);
+            }
+
+            if (toBase == (byte)(convertedValue.IsDec ? 10 : 16))
+            {
+                ulong v;
+                for (int i = 0; i < convertedValue.value.Length; i++)
                 {
-                    if (i == 0)
+                    v = convertedValue.value[i];
+
+                    if (result.Length == 0)
                     {
-                        result += toBase == 10 ? v.ToString() : v.ToString("X");
+                        //skip zeros exept the last iteration
+                        if (v != 0 || i == convertedValue.value.Length - 1)
+                        {
+                            result += toBase == 10 ? v.ToString() : v.ToString("X");
+                        }
                     }
                     else
                     {
                         result += toBase == 10 ? v.ToString("D19") : v.ToString("X16");
                     }
-                        i++;
+                       
                 }
             }
             else
             {
-                if (value > 0)
+                var buffer = (ulong[])value.value.Clone();
+                if (FullInt64Math.CompareAbsInternal(buffer, zero) == 0)
                 {
-                    while (FullInt64Math.CompareAbsInternal(buffer, stackalloc ulong[] { 0 }) == 1)
+                    result = "0";
+                }
+                else 
+                { 
+                    while (FullInt64Math.CompareAbsInternal(buffer, zero) == 1)
                     {
                         //todo 
                         ulong remainder;
 
-                        FullInt64Math.div_mod_internal(buffer, toBase, buffer, out remainder);//check if div in place works
+                        FullInt64Math.div_internal(buffer, toBase, buffer, out remainder);//check if div in place works
                         result = remainder.ToString((toBase == 10 ? "D" : "X")) + result;
                     }
                 }
-                else
-                {
-                    result = "0";
-                }
+               
                 //for (int i = 0; bytes.Count > 0; i++) result += bytes.Pop().ToString((toBase == 10 ? "D" : "X"));
             }
-            return result;
+            return prefix + result;
         }
 
         public static FullInt ToFullInt(String value)

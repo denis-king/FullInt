@@ -476,7 +476,7 @@ namespace FullInt.Core
             return value;
         }
 
-        private static Span<ulong> deleteZeros(Span<ulong> value)
+        public static Span<ulong> deleteZeros(Span<ulong> value)
         {
             //пропуск старших нулей операнда
             int zeros = countZeros(value);
@@ -491,16 +491,17 @@ namespace FullInt.Core
 
         private static int countZeros(ulong[] value)
         {
-            int zeros = 0;
-            for (zeros = 0; zeros < value.Length - 1 && value[zeros] == 0; zeros++) { }
-
-            return zeros;
+            return countZeros(value.AsSpan());
+            
         }
         private static int countZeros(Span<ulong> value)
         {
             int zeros = 0;
             for (zeros = 0; zeros < value.Length - 1 && value[zeros] == 0; zeros++) { }
-
+            if (zeros == value.Length)
+            {
+                zeros--;
+            }
             return zeros;
         }
         #endregion
@@ -525,7 +526,7 @@ namespace FullInt.Core
             {
                 throw new System.DivideByZeroException();
             }
-            return div_mod(value1, value2)[0];
+            return div(value1, value2, out _);
         }
 
         public static FullInt64 mod(FullInt64 value1, FullInt64 value2)
@@ -534,11 +535,13 @@ namespace FullInt.Core
             {
                 throw new System.DivideByZeroException();
             }
-            return div_mod(value1, value2)[1];
+            FullInt64 result;
+            div(value1, value2, out result);
+            return result;
         }
 
         //быстрое деление на байтовое число (для преобразования числа в строку)
-        public static FullInt64[] div_mod(FullInt64 value1, ulong value2)
+        public static FullInt64 div(FullInt64 value1, ulong value2, out ulong remainder)
         {
             toBase Base = value1.IsDec ? toBase.dec : toBase.hex;
 
@@ -547,22 +550,16 @@ namespace FullInt.Core
                 throw new System.DivideByZeroException();
             }
             
-            var result = new FullInt64[2];
-
             var bytes = new ulong[value1.value.Length];
-            ulong remainder;
-            div_mod_internal(value1.value, value2, bytes, out remainder);
+            
+            div_internal(value1.value, value2, bytes, out remainder);
 
             //сохранение целой части
-            result[0] = new FullInt64(value1.Sing, deleteZeros(bytes).ToArray(), Base);
-
-            //сохранение остатка от деления
-            result[1] = new FullInt64(value1.Sing, new ulong[] { remainder }, Base);
-
+            var result = new FullInt64(value1.Sing, deleteZeros(bytes).ToArray(), Base);
             return result;
         }
 
-        public static void div_mod_internal(Span<ulong> value1, ulong value2, Span<ulong> result, out ulong remainder)
+        public static void div_internal(Span<ulong> value1, ulong value2, Span<ulong> result, out ulong remainder)
         {
             if (value2 == 0)
             {
@@ -626,74 +623,89 @@ namespace FullInt.Core
         }
 
         //метод деления двух больших чисел 
-        public static FullInt64[] div_mod(FullInt64 value1, FullInt64 value2) //propably need to add the internal div method
+        public static FullInt64 div(FullInt64 value1, FullInt64 value2, out FullInt64 remainder) //propably need to add the internal div method
         {
             toBase Base = toEqualBase(ref value1, ref value2);
-            var result = new FullInt64[2];
+            
+            Span<ulong> remainderBuf = value2.value.Length <= 1024
+                ? stackalloc ulong[value2.value.Length + 2] // + 2 it uses internal calucation where remainder can be greate than the value 2
+                : new ulong[value2.value.Length + 2];
 
-            if (CompareAbsInternal(value1.value, value2.value) == -1)
+            var resultLenght = Math.Max(value1.value.Length - value2.value.Length + 1, 1);
+            Span<ulong> resultBuf = resultLenght <= 1024
+                ? new ulong[resultLenght]
+                : new ulong[resultLenght];
+            
+            div_internal(value1.value, value2.value, resultBuf, remainderBuf, Base);
+            var sign = value1.Sing != value2.Sing;
+            
+            if(CompareAbsInternal(resultBuf, stackalloc ulong[] { 0 }) == 0)
             {
-                result[0] = 0;
-                result[1] = value1;
-                return result;
+                sign = false;
             }
-            Span<ulong> bytes = value1.value.Length - value2.value.Length + 1 <= 1024 
-                ? new ulong[value1.value.Length - value2.value.Length + 1]
-                : new ulong[value1.value.Length - value2.value.Length + 1];
+            var result = new FullInt64(sign, deleteZeros(resultBuf).ToArray(), Base);
+            remainder = new FullInt64(value1.Sing, deleteZeros(remainderBuf).ToArray(), Base);
+
+            return result;
+        }
+        public static void div_internal(Span<ulong> value1, Span<ulong> value2, Span<ulong> result, Span<ulong> remainder, toBase Base)
+        {
+            if (CompareAbsInternal(value2, stackalloc ulong[] {0}) == 0)
+            {
+                throw new System.DivideByZeroException();
+            }
 
             int bytesIndex = 0;
 
-            Span<ulong> divs = value2.value.Length <= 1024 //todo use option to use stackalloc or heap
-                ? stackalloc ulong[value2.value.Length + 1] 
-                : new ulong [value2.value.Length + 1]; //possible a big size! it's better to use heap here
+            Span<ulong> divs = value2.Length <= 1024 //todo use option to use stackalloc or heap
+                ? stackalloc ulong[value2.Length + 1]
+                : new ulong[value2.Length + 1]; //possible a big size! it's better to use heap here
 
             Span<ulong> partResult = stackalloc ulong[] { 0 };
-            
-            Span<ulong> divMult = value2.value.Length <= 1024
+
+            Span<ulong> divMult = value2.Length <= 1024
                 ? stackalloc ulong[divs.Length]
                 : new ulong[divs.Length];
 
-            Span<ulong> remainder = value2.value.Length <= 1024
-                ? stackalloc ulong[divs.Length + 1]
-                : new ulong[divs.Length + 1];
+            
 
             var remainderSing = false;
             //пропуск старших нулей операндов
-            int zeros1 = countZeros(value1.value), zeros2 = countZeros(value2.value);
+            int zeros1 = countZeros(value1), zeros2 = countZeros(value2);
 
-            while (value1.value.Length - zeros1 > 0)
+            while (value1.Length - zeros1 > 0)
             {
                 //если есть еще байти из делимого числа
-                if (value1.value.Length - zeros1 >= 1)
+                if (value1.Length - zeros1 >= 1)
                 {
                     //move divs left and add new byte
-                    for (int i= 0; i < divs.Length - 1; i++)
+                    for (int i = 0; i < divs.Length - 1; i++)
                     {
                         divs[i] = divs[i + 1];
                     }
-                    divs[divs.Length - 1] = value1.value[zeros1];
+                    divs[divs.Length - 1] = value1[zeros1];
 
                     zeros1 += 1;
                 }
                 else
                 {
-                        
+
                     break;
                 }
 
                 //если делимое меньше частичного делителя, то добавляем к нему еще один байт
-                if (CompareAbsInternal(divs, value2.value) == -1)
+                if (CompareAbsInternal(divs, value2) == -1)
                 {
                     //skip the zeros befor the result
                     if (bytesIndex > 0)
                     {
-                        bytes[bytesIndex++] = 0;//!!!!!!!!!!!
+                        result[bytesIndex++] = 0;//!!!!!!!!!!!
                     }
                 }
                 else
                 {
                     //находим частичный результат
-                   
+
                     ulong bMax = Base == toBase.dec ? FullInt64.maxDecValue : ulong.MaxValue;
                     ulong bMin = 0;
                     partResult[0] = bMax / 2;
@@ -702,7 +714,7 @@ namespace FullInt.Core
                     {
                         #region remainder = divs - (absValue2 * partResult)
                         //divMult = |value2| * partResult
-                        multInternal(value2.value, partResult, divMult, Base);
+                        multInternal(value2, partResult, divMult, Base);
 
                         //remainder = divs - divMult
                         var compare = CompareAbsInternal(divs, divMult);
@@ -722,7 +734,7 @@ namespace FullInt.Core
                         }
                         #endregion
 
-                        if (CompareAbsInternal(remainder, value2.value) == -1 && !remainderSing)
+                        if (CompareAbsInternal(remainder, value2) == -1 && !remainderSing)
                         {
                             break;
                         }
@@ -732,8 +744,8 @@ namespace FullInt.Core
                             bMin = partResult[0];
                             if (partResult[0] == bMax) break;
                             if (partResult[0] == bMax - 1) partResult[0]++;
-                            
-                            partResult[0] = partResult[0] / 2 + bMax / 2 + (partResult[0] % 2 == 1 && bMax %2 == 1 ? (ulong)1 : 0); //was long overflow
+
+                            partResult[0] = partResult[0] / 2 + bMax / 2 + (partResult[0] % 2 == 1 && bMax % 2 == 1 ? (ulong)1 : 0); //was long overflow
                         }
                         else
                         {
@@ -750,36 +762,35 @@ namespace FullInt.Core
                     {
                         divs[i] = remainder[i + 1];
                     }
-                    
-                    bytes[bytesIndex++] = partResult[0];
+
+                    result[bytesIndex++] = partResult[0];
                 }
             }
 
-            
+            if(CompareAbsInternal(divs, remainder) != 0)
+            {
+                //copy dis to remainder
+                for (int i = 0; i < divs.Length; i++)
+                {
+                    remainder[i + 1] = divs[i];
+                }
+                remainder[0] = 0;
+            }
+
             //move result to the riht buffer end
-            if (bytesIndex < bytes.Length)
+            if (bytesIndex < result.Length)
             {
                 for (int i = 0; i < bytesIndex; i++)
                 {
-                    bytes[bytes.Length - 1 - i] = bytes[bytesIndex - 1 - i];
+                    result[result.Length - 1 - i] = result[bytesIndex - 1 - i];
                 }
-                for (int i = 0; i < bytes.Length - bytesIndex; i++)
+                for (int i = 0; i < result.Length - bytesIndex; i++)
                 {
-                    bytes[i] = 0;
+                    result[i] = 0;
                 }
             }
-
-            //сохранение целой части
-            result[0] = new FullInt64(value1.Sing != value2.Sing, deleteZeros(bytes).ToArray(), Base);
-
-            //определения знака результата
-            if (value1.Sing != value2.Sing) { result[0].Sing = true; }
-
-            //сохранение остатка от деления
-            result[1] = new FullInt64(value1.Sing, deleteZeros(divs).ToArray(), Base);
-
-            return result;
         }
+
         #endregion
     }
 }
