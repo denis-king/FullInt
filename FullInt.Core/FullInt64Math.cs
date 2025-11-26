@@ -207,18 +207,25 @@ namespace FullInt.Core
             Span<ulong> sum = stackalloc ulong[3];
             Span<ulong> mult = stackalloc ulong[2];
             
-            ulong multA = 0, multB = 0;
-            ulong multHi = 0, multLo = 0;
+            ulong multA, multB = 0;
+            ulong multHi, multLo = 0;
+            var value1LastIndex = value1.Length - 1;
+            var value2LastIndex = value2.Length - 1;
+            var value1Index = 0;
+            var value1ShiftedIndex = 0;
+            var resultLastIndex = result.Length - 1;
 
-            for (int i = 0; i < value2.Length + value1.Length - 1; i++)
+            for (int i = 0; i < result.Length; i++)//replaced resultLastIndex with result.Length  just to store the carry on the latest iteration
             {
+                value1Index = value1LastIndex - i;
                 for (int j = 0; j < value2.Length; j++)
                 {
-                    if (value1.Length - 1 + j - i >= 0 && value1.Length - 1 + j - i < value1.Length)
+                    value1ShiftedIndex = value1Index + j;
+                    if (value1ShiftedIndex >= 0 && value1ShiftedIndex < value1.Length)
                     {
-                        multA = value1[value1.Length - 1 + j - i];
-                        multB = value2[value2.Length - 1 - j];
-                        if(multA == 0 || multB == 0)
+                        multA = value1[value1ShiftedIndex];
+                        multB = value2[value2LastIndex - j];
+                        if (multA == 0 || multB == 0)
                         {
                             continue;
                         }
@@ -232,7 +239,7 @@ namespace FullInt.Core
                     }
                 }
 
-                result[value1.Length + value2.Length - 1 - i] = sum[2];
+                result[resultLastIndex - i] = sum[2];
                 //свиг суммы вправо на 1 байт
                 sum[2] = sum[1];
                 sum[1] = sum[0];
@@ -240,10 +247,16 @@ namespace FullInt.Core
                 //sum = (int)(sum / baseMaxValue);
             }
 
-            //учёт переносов
-            if (sum[2] > 0)
-            {
-                result[0] = sum[2];
+            ////check if carry srores correctly in the latest iteration of the loop and remove this
+            ////учёт переносов
+            //if (sum[2] > 0)
+            //{
+            //    result[0] = sum[2];
+            //}
+            //else
+            //{
+            //    result[0] = 0;
+            //}
             }
             else
             {
@@ -365,13 +378,8 @@ namespace FullInt.Core
         }
         public static int Compare(FullInt64 value1, FullInt64 value2) 
         {
-            int result = 0;
+            int result;
             toEqualBase(ref value1, ref value2);
-
-            //var zeros1 = countZeros(value1.value);
-            //var zeros2 = countZeros(value2.value);
-            //var value1Length = value1.value.Length - zeros1;
-            //var value2Length = value2.value.Length - zeros2;
 
             //cpmparison by sign
             if (value1.Sing == true && value2.Sing == false)
@@ -386,32 +394,6 @@ namespace FullInt.Core
             {
                 //compare absolute values
                 result = CompareAbsInternal(value1.value, value2.value);
-                ////comparison by length
-                //if (value1Length < value2Length)
-                //{
-                //    result = -1;
-                //}
-                //else if (value1Length > value2Length)
-                //{
-                //    result = 1;
-                //}
-                //else
-                //{
-                //    //comparison by value
-                //    for (int i = 0; i < value1Length; i++)
-                //    {
-                //        if (value1.value[i + zeros1] < value2.value[i + zeros2])
-                //        {
-                //            result = -1;
-                //            break;
-                //        }
-                //        else if (value1.value[i + zeros1] > value2.value[i + zeros2])
-                //        {
-                //            result = 1;
-                //            break;
-                //        }
-                //    }
-                //}
 
                 //inversion for negative numbers
                 if (value1.Sing == true && value2.Sing == true)
@@ -513,7 +495,7 @@ namespace FullInt.Core
                 return value;
             }
 
-            return value.Slice(zeros).ToArray();
+            return value.Slice(zeros);
         }
 
         private static int countZeros(ulong[] value)
@@ -523,7 +505,7 @@ namespace FullInt.Core
         }
         private static int countZeros(Span<ulong> value)
         {
-            int zeros = 0;
+            int zeros;
             for (zeros = 0; zeros < value.Length - 1 && value[zeros] == 0; zeros++) { }
             if (zeros == value.Length)
             {
