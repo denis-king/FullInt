@@ -559,6 +559,9 @@ namespace FullInt.Tests
             for (int i = 0; i < iterations; i++)
             {
                 lastResult = FullInt64Math.div(lastResult, 2);
+                sw.Stop();
+                Assert.AreEqual(FullInt64Math.pow(2, 10000 - (i + 1)), lastResult, $" 2^ {10000 - (i + 1)}");
+                sw.Start();
             }
             sw.Stop();
 
