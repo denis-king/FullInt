@@ -45,22 +45,18 @@ namespace FullInt.Core
 
                 if (compareResult > 0)
                 {
-                    subInternal(value1.value, value2.value, result.value, Base);
                     result.Sing = value1.Sing;
                 }
                 else if (compareResult < 0)
                 {
-                    subInternal(value2.value, value1.value, result.value, Base);
                     result.Sing = value2.Sing;
                 }
                 else
                 {
                     result.Sing = false;
                     }
-                    return;
                 }
             }
-        }
 
         public static FullInt64 sub(FullInt64 value1, FullInt64 value2)
         {
@@ -258,11 +254,6 @@ namespace FullInt.Core
             //    result[0] = 0;
             //}
             }
-            else
-            {
-                result[0] = 0;
-            }
-        }
 
 
         private static bool _nativeAvailable = true;
@@ -562,11 +553,8 @@ namespace FullInt.Core
                 ? stackalloc ulong[value1.value.Length] 
                 : new ulong[value1.value.Length];//todo use stackalloc if not big size and use the pool for arrays
             
-            var bytes = new ulong[value1.value.Length];
-            
             div_internal(value1.value, value2, bytes, out remainder);
 
-            //сохранение целой части
             var result = new FullInt64(value1.Sing, deleteZeros(bytes).ToArray(), Base);
             return result;
         }
@@ -785,7 +773,6 @@ namespace FullInt.Core
                 }
                 else
                 {
-
                     break;
                 }
                 }
@@ -793,7 +780,6 @@ namespace FullInt.Core
                 //если делимое меньше частичного делителя, то добавляем к нему еще один байт
                 if (!isInit && CompareAbsInternal(partDividend, divisor) == -1)
                 {
-                    //skip the zeros befor the result
                     if (bytesIndex > 0)
                     {
                         result[bytesIndex++] = 0;//!!!!!!!!!!!
@@ -801,11 +787,7 @@ namespace FullInt.Core
                 }
                 else
                 {
-                    //находим частичный результат
 
-                    ulong bMax = Base == toBase.dec ? FullInt64.maxDecValue : ulong.MaxValue;
-                    ulong bMin = 0;
-                    partResult[0] = bMax / 2;
 
                     var candidate = FindDivisionCandidate(partDividend, divisor);
                     partResult[0] = candidate;
