@@ -41,7 +41,7 @@ namespace FullInt.Core
             }
             else
             {
-                var compareResult = CompareAbsInternal(value1.value, value2.value);
+                var compareResult = subInternal(value1.value, value2.value, result.value, Base);
 
                 if (compareResult > 0)
                 {
@@ -55,10 +55,7 @@ namespace FullInt.Core
                 }
                 else
                 {
-                    //prepare the zero result
-                    for (int i = 0; i < result.value.Length; i++)
-                    {
-                        result.value[i] = 0;
+                    result.Sing = false;
                     }
                     return;
                 }
@@ -121,21 +118,46 @@ namespace FullInt.Core
                 result[result.Length - 1 - i] = sum;
             }
 
-            
-            return carry;
-        }
-        //value1 > value2
-        private static void subInternal(Span<ulong> value1, Span<ulong> value2, Span<ulong> result, toBase Base)
+        private static int subInternal(Span<ulong> value1, Span<ulong> value2, Span<ulong> result, toBase Base)
         {
-            ulong sum = 0;
-            ulong b1 = 0, b2 = 0;
+            Span<ulong> valueG;
+            Span<ulong> valueL;
+            
+            //find the greate and less values
+            var compareResult = CompareAbsInternal(value1, value2);
+
+            if (compareResult > 0)
+            {
+                valueG = value1;
+                valueL = value2;
+        }
+            else if (compareResult < 0)
+        {
+                valueG = value2;
+                valueL = value1;
+            }
+            else
+            {
+                //prepare the zero result
+                for (int i = 0; i < result.Length; i++)
+                {
+                    result[i] = 0;
+                }
+                return compareResult;
+            }
+
+            ulong sum;
+            ulong b1, b2 = 0;
             ulong baseMaxValue = Base == toBase.dec ? FullInt64.maxDecValue : ulong.MaxValue;
             byte borrow = 0;
+            var valueGLastIndex = valueG.Length - 1;
+            var valueLLastIndex = valueL.Length - 1;
+            var resultLastIndex = result.Length - 1;
 
             for (int i = 0; i < result.Length; i++)
             {
-                if (i < value1.Length) { b1 = value1[value1.Length - 1 - i]; } else { b1 = 0; }
-                if (i < value2.Length) { b2 = value2[value2.Length - 1 - i]; } else { b2 = 0; }
+                if (i < valueG.Length) { b1 = valueG[valueGLastIndex - i]; } else { b1 = 0; }
+                if (i < valueL.Length) { b2 = valueL[valueLLastIndex - i]; } else { b2 = 0; }
 
                 if (b1 < b2 + borrow)
                 {
@@ -147,8 +169,9 @@ namespace FullInt.Core
                     sum = b1 - b2 - borrow;
                     borrow = 0;
                 }
-                result[result.Length - 1 - i] = sum;
+                result[resultLastIndex - i] = sum;
             }
+            return compareResult;
         }
         #endregion
 
