@@ -78,26 +78,29 @@ namespace FullInt.Core
         //    subInternal(value1, value2, reesult, Base);
         //    return reesult.Slice(countZeros(reesult)).ToArray();
         //}
-        private static byte addInternal(Span<ulong> value1, Span<ulong> value2, Span<ulong> result, toBase Base) 
+        private static ulong addInternal(Span<ulong> value1, Span<ulong> value2, Span<ulong> result, toBase Base) 
         {
-            ulong sum = 0;
-            ulong b1 = 0, b2 = 0;
+            ulong sum;
+            ulong b1, b2;
             //ulong baseMaxValue = Base == toBase.dec ? FullInt64.maxDecValue : ulong.MaxValue;
+            var value1LastIndex = value1.Length - 1;
+            var value2LastIndex = value2.Length - 1;
+            var resultLastIndex = result.Length - 1;
             
-            byte carry = 0;
+            ulong carry = 0;
 
             for (int i = 0; i < result.Length; i++)
             {
-                if (i < value1.Length) { b1 = value1[value1.Length - 1 - i]; } else { b1 = 0; }
-                if (i < value2.Length) { b2 = value2[value2.Length - 1 - i]; } else { b2 = 0; }
+                if (i < value1.Length) { b1 = value1[value1LastIndex - i]; } else { b1 = 0; }
+                if (i < value2.Length) { b2 = value2[value2LastIndex - i]; } else { b2 = 0; }
 
                 
                     //save adding two ulongs and carry
                     var sum1 = b1 + b2;
                     bool carry1 = sum1 < b1 || sum1 < b2;
-                    sum = sum1 + (ulong)carry;
-                    bool carry2 = sum < sum1;
-                    carry = carry1 || carry2 ? (byte)1 : (byte)0;
+                sum = sum1 + carry;
+                carry1 |= sum < sum1;
+                carry = carry1 ? 1UL : 0UL;
 
                     //decimal corrections
                     if (Base == toBase.dec)
@@ -113,9 +116,10 @@ namespace FullInt.Core
                         }
                     }
 
+                result[resultLastIndex - i] = sum;
+            }
 
-                
-                result[result.Length - 1 - i] = sum;
+            return carry;
             }
 
         private static int subInternal(Span<ulong> value1, Span<ulong> value2, Span<ulong> result, toBase Base)
