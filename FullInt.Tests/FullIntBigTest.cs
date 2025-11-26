@@ -1,5 +1,6 @@
 ﻿using FullInt.Core;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -273,8 +274,16 @@ namespace FullInt.Tests
         {
             Stopwatch bigStopwatch = new Stopwatch();
             Stopwatch fullStopwatch = new Stopwatch();
+            
+            const int iterations = 100;
+            var fullintA = new FullIntCore[iterations];
+            var fullintB = new FullIntCore[iterations];
+            var fullintC = new FullIntCore[iterations];
 
-            const int iterations = 10;
+            var bigingA = new BigInteger[iterations];
+            var bigingB = new BigInteger[iterations];
+            var bigingC = new BigInteger[iterations];
+
             using (var rng = RandomNumberGenerator.Create())
             {
                 for (int i = 0; i < iterations; i++)
@@ -292,6 +301,10 @@ namespace FullInt.Tests
                     Assert.AreEqual(ba.ToString(), fa.ToString(10), $"Fullint A and Bigint A");
 
                     rng.GetBytes(buf);
+                    buf[buf.Length - 1] = 0; //to have a less divisor than dividend
+                    buf[buf.Length - 2] = 0;
+                    buf[buf.Length - 3] = 0;
+                    buf[buf.Length - 4] = 0;
                     (longBuf, sign) = ParseBytesWithSingToUnsingUlongs(buf);
                     var fb = new FullIntCore(sign, longBuf, toBase.hex);
                     if (isDec)
@@ -301,27 +314,63 @@ namespace FullInt.Tests
                     var bb = new BigInteger(buf);
                     Assert.AreEqual(bb.ToString(), fb.ToString(10), $"Fullint B and Bigint B");
 
-                    //TestContext?.WriteLine($"FullInt a={fa}, b={fb}");
-                    fullStopwatch.Start();
-                    var divFull = FullInt64Math.div(fa, fb);
-                    fullStopwatch.Stop();
+                    fullintA[i] = fa;
+                    fullintB[i] = fb;
 
-                    TestContext?.WriteLine($"BigInt a={ba}, b={bb}");
-                    bigStopwatch.Start();
-                    BigInteger expected = ba / bb;
-                    bigStopwatch.Stop();
+                    bigingA[i] = ba;
+                    bigingB[i] = bb;
 
-                    FullIntCore expectedFull = expected.ToString();
-
-                    Assert.AreEqual(expectedFull.ToString(10), divFull.ToString(10), $"Mismatch for a={ba}, b={bb}");
                 }
-                var bigTotal = bigStopwatch.Elapsed;
-                var bigAvg = TimeSpan.FromTicks(bigTotal.Ticks / iterations);
-                var fullTotal = fullStopwatch.Elapsed;
-                var fullAvg = TimeSpan.FromTicks(fullTotal.Ticks / iterations);
-                TestContext?.WriteLine($"Speed for BigInt: iterations={iterations}, total={bigTotal}, avg={bigAvg.TotalMilliseconds}");
-                TestContext?.WriteLine($"Speed for FullInt: iterations={iterations}, total={fullTotal}, avg={fullAvg.TotalMilliseconds}");
             }
+            bigStopwatch.Start();
+            for (int i = 0; i < iterations; i++)
+            {
+                bigingC[i] = bigingA[i] / bigingB[i];
+            }
+            bigStopwatch.Stop();
+            Span<ulong> resultBuf = stackalloc ulong[1];
+            Span<ulong> remainderBuf = stackalloc ulong[6];
+            Span<ulong> zero = stackalloc ulong[] { 0UL };
+            fullStopwatch.Start();
+            for (int i = 0; i < iterations; i++)
+            {
+               // Span<ulong> remainderBuf = stackalloc ulong[value2.value.Length + 2]; // + 2 it uses internal calucation where remainder can be greate than the value 2
+
+
+
+               
+                  
+
+                FullInt64Math.div_internal(fullintA[i].value, fullintB[i].value, resultBuf, remainderBuf, isDec ? toBase.dec : toBase.hex);
+                var sign = fullintA[i].Sing != fullintB[i].Sing;
+
+                //propably ussless if value1 >= value2. remove when uncommented the optimalization above
+                if (FullInt64Math.CompareAbsInternal(resultBuf, zero) == 0)
+                {
+                    sign = false;
+                }
+                fullintC[i] = new FullInt64(sign, FullInt64Math.deleteZeros(resultBuf).ToArray(), isDec ? toBase.dec : toBase.hex);
+                //remainder = new FullInt64(value1.Sing, deleteZeros(remainderBuf).ToArray(), Base);
+
+                //return result;
+                //fullintC[i] = FullInt64Math.div(fullintA[i], fullintB[i]);
+            }
+            fullStopwatch.Stop();
+
+            for (int i = 0; i < iterations; i++)
+            {
+
+                FullIntCore expectedFull = bigingC[i].ToString();
+                Assert.AreEqual(expectedFull.ToString(10), fullintC[i].ToString(10), $"Mismatch for a={bigingA[i]}, b={bigingB[i]}");
+            }
+
+            var bigTotal = bigStopwatch.Elapsed;
+            var bigAvg = TimeSpan.FromTicks(bigTotal.Ticks / iterations);
+            var fullTotal = fullStopwatch.Elapsed;
+            var fullAvg = TimeSpan.FromTicks(fullTotal.Ticks / iterations);
+            TestContext?.WriteLine($"Speed for BigInt: iterations={iterations}, total={bigTotal}, avg={bigAvg.TotalMilliseconds}");
+            TestContext?.WriteLine($"Speed for FullInt: iterations={iterations}, total={fullTotal}, avg={fullAvg.TotalMilliseconds}");
+            
         }
 
         [TestMethod]
