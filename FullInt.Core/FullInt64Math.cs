@@ -558,6 +558,9 @@ namespace FullInt.Core
             {
                 throw new System.DivideByZeroException();
             }
+            var bytes = value1.value.Length <= 1024 
+                ? stackalloc ulong[value1.value.Length] 
+                : new ulong[value1.value.Length];//todo use stackalloc if not big size and use the pool for arrays
             
             var bytes = new ulong[value1.value.Length];
             
@@ -565,6 +568,49 @@ namespace FullInt.Core
 
             //сохранение целой части
             var result = new FullInt64(value1.Sing, deleteZeros(bytes).ToArray(), Base);
+            return result;
+        }
+
+        private static ulong FindDivisionCandidate(Span<ulong> partDividend, Span<ulong> divisor)
+        {
+            ulong hiDividend;
+            ulong loDividend;
+            
+            ulong result;
+            ulong resultMin;
+            ulong resultMax;
+            
+            int divisorIndex = countZeros(divisor);
+            int dividentIndex = countZeros(partDividend);
+            
+            //firs step
+            if (partDividend.Length - dividentIndex > 1 && partDividend[dividentIndex] < divisor[divisorIndex]) 
+            {
+                hiDividend = partDividend[dividentIndex];
+                loDividend = partDividend[dividentIndex + 1];
+            }
+            else 
+            {
+                hiDividend = 0;
+                loDividend = partDividend[dividentIndex];
+            }
+
+            resultMin = Div128(hiDividend, loDividend, divisor[divisorIndex] + 1, out _);
+            resultMax = Div128(hiDividend, loDividend, divisor[divisorIndex], out _);
+
+            result = resultMax;
+
+            if (resultMin == resultMax)
+            {
+                return result;
+            }
+
+            //step 2
+            divisorIndex++;
+            var range = resultMax - resultMin + 1;
+            var step = ulong.MaxValue / range;
+            result -= divisor[divisorIndex] / step;
+
             return result;
         }
 
@@ -636,19 +682,38 @@ namespace FullInt.Core
         {
             toBase Base = toEqualBase(ref value1, ref value2);
             
+            //comented this optimalizations to test the general algorithm
+            //optimalizations for small numbers
+            if (CompareAbsInternal(value1.value, value2.value) == -1)
+            {
+                remainder = new FullInt64(value1);
+                return new FullInt64(false, new ulong[] { 0UL }, Base);
+            }
+
+            if (value2.value.Length == 1)
+            {
+                ulong r = 0UL;
+                var res = div(value1, value2.value[0], out r);
+                remainder = new FullInt64(value1.Sing, new ulong[] { r }, Base);
+                res.Sing = value1.Sing != value2.Sing;
+
+                return res;
+            }
+
             Span<ulong> remainderBuf = value2.value.Length <= 1024
                 ? stackalloc ulong[value2.value.Length + 2] // + 2 it uses internal calucation where remainder can be greate than the value 2
-                : new ulong[value2.value.Length + 2];
+                : new ulong[value2.value.Length + 2];//use the buffer pool
 
             var resultLenght = Math.Max(value1.value.Length - value2.value.Length + 1, 1);
             Span<ulong> resultBuf = resultLenght <= 1024
-                ? new ulong[resultLenght]
+                ? stackalloc ulong[resultLenght]
                 : new ulong[resultLenght];
             
             div_internal(value1.value, value2.value, resultBuf, remainderBuf, Base);
             var sign = value1.Sing != value2.Sing;
             
-            if(CompareAbsInternal(resultBuf, stackalloc ulong[] { 0 }) == 0)
+            //propably ussless if value1 >= value2. remove when uncommented the optimalization above
+            if (CompareAbsInternal(resultBuf, stackalloc ulong[] { 0 }) == 0)
             {
                 sign = false;
             }
@@ -657,42 +722,64 @@ namespace FullInt.Core
 
             return result;
         }
-        public static void div_internal(Span<ulong> value1, Span<ulong> value2, Span<ulong> result, Span<ulong> remainder, toBase Base)
+        public static void div_internal(Span<ulong> dividend, Span<ulong> divisor, Span<ulong> result, Span<ulong> remainder, toBase Base)
         {
-            if (CompareAbsInternal(value2, stackalloc ulong[] {0}) == 0)
+            if (CompareAbsInternal(divisor, stackalloc ulong[] {0}) == 0)
             {
                 throw new System.DivideByZeroException();
             }
 
             int bytesIndex = 0;
+            bool isInit = true;
 
-            Span<ulong> divs = value2.Length <= 1024 //todo use option to use stackalloc or heap
-                ? stackalloc ulong[value2.Length + 1]
-                : new ulong[value2.Length + 1]; //possible a big size! it's better to use heap here
+            Span<ulong> partDividend = remainder.Slice(1);
 
-            Span<ulong> partResult = stackalloc ulong[] { 0 };
+            Span<ulong> partResult = stackalloc ulong[] { 0UL };
 
-            Span<ulong> divMult = value2.Length <= 1024
-                ? stackalloc ulong[divs.Length]
-                : new ulong[divs.Length];
+            Span<ulong> divMult = divisor.Length <= 1024
+                ? stackalloc ulong[partDividend.Length]
+                : new ulong[partDividend.Length];
 
             
 
             var remainderSing = false;
             //пропуск старших нулей операндов
-            int zeros1 = countZeros(value1), zeros2 = countZeros(value2);
+            int zeros1 = 0, zeros2 = 0; //todo use span slice to awoid zeros
+            dividend = deleteZeros(dividend);
+            divisor = deleteZeros(divisor);
 
-            while (value1.Length - zeros1 > 0)
+            if (isInit)
+            {
+                if (dividend.Length >= divisor.Length)
+                {
+                    partDividend = dividend.Slice(0, divisor.Length);
+                    zeros1 += divisor.Length;
+                    if (CompareAbsInternal(partDividend, divisor) == -1)
+                    {
+                        partDividend = dividend.Slice(zeros1 - divisor.Length, divisor.Length + 1);
+                    }
+                }
+                else
+                {
+                    partDividend = dividend;
+                    zeros1 += dividend.Length;
+                }
+            }
+
+
+            while (dividend.Length - zeros1 > 0 || isInit)
             {
                 //если есть еще байти из делимого числа
-                if (value1.Length - zeros1 >= 1)
+                if (!isInit)
                 {
-                    //move divs left and add new byte
-                    for (int i = 0; i < divs.Length - 1; i++)
+                    if (dividend.Length - zeros1 >= 1)
                     {
-                        divs[i] = divs[i + 1];
+                    //move divs left and add new byte
+                        for (int i = 0; i < partDividend.Length - 1; i++)
+                    {
+                            partDividend[i] = partDividend[i + 1];
                     }
-                    divs[divs.Length - 1] = value1[zeros1];
+                        partDividend[partDividend.Length - 1] = dividend[zeros1];
 
                     zeros1 += 1;
                 }
@@ -701,9 +788,10 @@ namespace FullInt.Core
 
                     break;
                 }
+                }
 
                 //если делимое меньше частичного делителя, то добавляем к нему еще один байт
-                if (CompareAbsInternal(divs, value2) == -1)
+                if (!isInit && CompareAbsInternal(partDividend, divisor) == -1)
                 {
                     //skip the zeros befor the result
                     if (bytesIndex > 0)
@@ -719,84 +807,53 @@ namespace FullInt.Core
                     ulong bMin = 0;
                     partResult[0] = bMax / 2;
 
-                    while (true)
-                    {
-                        #region remainder = divs - (absValue2 * partResult)
-                        //divMult = |value2| * partResult
-                        multInternal(value2, partResult, divMult, Base);
+                    var candidate = FindDivisionCandidate(partDividend, divisor);
+                    partResult[0] = candidate;
 
+                    #region remainder = partDividend - (divisor * partResult)
+                    //divMult = |value2| * partResult
+                    multInternal(divisor, partResult, divMult, Base);
                         //remainder = divs - divMult
-                        var compare = CompareAbsInternal(divs, divMult);
-                        if (compare < 0)
-                        {
-                            //divs < divMult
-                            //remainder = -(divMult - divs)
-                            remainderSing = true;
-                            subInternal(divMult, divs, remainder, Base);
-                        }
-                        else
-                        {
-                            //divs >= divMult
-                            //remainder = divs - divMult
-                            remainderSing = false;
-                            subInternal(divs, divMult, remainder, Base);
-                        }
-                        #endregion
+                    var compare = subInternal(partDividend, divMult, remainder, Base);
+                    remainderSing = compare < 0;
+                    #endregion
 
-                        if (CompareAbsInternal(remainder, value2) == -1 && !remainderSing)
+
+                    while (remainderSing || (compare = CompareAbsInternal(remainder, divisor)) >= 0)
+                        {
+                        //candidate correction
+                        compare = subInternal(remainder, divisor, remainder, Base);
+                        if (remainderSing)
+                        {
+                            partResult[0]--;
+                            remainderSing = compare > 0;
+                            if (!remainderSing)
                         {
                             break;
                         }
-
-                        if (remainderSing == false)
-                        {
-                            bMin = partResult[0];
-                            if (partResult[0] == bMax) break;
-                            if (partResult[0] == bMax - 1) partResult[0]++;
-
-                            partResult[0] = partResult[0] / 2 + bMax / 2 + (partResult[0] % 2 == 1 && bMax % 2 == 1 ? (ulong)1 : 0); //was long overflow
                         }
                         else
                         {
-                            bMax = partResult[0];
-                            if (partResult[0] == bMin) break;
-                            if (partResult[0] == bMin + 1) partResult[0]--;
-                            partResult[0] = partResult[0] / 2 + bMin / 2 + (partResult[0] % 2 == 1 && bMin % 2 == 1 ? (ulong)1 : 0); //was long overflow
-                            //division and wod is a bit owerhead, this the better solution
+                            partResult[0]++;
                         }
                     }
 
-                    //copy remainder to divs
-                    for (int i = 0; i < divs.Length; i++)
+                    if (isInit)
                     {
-                        divs[i] = remainder[i + 1];
+                        isInit = false;
+                        partDividend = remainder.Slice(1);
                     }
 
                     result[bytesIndex++] = partResult[0];
                 }
             }
 
-            if(CompareAbsInternal(divs, remainder) != 0)
-            {
-                //copy dis to remainder
-                for (int i = 0; i < divs.Length; i++)
-                {
-                    remainder[i + 1] = divs[i];
-                }
-                remainder[0] = 0;
-            }
+            
 
             //move result to the riht buffer end
             if (bytesIndex < result.Length)
             {
-                for (int i = 0; i < bytesIndex; i++)
-                {
-                    result[result.Length - 1 - i] = result[bytesIndex - 1 - i];
-                }
-                for (int i = 0; i < result.Length - bytesIndex; i++)
-                {
-                    result[i] = 0;
-                }
+                result = result.Slice(0, bytesIndex);
             }
         }
 
