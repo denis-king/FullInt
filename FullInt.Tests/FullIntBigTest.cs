@@ -75,6 +75,18 @@ namespace FullInt.Tests
         }
 
         [TestMethod]
+        public void BigTestHex_1024Bit_Add_with_random_Longs()
+        {
+            BigTest_Add_with_random_Longs(128, false);
+        }
+
+        [TestMethod]
+        public void BigTestHex_2048Bit_Add_with_random_Longs()
+        {
+            BigTest_Add_with_random_Longs(256, false);
+        }
+
+        [TestMethod]
         public void BigTestDec_128Bit_Add_with_random_Longs()
         {
             BigTest_Add_with_random_Longs(16, true);
@@ -146,7 +158,7 @@ namespace FullInt.Tests
         }
 
         [TestMethod]
-        public void BigTestHec_128Bit_Mult_with_random_Longs()
+        public void BigTestHex_128Bit_Mult_with_random_Longs()
         {
             BigTest_Mult_with_random_Longs(16, false);
         }
@@ -161,6 +173,18 @@ namespace FullInt.Tests
         public void BigTestHex_512it_Mult_with_random_Longs()
         {
             BigTest_Mult_with_random_Longs(64, false);
+        }
+
+        [TestMethod]
+        public void BigTestHex_1024Bit_Mult_with_random_Longs()
+        {
+            BigTest_Mult_with_random_Longs(128, false);
+        }
+
+        [TestMethod]
+        public void BigTestHex_2048Bit_Mult_with_random_Longs()
+        {
+            BigTest_Mult_with_random_Longs(256, false);
         }
 
         [TestMethod]
@@ -180,6 +204,8 @@ namespace FullInt.Tests
         {
             BigTest_Mult_with_random_Longs(64, true);
         }
+
+       
         public void BigTest_Mult_with_random_Longs(int byteLength, bool isDec)
         {
             Stopwatch bigStopwatch = new Stopwatch();
@@ -250,7 +276,19 @@ namespace FullInt.Tests
         [TestMethod]
         public void BigTestHex_512Bit_Div_with_random_Longs()
         {
-            BigTest_Div_with_random_Longs(32, false);
+            BigTest_Div_with_random_Longs(64, false);
+        }
+
+        [TestMethod]
+        public void BigTestHex_1024Bit_Div_with_random_Longs()
+        {
+            BigTest_Div_with_random_Longs(128, false);
+        }
+
+        [TestMethod]
+        public void BigTestHex_2048Bit_Div_with_random_Longs()
+        {
+            BigTest_Div_with_random_Longs(256, false);
         }
         [TestMethod]
         public void BigTestDec_128Bit_Div_with_random_Longs()
@@ -329,7 +367,7 @@ namespace FullInt.Tests
             }
             bigStopwatch.Stop();
             Span<ulong> resultBuf = stackalloc ulong[1];
-            Span<ulong> remainderBuf = stackalloc ulong[6];
+            Span<ulong> remainderBuf = stackalloc ulong[byteLength/8+2];
             Span<ulong> zero = stackalloc ulong[] { 0UL };
             fullStopwatch.Start();
             for (int i = 0; i < iterations; i++)
@@ -350,6 +388,7 @@ namespace FullInt.Tests
                     sign = false;
                 }
                 fullintC[i] = new FullInt64(sign, FullInt64Math.deleteZeros(resultBuf).ToArray(), isDec ? toBase.dec : toBase.hex);
+                for (int j = 0; j < remainderBuf.Length; j++) remainderBuf[j] = 0;
                 //remainder = new FullInt64(value1.Sing, deleteZeros(remainderBuf).ToArray(), Base);
 
                 //return result;
@@ -389,6 +428,18 @@ namespace FullInt.Tests
         public void BigTestHex_512Bit_Mod_with_random_Longs()
         {
             BigTest_Mod_with_random_Longs(64, false);
+        }
+
+        [TestMethod]
+        public void BigTestHex_1024Bit_Mod_with_random_Longs()
+        {
+            BigTest_Mod_with_random_Longs(128, false);
+        }
+
+        [TestMethod]
+        public void BigTestHex_2048Bit_Mod_with_random_Longs()
+        {
+            BigTest_Mod_with_random_Longs(256, false);
         }
         [TestMethod]
         public void BigTestDec_128Bit_Mod_with_random_Longs()

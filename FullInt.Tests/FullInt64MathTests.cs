@@ -637,8 +637,8 @@ namespace FullInt.Tests
             //rng.GetBytes(buf);
             long b = -3531962529370334780;
 
-            var fa = new FullIntCore(a, toBase.dec);
-            var fb = new FullIntCore(b, toBase.dec);
+            var fa = new FullIntCore(a, toBase.hex);
+            var fb = new FullIntCore(b, toBase.hex);
 
             //fullStopwatch.Start();
             var multFull = FullInt64Math.mult(fa, fb);
