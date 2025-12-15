@@ -1,0 +1,17 @@
+EXPORTS 
+Div128
+Mul128
+Add64
+Sub64
+Adc64
+Sbb64
+
+Normalize3Words
+Fullint64Add
+Fullint64AddWIN
+Fullint64Sub
+Fullint64SubWIN
+Fullint64Mult
+Fullint64MultWIN
+Fullint64Div
+Fullint64DivWin
