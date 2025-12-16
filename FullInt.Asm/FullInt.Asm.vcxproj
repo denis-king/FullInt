@@ -12,7 +12,16 @@
   </ItemGroup>
   <ItemGroup>
     <MASM Include="128Operations.asm" />
+    <MASM Include="Sources\x64\Add.asm" />
+    <MASM Include="Sources\x64\Div.asm" />
+    <MASM Include="Sources\x64\Mult.asm" />
+    <MASM Include="Sources\x64\NativeOperation.asm" />
+    <MASM Include="Sources\x64\Sub.asm" />
+    <MASM Include="Sources\x64\test.asm" />
     <ModuleDefinitionFile Include="exports.def" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Compile.bat" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>

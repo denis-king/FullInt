@@ -11,6 +11,14 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FullInt.Net", "FullInt.Net\
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FullInt.Asm", "FullInt.Asm\FullInt.Asm.vcxproj", "{3CB805CE-5C0E-4A6C-999D-8E9A58C0D02A}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tools", "Tools", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "nasm", "nasm", "{A5FCADAE-65B9-4FC7-9724-B6A0F1894A78}"
+	ProjectSection(SolutionItems) = preProject
+		Tools\nasm\nasm.exe = Tools\nasm\nasm.exe
+		Tools\nasm\ndisasm.exe = Tools\nasm\ndisasm.exe
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -70,6 +78,9 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{A5FCADAE-65B9-4FC7-9724-B6A0F1894A78} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {E1883FBE-71AD-4BB5-8513-C3E3F6BC4586}
