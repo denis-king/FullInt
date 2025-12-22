@@ -12,13 +12,20 @@ namespace FullInt.Tests
     public class FullInt64MathTests
     {
         public TestContext TestContext { get; set; }
-
+		private static FullInt64Engine _engine;
+		[ClassInitialize]
+		public static void InitClass(TestContext testContext)
+		{
+			_engine = FullInt64Engine.Instance;
+			
+			//todo warm up operations
+		}
         [TestMethod]
         public void Add_PositiveNumbers_ReturnsSum()
         {
             var a = new FullIntCore(123L, toBase.dec);
             var b = new FullIntCore(456L, toBase.dec);
-            var result = FullInt64Math.add(a, b);
+            var result = _engine.add(a, b);
             Assert.AreEqual(new FullIntCore(579L, toBase.dec), result);
         }
 
@@ -27,7 +34,7 @@ namespace FullInt.Tests
         {
             var a = new FullIntCore(false, new ulong[] { 0, 0 });
             var b = new FullIntCore(128, toBase.dec);
-            var result = FullInt64Math.sub(a, b);
+            var result = _engine.sub(a, b);
             Assert.AreEqual(new FullIntCore(-128, toBase.dec), result);
         }
 
@@ -36,7 +43,7 @@ namespace FullInt.Tests
         {
             var a = new FullIntCore(-100L, toBase.dec);
             var b = new FullIntCore(-50L, toBase.dec);
-            var result = FullInt64Math.add(a, b);
+            var result = _engine.add(a, b);
             Assert.AreEqual(new FullIntCore(-150L, toBase.dec), result);
         }
 
@@ -45,7 +52,7 @@ namespace FullInt.Tests
         {
             var a = new FullIntCore(200L, toBase.dec);
             var b = new FullIntCore(-50L, toBase.dec);
-            var result = FullInt64Math.add(a, b);
+            var result = _engine.add(a, b);
             Assert.AreEqual(new FullIntCore(150L, toBase.dec), result);
         }
 
@@ -54,7 +61,7 @@ namespace FullInt.Tests
         {
             var a = new FullIntCore(100L, toBase.dec);
             var b = new FullIntCore(40L, toBase.dec);
-            var result = FullInt64Math.sub(a, b);
+            var result = _engine.sub(a, b);
             Assert.AreEqual(new FullIntCore(60L, toBase.dec), result);
         }
 
@@ -63,7 +70,7 @@ namespace FullInt.Tests
         {
             var a = new FullIntCore(12L, toBase.dec);
             var b = new FullIntCore(11L, toBase.dec);
-            var result = FullInt64Math.mult(a, b);
+            var result = _engine.mult(a, b);
             Assert.AreEqual(new FullIntCore(132L, toBase.dec), result);
         }
 
@@ -72,7 +79,7 @@ namespace FullInt.Tests
         {
             var a = new FullIntCore(100L, toBase.dec);
             var b = new FullIntCore(4L, toBase.dec);
-            var result = FullInt64Math.div(a, b);
+            var result = _engine.div(a, b);
             Assert.AreEqual(new FullIntCore(25L, toBase.dec), result);
         }
 
@@ -82,7 +89,7 @@ namespace FullInt.Tests
         {
             var a = new FullIntCore(100L, toBase.dec);
             var b = new FullIntCore(0L, toBase.dec);
-            FullInt64Math.div(a, b);
+            _engine.div(a, b);
         }
 
         [TestMethod]
@@ -90,7 +97,7 @@ namespace FullInt.Tests
         {
             var a = new FullIntCore(100L, toBase.dec);
             var b = new FullIntCore(7L, toBase.dec);
-            var result = FullInt64Math.mod(a, b);
+            var result = _engine.mod(a, b);
             Assert.AreEqual(new FullIntCore(2L, toBase.dec), result);
         }
 
@@ -100,7 +107,7 @@ namespace FullInt.Tests
         {
             var a = new FullIntCore(100L, toBase.dec);
             var b = new FullIntCore(0L, toBase.dec);
-            FullInt64Math.mod(a, b);
+            _engine.mod(a, b);
         }
 
         [TestMethod]
@@ -108,7 +115,7 @@ namespace FullInt.Tests
         {
             var a = new FullIntCore(2L, toBase.dec);
             var b = new FullIntCore(10L, toBase.dec);
-            var result = FullInt64Math.pow(a, b);
+            var result = _engine.pow(a, b);
             Assert.AreEqual(new FullIntCore(1024L, toBase.dec), result);
         }
 
@@ -116,7 +123,7 @@ namespace FullInt.Tests
         public void Abs_Positive_ReturnsSame()
         {
             var a = new FullIntCore(123L, toBase.dec);
-            var result = FullInt64Math.abs(a);
+            var result = _engine.abs(a);
             Assert.AreEqual(new FullIntCore(123L, toBase.dec), result);
         }
 
@@ -124,7 +131,7 @@ namespace FullInt.Tests
         public void Abs_Negative_ReturnsPositive()
         {
             var a = new FullIntCore(-123L, toBase.dec);
-            var result = FullInt64Math.abs(a);
+            var result = _engine.abs(a);
             var expected = new FullIntCore(123L, toBase.dec);
             Assert.AreEqual(expected, result);
         }
@@ -134,7 +141,7 @@ namespace FullInt.Tests
         {
             var a = new FullIntCore(10L, toBase.dec);
             var b = new FullIntCore(5L, toBase.dec);
-            Assert.IsTrue(FullInt64Math.IsABiggerB(a, b));
+            Assert.IsTrue(_engine.IsABiggerB(a, b));
         }
 
         [TestMethod]
@@ -142,7 +149,7 @@ namespace FullInt.Tests
         {
             var a = new FullIntCore(5L, toBase.dec);
             var b = new FullIntCore(10L, toBase.dec);
-            Assert.IsFalse(FullInt64Math.IsABiggerB(a, b));
+            Assert.IsFalse(_engine.IsABiggerB(a, b));
         }
 
         [TestMethod]
@@ -150,11 +157,11 @@ namespace FullInt.Tests
         {
             var a = new FullIntCore(5L, toBase.dec);
             var b = new FullIntCore(10L, toBase.dec);
-            Assert.IsFalse(FullInt64Math.IsABiggerB(a, b));
+            Assert.IsFalse(_engine.IsABiggerB(a, b));
 
             a = new FullIntCore(10L, toBase.dec);
             b = new FullIntCore(10L, toBase.dec);
-            Assert.IsFalse(FullInt64Math.IsABiggerB(a, b));
+            Assert.IsFalse(_engine.IsABiggerB(a, b));
         }
 
         [TestMethod]
@@ -162,8 +169,8 @@ namespace FullInt.Tests
         {
             var a = new FullIntCore(5L, toBase.dec);
             var b = new FullIntCore(5L, toBase.dec);
-            Assert.IsTrue(FullInt64Math.IsABiggerOrEqualsB(a, b));
-            Assert.IsTrue(FullInt64Math.IsABiggerOrEqualsB(a, new FullIntCore(4L, toBase.dec)));
+            Assert.IsTrue(_engine.IsABiggerOrEqualsB(a, b));
+            Assert.IsTrue(_engine.IsABiggerOrEqualsB(a, new FullIntCore(4L, toBase.dec)));
         }
 
         [TestMethod]
@@ -171,7 +178,7 @@ namespace FullInt.Tests
         {
             var a = new FullIntCore(123L, toBase.dec);
             var b = new FullIntCore(123L, toBase.dec);
-            Assert.IsTrue(FullInt64Math.IsEquals(a, b));
+            Assert.IsTrue(_engine.IsEquals(a, b));
         }
 
         [TestMethod]
@@ -179,7 +186,7 @@ namespace FullInt.Tests
         {
             var a = new FullIntCore(123L, toBase.dec);
             var b = new FullIntCore(124L, toBase.dec);
-            Assert.IsFalse(FullInt64Math.IsEquals(a, b));
+            Assert.IsFalse(_engine.IsEquals(a, b));
         }
 
         [TestMethod]
@@ -187,7 +194,7 @@ namespace FullInt.Tests
         {
             var a = new FullIntCore(255L, toBase.hex);
             var b = new FullIntCore(255L, toBase.dec);
-            var resultBase = FullInt64Math.toEqualBase(ref a, ref b);
+            var resultBase = _engine.toEqualBase(ref a, ref b);
             Assert.AreEqual(a.IsDec, b.IsDec);
             Assert.AreEqual(resultBase == toBase.dec, a.IsDec);
         }
@@ -198,7 +205,7 @@ namespace FullInt.Tests
             var a = new FullIntCore(123L, toBase.dec);
             ulong b = 10;
             ulong remainder;
-            var result = FullInt64Math.div(a, b, out remainder);
+            var result = _engine.div(a, b, out remainder);
             Assert.AreEqual(new FullIntCore(12L, toBase.dec), result);
             Assert.AreEqual(new FullIntCore(3L, toBase.dec), new FullIntCore( remainder, toBase.dec));
         }
@@ -209,7 +216,7 @@ namespace FullInt.Tests
         {
             var a = new FullIntCore(long.MaxValue, toBase.dec);
             var b = new FullIntCore(long.MaxValue - 1, toBase.dec);
-            Assert.IsTrue(FullInt64Math.IsABiggerB(a, b));
+            Assert.IsTrue(_engine.IsABiggerB(a, b));
         }
 
         [TestMethod]
@@ -217,11 +224,11 @@ namespace FullInt.Tests
         {
             var a = new FullIntCore(long.MinValue, toBase.dec);
             var b = new FullIntCore(long.MaxValue, toBase.dec);
-            Assert.IsFalse(FullInt64Math.IsABiggerB(a, b));
+            Assert.IsFalse(_engine.IsABiggerB(a, b));
 
             a = new FullIntCore(long.MaxValue, toBase.dec);
             b = new FullIntCore(long.MaxValue, toBase.dec);
-            Assert.IsFalse(FullInt64Math.IsABiggerB(a, b));
+            Assert.IsFalse(_engine.IsABiggerB(a, b));
         }
 
         [TestMethod]
@@ -229,7 +236,7 @@ namespace FullInt.Tests
         {
             var a = new FullIntCore(9223372036854775800L, toBase.dec);
             var b = new FullIntCore(5L, toBase.dec);
-            var result = FullInt64Math.add(a, b);
+            var result = _engine.add(a, b);
             Assert.AreEqual(new FullIntCore(9223372036854775805L, toBase.dec), result);
         }
 
@@ -238,7 +245,7 @@ namespace FullInt.Tests
         {
             var a = new FullIntCore(9223372036854775800L, toBase.dec);
             var b = new FullIntCore(5L, toBase.dec);
-            FullInt64Math.add(a, b, a, toBase.dec, false);
+            _engine.add(a, b, a, toBase.dec, false);
             Assert.AreEqual(new FullIntCore(9223372036854775805L, toBase.dec), a);
         }
 
@@ -264,7 +271,7 @@ namespace FullInt.Tests
                     var fb = new FullIntCore(b, toBase.dec);
 
                     fullStopwatch.Start();
-                    var sumFull = FullInt64Math.add(fa, fb);
+                    var sumFull = _engine.add(fa, fb);
                     fullStopwatch.Stop();
 
                     bigStopwatch.Start();
@@ -306,7 +313,7 @@ namespace FullInt.Tests
                     var fb = new FullIntCore(b, toBase.dec);
                     
                     fullStopwatch.Start();
-                    var multFull = FullInt64Math.mult(fa, fb);
+                    var multFull = _engine.mult(fa, fb);
                     fullStopwatch.Stop();
                     
                     bigStopwatch.Start();
@@ -348,7 +355,7 @@ namespace FullInt.Tests
                     var fb = new FullIntCore(b, toBase.dec);
                     TestContext?.WriteLine($"FullInt a={a}, b={b}");
                     fullStopwatch.Start();
-                    var divFull = FullInt64Math.div(fa, fb);
+                    var divFull = _engine.div(fa, fb);
                     fullStopwatch.Stop();
 
                     TestContext?.WriteLine($"BigInt a={a}, b={b}");
@@ -391,7 +398,7 @@ namespace FullInt.Tests
                     var fb = new FullIntCore(b, toBase.dec);
 
                     fullStopwatch.Start();
-                    var divFull = FullInt64Math.mod(fa, fb);
+                    var divFull = _engine.mod(fa, fb);
                     fullStopwatch.Stop();
 
                     bigStopwatch.Start();
@@ -416,7 +423,7 @@ namespace FullInt.Tests
         {
             var a = new FullIntCore(long.MaxValue, toBase.dec);
             var b = new FullIntCore(1L, toBase.dec);
-            var result = FullInt64Math.sub(a, b);
+            var result = _engine.sub(a, b);
             Assert.AreEqual(new FullIntCore(long.MaxValue - 1, toBase.dec), result);
         }
 
@@ -425,7 +432,7 @@ namespace FullInt.Tests
         {
             var a = new FullIntCore(1234567890L, toBase.dec);
             var b = new FullIntCore(987654321L, toBase.dec);
-            var result = FullInt64Math.mult(a, b);
+            var result = _engine.mult(a, b);
             Assert.AreEqual(new FullIntCore(1219326311126352690L, toBase.dec), result);
         }
 
@@ -436,7 +443,7 @@ namespace FullInt.Tests
             long b0 = 2L;
             var a = new FullIntCore(a0, toBase.dec);
             var b = new FullIntCore(b0, toBase.dec);
-            var result = FullInt64Math.div(a, b);
+            var result = _engine.div(a, b);
             Assert.AreEqual(new FullIntCore(a0 / b0, toBase.dec), result);
         }
 
@@ -447,7 +454,7 @@ namespace FullInt.Tests
             long b0 = 2L;
             var a = new FullIntCore(a0, toBase.dec);
             var b = new FullIntCore(b0, toBase.dec);
-            var result = FullInt64Math.div(a, (ulong)2, out _);
+            var result = _engine.div(a, (ulong)2, out _);
             Assert.AreEqual(new FullIntCore(a0 / b0, toBase.dec), result);
         }
 
@@ -458,7 +465,7 @@ namespace FullInt.Tests
             long b0 = 123456789L;
             var a = new FullIntCore(a0, toBase.dec);
             var b = new FullIntCore(b0, toBase.dec);
-            var result = FullInt64Math.mod(a, b);
+            var result = _engine.mod(a, b);
             Assert.AreEqual(new FullIntCore(a0 % b0, toBase.dec), result);
         }
 
@@ -469,7 +476,7 @@ namespace FullInt.Tests
             long b0 = -8251442412018563718L;
             var a = new FullIntCore(a0, toBase.dec);
             var b = new FullIntCore(b0, toBase.dec);
-            var result = FullInt64Math.div(a, b);
+            var result = _engine.div(a, b);
             Assert.AreEqual(new FullIntCore(a0 / b0, toBase.dec), result);
         }
 
@@ -480,7 +487,7 @@ namespace FullInt.Tests
             long b0 = -838346427744435866L;
             var a = new FullIntCore(a0, toBase.dec);
             var b = new FullIntCore(b0, toBase.dec);
-            var result = FullInt64Math.div(a, b);
+            var result = _engine.div(a, b);
             Assert.AreEqual(new FullIntCore(a0 / b0, toBase.dec), result);
         }
 
@@ -491,7 +498,7 @@ namespace FullInt.Tests
             long b0 = 711194979896964872L;
             var a = new FullIntCore(a0, toBase.dec);
             var b = new FullIntCore(b0, toBase.dec);
-            var result = FullInt64Math.mod(a, b);
+            var result = _engine.mod(a, b);
             Assert.AreEqual(new FullIntCore(a0 % b0, toBase.dec), result);
         }
 
@@ -502,7 +509,7 @@ namespace FullInt.Tests
             long b0 = -5188172996314720727L;
             var a = new FullIntCore(a0, toBase.dec);
             var b = new FullIntCore(b0, toBase.dec);
-            var result = FullInt64Math.mod(a, b);
+            var result = _engine.mod(a, b);
             Assert.AreEqual(new FullIntCore(a0 % b0, toBase.dec), result);
         }
 
@@ -513,7 +520,7 @@ namespace FullInt.Tests
             long b0 = -3353385710977743464L;
             var a = new FullIntCore(a0, toBase.dec);
             var b = new FullIntCore(b0, toBase.dec);
-            var result = FullInt64Math.add(a, b);
+            var result = _engine.add(a, b);
             Assert.AreEqual(new FullIntCore(a0 + b0, toBase.dec), result);
         }
 
@@ -523,7 +530,7 @@ namespace FullInt.Tests
         [TestMethod]
         public void Speed_Pow_2Pow100_LogDuration()
         {
-            // Measure performance of FullInt64Math.pow for 2^100
+            // Measure performance of FullInt64Engine.pow for 2^100
             var baseValue = new FullIntCore(2L, toBase.dec);
             var exponent = new FullIntCore(10000L, toBase.dec);
 
@@ -534,7 +541,7 @@ namespace FullInt.Tests
             sw.Start();
             for (int i = 0; i < iterations; i++)
             {
-                lastResult = FullInt64Math.pow(baseValue, exponent);
+                lastResult = _engine.pow(baseValue, exponent);
             }
             sw.Stop();
 
@@ -549,8 +556,8 @@ namespace FullInt.Tests
         [TestMethod]
         public void Speed_Div_bigvalue_LogDuration()
         {
-            // Measure performance of FullInt64Math.div for division involving long.MaxValue
-            FullIntCore lastResult = FullInt64Math.pow(2, 10000);
+            // Measure performance of FullInt64Engine.div for division involving long.MaxValue
+            FullIntCore lastResult = _engine.pow(2, 10000);
 
             const int iterations = 100;
             var sw = new Stopwatch();
@@ -558,9 +565,9 @@ namespace FullInt.Tests
             sw.Start();
             for (int i = 0; i < iterations; i++)
             {
-                lastResult = FullInt64Math.div(lastResult, 2);
+                lastResult = _engine.div(lastResult, 2);
                 sw.Stop();
-                Assert.AreEqual(FullInt64Math.pow(2, 10000 - (i + 1)), lastResult, $" 2^ {10000 - (i + 1)}");
+                Assert.AreEqual(_engine.pow(2, 10000 - (i + 1)), lastResult, $" 2^ {10000 - (i + 1)}");
                 sw.Start();
             }
             sw.Stop();
@@ -570,14 +577,14 @@ namespace FullInt.Tests
 
             TestContext?.WriteLine($"Speed_Div_MaxLong: iterations={iterations}, total={total.TotalMilliseconds}, avg={avg.TotalMilliseconds}");
             //Speed_Div_MaxLong: iterations = 100, total = 883,7553, avg = 8,8375
-            Assert.AreEqual(FullInt64Math.pow(2, 9900), lastResult);
+            Assert.AreEqual(_engine.pow(2, 9900), lastResult);
         }
 
         [TestMethod]
         public void Speed_Div_bigvalue_to_byte_LogDuration()
         {
-            // Measure performance of FullInt64Math.div for division involving long.MaxValue
-            FullIntCore lastResult = FullInt64Math.pow(2, 10000);
+            // Measure performance of FullInt64Engine.div for division involving long.MaxValue
+            FullIntCore lastResult = _engine.pow(2, 10000);
 
             const int iterations = 100;
             var sw = new Stopwatch();
@@ -585,7 +592,7 @@ namespace FullInt.Tests
             sw.Start();
             for (int i = 0; i < iterations; i++)
             {
-                lastResult = FullInt64Math.div(lastResult, (ulong)2, out _);
+                lastResult = _engine.div(lastResult, (ulong)2, out _);
             }
             sw.Stop();
 
@@ -594,14 +601,14 @@ namespace FullInt.Tests
 
             TestContext?.WriteLine($"Speed_Div_MaxLong: iterations={iterations}, total={total.TotalMilliseconds}, avg={avg.TotalMilliseconds}");
             //Speed_Div_MaxLong: iterations = 100, total = 883,7553, avg = 8,8375
-            Assert.AreEqual(FullInt64Math.pow(2, 9900), lastResult);
+            Assert.AreEqual(_engine.pow(2, 9900), lastResult);
         }
 
         [TestMethod]
         public void Speed_Div_bigvalue_to_bigger_one_LogDuration()
         {
-            // Measure performance of FullInt64Math.div for division involving long.MaxValue
-            FullIntCore lastResult = FullInt64Math.pow(2, 10000);
+            // Measure performance of FullInt64Engine.div for division involving long.MaxValue
+            FullIntCore lastResult = _engine.pow(2, 10000);
 
             const int iterations = 100;
             var sw = new Stopwatch();
@@ -609,9 +616,9 @@ namespace FullInt.Tests
             sw.Start();
             for (int i = 0; i < iterations; i++)
             {
-                lastResult = FullInt64Math.div(lastResult, 1024);
+                lastResult = _engine.div(lastResult, 1024);
                 sw.Stop();
-                var expResult = FullInt64Math.pow(2, 10000 - ((i + 1) * 10));
+                var expResult = _engine.pow(2, 10000 - ((i + 1) * 10));
                 Assert.AreEqual(expResult, lastResult);
                 sw.Start();
             }
@@ -622,7 +629,7 @@ namespace FullInt.Tests
 
             TestContext?.WriteLine($"Speed_Div_MaxLong: iterations={iterations}, total={total.TotalMilliseconds}, avg={avg.TotalMilliseconds}");
             //Speed_Div_MaxLong: iterations = 100, total = 883,7553, avg = 8,8375
-            Assert.AreEqual(FullInt64Math.pow(2, 9000), lastResult);
+            Assert.AreEqual(_engine.pow(2, 9000), lastResult);
         }
         #endregion
 
@@ -641,7 +648,7 @@ namespace FullInt.Tests
             var fb = new FullIntCore(b, toBase.hex);
 
             //fullStopwatch.Start();
-            var multFull = FullInt64Math.mult(fa, fb);
+            var multFull = _engine.mult(fa, fb);
            // fullStopwatch.Stop();
 
             //bigStopwatch.Start();

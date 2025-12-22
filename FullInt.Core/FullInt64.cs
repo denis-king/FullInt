@@ -15,7 +15,8 @@ namespace FullInt.Core
 
         public ulong[] value { get; set; }
         public bool Sing { get; set; }
-
+		private static FullInt64Engine _engine = FullInt64Engine.Instance;
+		
         public FullInt64()
         {
             value = new ulong[1] { 0 };
@@ -58,9 +59,12 @@ namespace FullInt.Core
         
         public override String ToString()
         {
-            return this.ToString((byte)(IsDec ? 10 : 16));
+            return _engine.ToString(this, (byte)(IsDec ? 10 : 16));
         }
-
+		public String ToString(byte Base)
+        {
+            return _engine.ToString(this, Base);
+        }
         public static FullInt64 invertor(FullInt64 value)
         {
             FullInt64 result = new FullInt64(value);//check if need a copy
@@ -72,7 +76,7 @@ namespace FullInt.Core
         {
             if (obj is FullInt64 || obj is byte || obj is int || obj is long)
             {
-                return FullInt64Math.IsEquals(this, (FullInt64)obj);
+                return _engine.IsEquals(this, (FullInt64)obj);
             }
             else
             {
@@ -87,15 +91,15 @@ namespace FullInt.Core
 
         public static FullInt64 operator +(FullInt64 a, FullInt64 b)
         {
-            return FullInt64Math.add(a, b);
+            return _engine.add(a, b);
         }
         public static FullInt64 operator -(FullInt64 a, FullInt64 b)
         {
-            return FullInt64Math.sub(a, b);
+            return _engine.sub(a, b);
         }
         public static FullInt64 operator *(FullInt64 a, FullInt64 b)
         {
-            return FullInt64Math.mult(a, b);
+            return _engine.mult(a, b);
         }
         public static FullInt64 operator /(FullInt64 a, FullInt64 b)
         {
@@ -103,7 +107,7 @@ namespace FullInt.Core
             //{
             //    throw new System.DivideByZeroException();
             //}
-            return FullInt64Math.div(a, b);
+            return _engine.div(a, b);
         }
         public static FullInt64 operator %(FullInt64 a, FullInt64 b)
         {
@@ -111,43 +115,43 @@ namespace FullInt.Core
             //{
             //    throw new System.DivideByZeroException();
             //}
-            return FullInt64Math.mod(a, b);
+            return _engine.mod(a, b);
         }
         public static FullInt64 operator ^(FullInt64 a, FullInt64 b)
         {
-            return FullInt64Math.pow(a, b);
+            return _engine.pow(a, b);
         }
         public static bool operator >(FullInt64 a, FullInt64 b)
         {
-            return FullInt64Math.IsABiggerB(a, b);
+            return _engine.IsABiggerB(a, b);
         }
         public static bool operator <(FullInt64 a, FullInt64 b)
         {
-            return FullInt64Math.IsABiggerB(b, a);
+            return _engine.IsABiggerB(b, a);
         }
         public static bool operator >=(FullInt64 a, FullInt64 b)
         {
-            return FullInt64Math.IsABiggerOrEqualsB(a, b);
+            return _engine.IsABiggerOrEqualsB(a, b);
         }
         public static bool operator <=(FullInt64 a, FullInt64 b)
         {
-            return FullInt64Math.IsABiggerOrEqualsB(b, a);
+            return _engine.IsABiggerOrEqualsB(b, a);
         }
         public static bool operator ==(FullInt64 a, FullInt64 b)
         {
-            return FullInt64Math.IsEquals(a, b);
+            return _engine.IsEquals(a, b);
         }
         public static bool operator !=(FullInt64 a, FullInt64 b)
         {
-            return !FullInt64Math.IsEquals(a, b);
+            return !_engine.IsEquals(a, b);
         }
         public static FullInt64 operator ++(FullInt64 a)
         {
-            return FullInt64Math.add(a, 1);
+            return _engine.add(a, 1);
         }
         public static FullInt64 operator --(FullInt64 a)
         {
-            return FullInt64Math.sub(a, 1);
+            return _engine.sub(a, 1);
         }
         public static FullInt64 operator -(FullInt64 a)
         {
@@ -176,11 +180,11 @@ namespace FullInt.Core
         }
         public static implicit operator string(FullInt64 value)
         {
-            return value.ToString((byte)(value.IsDec ? 10 : 16));
+            return _engine.ToString(value, (byte)(value.IsDec ? 10 : 16));
         }
         public static implicit operator FullInt64(String value)
         {
-            return FullIntConvertor.ToFullInt64(value);
+            return _engine.ToFullInt64(value);
         }
 
     }

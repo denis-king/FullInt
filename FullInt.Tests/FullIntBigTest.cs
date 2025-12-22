@@ -14,11 +14,15 @@ namespace FullInt.Tests
     public class FullIntBigTests
     {
         public TestContext TestContext { get; set; }
-        //private void GenerateBigNumber(int bytesCount, out ulong[] longBuf, out byte[] byteBuf) 
-        //{
-           
-        //}
-
+        private static FullInt64Engine _engine;
+		[ClassInitialize]
+		public static void InitClass(TestContext testContext)
+		{
+			_engine = FullInt64Engine.Instance;
+			
+			//todo warm up operations
+		}
+		
         public static (ulong[] buffer, bool isNegative) ParseBytesWithSingToUnsingUlongs(byte[] bytes)
         {
             if (bytes == null || bytes.Length == 0)
@@ -121,7 +125,7 @@ namespace FullInt.Tests
                     var fa = new FullIntCore(sign, longBuf, toBase.hex);
                     if (isDec)
                     {
-                        fa = FullIntConvertor.ConvertToBase(fa, toBase.dec);
+                        fa = _engine.ConvertToBase(fa, toBase.dec);
                     }
                     var ba = new BigInteger(buf);
                     Assert.AreEqual(ba.ToString(), fa.ToString(10), $"Fullint A and Bigint A");
@@ -131,13 +135,13 @@ namespace FullInt.Tests
                     var fb = new FullIntCore(sign, longBuf, toBase.hex);
                     if (isDec)
                     {
-                        fb = FullIntConvertor.ConvertToBase(fb, toBase.dec);
+                        fb = _engine.ConvertToBase(fb, toBase.dec);
                     }
                     var bb = new BigInteger(buf);
                     Assert.AreEqual(bb.ToString(), fb.ToString(10), $"Fullint B and Bigint B");
 
                     fullStopwatch.Start();
-                    var sumFull = FullInt64Math.add(fa, fb);
+                    var sumFull = _engine.add(fa, fb);
                     fullStopwatch.Stop();
 
                     bigStopwatch.Start();
@@ -223,7 +227,7 @@ namespace FullInt.Tests
                     var fa = new FullIntCore(sign, longBuf, toBase.hex);
                     if (isDec)
                     {
-                        fa = FullIntConvertor.ConvertToBase(fa, toBase.dec);
+                        fa = _engine.ConvertToBase(fa, toBase.dec);
                     }
                     var ba = new BigInteger(buf);
                     Assert.AreEqual(ba.ToString(), fa.ToString(10), $"Fullint A and Bigint A");
@@ -233,13 +237,13 @@ namespace FullInt.Tests
                     var fb = new FullIntCore(sign, longBuf, toBase.hex);
                     if (isDec)
                     {
-                        fb = FullIntConvertor.ConvertToBase(fb, toBase.dec);
+                        fb = _engine.ConvertToBase(fb, toBase.dec);
                     }
                     var bb = new BigInteger(buf);
                     Assert.AreEqual(bb.ToString(), fb.ToString(10), $"Fullint B and Bigint B");
 
                     fullStopwatch.Start();
-                    var multFull = FullInt64Math.mult(fa, fb);
+                    var multFull = _engine.mult(fa, fb);
                     fullStopwatch.Stop();
 
                     bigStopwatch.Start();
@@ -247,7 +251,7 @@ namespace FullInt.Tests
                     bigStopwatch.Stop();
 
                     FullIntCore expectedFull = expected.ToString();
-                   // expectedFull = FullIntConvertor.ConvertToBase(expectedFull, isDec ? toBase.dec : toBase.hex);
+                   // expectedFull = _engine.ConvertToBase(expectedFull, isDec ? toBase.dec : toBase.hex);
 
                    
                     Assert.AreEqual(expectedFull.ToString(10), multFull.ToString(10), $"Mismatch for a={ba}, b={bb}");
@@ -333,7 +337,7 @@ namespace FullInt.Tests
                     var fa = new FullIntCore(sign, longBuf, toBase.hex);
                     if (isDec)
                     {
-                        fa = FullIntConvertor.ConvertToBase(fa, toBase.dec);
+                        fa = _engine.ConvertToBase(fa, toBase.dec);
                     }
                     var ba = new BigInteger(buf);
                     Assert.AreEqual(ba.ToString(), fa.ToString(10), $"Fullint A and Bigint A");
@@ -347,7 +351,7 @@ namespace FullInt.Tests
                     var fb = new FullIntCore(sign, longBuf, toBase.hex);
                     if (isDec)
                     {
-                        fb = FullIntConvertor.ConvertToBase(fb, toBase.dec);
+                        fb = _engine.ConvertToBase(fb, toBase.dec);
                     }
                     var bb = new BigInteger(buf);
                     Assert.AreEqual(bb.ToString(), fb.ToString(10), $"Fullint B and Bigint B");
@@ -379,20 +383,20 @@ namespace FullInt.Tests
                
                   
 
-                FullInt64Math.div_internal(fullintA[i].value, fullintB[i].value, resultBuf, remainderBuf, isDec ? toBase.dec : toBase.hex);
+                _engine.div_internal(fullintA[i].value, fullintB[i].value, resultBuf, remainderBuf, isDec ? toBase.dec : toBase.hex);
                 var sign = fullintA[i].Sing != fullintB[i].Sing;
 
                 //propably ussless if value1 >= value2. remove when uncommented the optimalization above
-                if (FullInt64Math.CompareAbsInternal(resultBuf, zero) == 0)
+                if (_engine.CompareAbsInternal(resultBuf, zero) == 0)
                 {
                     sign = false;
                 }
-                fullintC[i] = new FullInt64(sign, FullInt64Math.deleteZeros(resultBuf).ToArray(), isDec ? toBase.dec : toBase.hex);
+                fullintC[i] = new FullInt64(sign, _engine.deleteZeros(resultBuf).ToArray(), isDec ? toBase.dec : toBase.hex);
                 for (int j = 0; j < remainderBuf.Length; j++) remainderBuf[j] = 0;
                 //remainder = new FullInt64(value1.Sing, deleteZeros(remainderBuf).ToArray(), Base);
 
                 //return result;
-                //fullintC[i] = FullInt64Math.div(fullintA[i], fullintB[i]);
+                //fullintC[i] = _engine.div(fullintA[i], fullintB[i]);
             }
             fullStopwatch.Stop();
 
@@ -476,7 +480,7 @@ namespace FullInt.Tests
                     var fa = new FullIntCore(sign, longBuf, toBase.hex);
                     if (isDec)
                     {
-                        fa = FullIntConvertor.ConvertToBase(fa, toBase.dec);
+                        fa = _engine.ConvertToBase(fa, toBase.dec);
                     }
                     var ba = new BigInteger(buf);
                     Assert.AreEqual(ba.ToString(), fa.ToString(10), $"Fullint A and Bigint A");
@@ -486,13 +490,13 @@ namespace FullInt.Tests
                     var fb = new FullIntCore(sign, longBuf, toBase.hex);
                     if (isDec)
                     {
-                        fb = FullIntConvertor.ConvertToBase(fb, toBase.dec);
+                        fb = _engine.ConvertToBase(fb, toBase.dec);
                     }
                     var bb = new BigInteger(buf);
                     Assert.AreEqual(bb.ToString(), fb.ToString(10), $"Fullint B and Bigint B");
 
                     fullStopwatch.Start();
-                    var divFull = FullInt64Math.mod(fa, fb);
+                    var divFull = _engine.mod(fa, fb);
                     fullStopwatch.Stop();
 
                     bigStopwatch.Start();

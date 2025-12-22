@@ -4,10 +4,14 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Xml.Linq;
+using System.Linq;
 namespace FullInt.Core
 {
-    public static class FullInt64Math
+    public class FullInt64Engine
     {
+		private static readonly Lazy<FullInt64Engine> _instance = new Lazy<FullInt64Engine>(() => new FullInt64Engine());
+		public static FullInt64Engine Instance => _instance.Value;
+		
         [DllImport("128Operations.dll", CallingConvention = CallingConvention.Cdecl)]
         public static extern ulong Mul128(ulong a, ulong b, out ulong high);
 
@@ -28,22 +32,15 @@ namespace FullInt.Core
 
         [DllImport("128Operations.dll", CallingConvention = CallingConvention.Cdecl)]
         public static extern ulong Normalize3Words(ref ulong d0, ref ulong d1, ulong d2, ref ulong u0, ref ulong u1, ulong u2);
-
-        [DllImport("128Operations.dll", CallingConvention = CallingConvention.Cdecl)]
-        public static extern ulong Fullint64AddWIN(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR);
-
-        [DllImport("128Operations.dll", CallingConvention = CallingConvention.Cdecl)]
-        public static extern int Fullint64SubWIN(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR);
-
-        [DllImport("128Operations.dll", CallingConvention = CallingConvention.Cdecl)]
-        public static extern ulong Fullint64MultWIN(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR);
-
-        [DllImport("128Operations.dll", CallingConvention = CallingConvention.Cdecl)]
-        public static extern ulong Fullint64DivWin(IntPtr a, IntPtr b, IntPtr q, IntPtr r, int lenB, int lenR);
-
-
+		
+		private static IFullIntCore _core;
+		
+		private FullInt64Engine()
+		{
+			_core = FullIntCoreFactory.Create();
+		}
         #region add methods
-        public static FullInt64 add(FullInt64 value1, FullInt64 value2)
+        public  FullInt64 add(FullInt64 value1, FullInt64 value2)
         {
             toBase Base = toEqualBase(ref value1, ref value2);
 
@@ -52,7 +49,7 @@ namespace FullInt.Core
             result.value = deleteZeros(result.value).ToArray();
             return result;
         }
-        public static void add(FullInt64 value1, FullInt64 value2, FullInt64 result, toBase Base, bool useCarry = true)
+        public void add(FullInt64 value1, FullInt64 value2, FullInt64 result, toBase Base, bool useCarry = true)
         {
             if(result.value.Length < Math.Max(value1.value.Length, value2.value.Length) + (useCarry ? 1 : 0))
             {
@@ -88,7 +85,7 @@ namespace FullInt.Core
             }
         }
 
-        public static FullInt64 sub(FullInt64 value1, FullInt64 value2)
+        public FullInt64 sub(FullInt64 value1, FullInt64 value2)
         {
             return add(value1, -value2);//possible negative makes a new objext!
         }
@@ -104,7 +101,7 @@ namespace FullInt.Core
         //    subInternal(value1, value2, reesult, Base);
         //    return reesult.Slice(countZeros(reesult)).ToArray();
         //}
-        private static ulong addInternal(Span<ulong> value1, Span<ulong> value2, Span<ulong> result, toBase Base) 
+        private ulong addInternal(Span<ulong> value1, Span<ulong> value2, Span<ulong> result, toBase Base) 
         {
            
             /*
@@ -152,29 +149,12 @@ namespace FullInt.Core
 
              */
             // /*
-             ulong carry = 0;
-             unsafe 
-             {
-                 ref ulong rA = ref MemoryMarshal.GetReference(value1);
-                 ref ulong rB = ref MemoryMarshal.GetReference(value2);
-                 ref ulong rR = ref MemoryMarshal.GetReference(result);
-
-                 fixed (ulong* pA = &rA)
-                 fixed (ulong* pB = &rB)
-                 fixed (ulong* pR = &rR)
-                 {
-                     IntPtr ipA = (IntPtr)pA;
-                     IntPtr ipB = (IntPtr)pB;
-                     IntPtr ipR = (IntPtr)pR;
-                     carry = Fullint64AddWIN(ipA, ipB, ipR, value1.Length, value2.Length, result.Length);
-                 }
-
-             }
-            // */
-            return 0;
+			
+			return _core.Add(value1, value2, result);
+             
         }
         
-        private static int subInternal(Span<ulong> value1, Span<ulong> value2, Span<ulong> result, toBase Base)
+        private int subInternal(Span<ulong> value1, Span<ulong> value2, Span<ulong> result, toBase Base)
         {
             /*
             Span<ulong> valueG;
@@ -236,29 +216,13 @@ namespace FullInt.Core
                 result[resultLastIndex - i] = sum;
             }
             */
-            int compareResult;
-            unsafe
-            {
-                ref ulong rA = ref MemoryMarshal.GetReference(value1);
-                ref ulong rB = ref MemoryMarshal.GetReference(value2);
-                ref ulong rR = ref MemoryMarshal.GetReference(result);
-
-                fixed (ulong* pA = &rA)
-                fixed (ulong* pB = &rB)
-                fixed (ulong* pR = &rR)
-                {
-                    IntPtr ipA = (IntPtr)pA;
-                    IntPtr ipB = (IntPtr)pB;
-                    IntPtr ipR = (IntPtr)pR;
-                    compareResult = Fullint64SubWIN(ipA, ipB, ipR, value1.Length, value2.Length, result.Length);
-                }
-
-            }
-            return compareResult;
+			
+			return _core.Sub(value1, value2, result);
+            
         }
         #endregion
 
-        public static FullInt64 abs(FullInt64 value)
+        public FullInt64 abs(FullInt64 value)
         {
             var result = new FullInt64(value);
             result.Sing = false;
@@ -267,7 +231,7 @@ namespace FullInt.Core
 
 
         #region mult methods
-        public static FullInt64 mult(FullInt64 value1, FullInt64 value2)
+        public FullInt64 mult(FullInt64 value1, FullInt64 value2)
         {
             toBase Base = toEqualBase(ref value1, ref value2);
             var lenth = value1.value.Length + value2.value.Length;
@@ -277,7 +241,7 @@ namespace FullInt.Core
             return new FullInt64(value1.Sing != value2.Sing, deleteZeros(bytes).ToArray(), Base);
         }
 
-        private static void multInternal(Span<ulong> value1, Span<ulong> value2, Span<ulong> result, toBase Base)
+        private void multInternal(Span<ulong> value1, Span<ulong> value2, Span<ulong> result, toBase Base)
         {
             if (result.Length < value1.Length + value2.Length)//should we check it here? its for internal use only i should use the correct buffer size
             {
@@ -327,23 +291,8 @@ namespace FullInt.Core
                 addHi = 0;
             }
             */
-            unsafe
-            {
-                ref ulong rA = ref MemoryMarshal.GetReference(value1);
-                ref ulong rB = ref MemoryMarshal.GetReference(value2);
-                ref ulong rR = ref MemoryMarshal.GetReference(result);
-
-                fixed (ulong* pA = &rA)
-                fixed (ulong* pB = &rB)
-                fixed (ulong* pR = &rR)
-                {
-                    IntPtr ipA = (IntPtr)pA;
-                    IntPtr ipB = (IntPtr)pB;
-                    IntPtr ipR = (IntPtr)pR;
-                    Fullint64MultWIN(ipA, ipB, ipR, value1.Length, value2.Length, result.Length);
-                }
-
-            }
+			
+			_core.Mult(value1, value2, result);
         }
 
 
@@ -425,14 +374,14 @@ namespace FullInt.Core
         //        : ((byte)(result >> 8), (byte)(result & mask8));//use base
         //}
 
-        public static FullInt64 pow(FullInt64 value1, FullInt64 value2)
+        public FullInt64 pow(FullInt64 value1, FullInt64 value2)
         {
             
             toBase Base = toEqualBase(ref value1, ref value2);
             FullInt64 result = new FullInt64(1, Base);
 
             FullInt64 value = new FullInt64(value1);
-            string point = new FullInt64(value2).ToString(2);
+            string point = ToString(new FullInt64(value2), 2);
 
             for (int i = 0; i < point.Length; i++)
             {
@@ -453,12 +402,12 @@ namespace FullInt.Core
 
        
         #region comparation
-        public static bool IsABiggerB(FullInt64 value1, FullInt64 value2)
+        public bool IsABiggerB(FullInt64 value1, FullInt64 value2)
         {
             var result = Compare(value1, value2);
             return result > 0;
         }
-        public static int Compare(FullInt64 value1, FullInt64 value2) 
+        public int Compare(FullInt64 value1, FullInt64 value2) 
         {
             int result;
             toEqualBase(ref value1, ref value2);
@@ -485,7 +434,7 @@ namespace FullInt.Core
             }
             return result;
         }
-        public static int CompareAbsInternal(Span<ulong> value1, Span<ulong> value2)
+        public int CompareAbsInternal(Span<ulong> value1, Span<ulong> value2)
         {
             int result = 0;
             //toEqualBase(ref value1, ref value2);
@@ -526,20 +475,20 @@ namespace FullInt.Core
             return result;
         }
 
-        public static bool IsABiggerOrEqualsB(FullInt64 value1, FullInt64 value2)
+        public bool IsABiggerOrEqualsB(FullInt64 value1, FullInt64 value2)
         {
             var result = Compare(value1, value2);
             return result >= 0;
         }
 
-        public static bool IsEquals(FullInt64 value1, FullInt64 value2)
+        public bool IsEquals(FullInt64 value1, FullInt64 value2)
         {
             return Compare(value1, value2) == 0;
         }
         #endregion
 
         #region normalization
-        public static toBase toEqualBase(ref FullInt64 value1, ref FullInt64 value2)
+        public toBase toEqualBase(ref FullInt64 value1, ref FullInt64 value2)
         {
             toBase Base;
             if (value1.IsDec == value2.IsDec)
@@ -551,23 +500,23 @@ namespace FullInt.Core
                 if (value1.value.Length >= value2.value.Length)
                 {
                     Base = value1.IsDec ? toBase.dec : toBase.hex;
-                    value2 = FullIntConvertor.ConvertToBase(value2, Base);
+                    value2 = ConvertToBase(value2, Base);
                 }
                 else
                 {
                     Base = value2.IsDec ? toBase.dec : toBase.hex;
-                    value1 = FullIntConvertor.ConvertToBase(value1, Base);
+                    value1 = ConvertToBase(value1, Base);
                 }
             }
             return Base;
         }
-        private static FullInt64 deleteZeros(FullInt64 value)
+        private FullInt64 deleteZeros(FullInt64 value)
         {
             value.value = deleteZeros(value.value).ToArray();
             return value;
         }
 
-        public static Span<ulong> deleteZeros(Span<ulong> value)
+        public Span<ulong> deleteZeros(Span<ulong> value)
         {
             //пропуск старших нулей операнда
             int zeros = countZeros(value);
@@ -580,12 +529,12 @@ namespace FullInt.Core
             return value.Slice(zeros);
         }
 
-        private static int countZeros(ulong[] value)
+        private int countZeros(ulong[] value)
         {
             return countZeros(value.AsSpan());
             
         }
-        private static int countZeros(Span<ulong> value)
+        private int countZeros(Span<ulong> value)
         {
             int zeros;
             for (zeros = 0; zeros < value.Length - 1 && value[zeros] == 0; zeros++) { }
@@ -597,21 +546,21 @@ namespace FullInt.Core
         }
         #endregion
 
-        private static FullInt64 Copy(FullInt64 value)
+        private FullInt64 Copy(FullInt64 value)
         {
             return Copy(value, (value.IsDec ? toBase.dec : toBase.hex));
         }
 
-        private static FullInt64 Copy(FullInt64 value, toBase toBase)
+        private FullInt64 Copy(FullInt64 value, toBase toBase)
         {
-            var result = FullIntConvertor.ConvertToBase(value, toBase);
+            var result = ConvertToBase(value, toBase);
             deleteZeros(result);
             return result;
         }
 
         #region div methods
 
-        public static FullInt64 div(FullInt64 value1, FullInt64 value2)
+        public FullInt64 div(FullInt64 value1, FullInt64 value2)
         {
             if (value2 == 0)
             {
@@ -620,7 +569,7 @@ namespace FullInt.Core
             return div(value1, value2, out _);
         }
 
-        public static FullInt64 mod(FullInt64 value1, FullInt64 value2)
+        public FullInt64 mod(FullInt64 value1, FullInt64 value2)
         {
             if (value2 == 0)
             {
@@ -632,7 +581,7 @@ namespace FullInt.Core
         }
 
         //быстрое деление на байтовое число (для преобразования числа в строку)
-        public static FullInt64 div(FullInt64 value1, ulong value2, out ulong remainder)
+        public FullInt64 div(FullInt64 value1, ulong value2, out ulong remainder)
         {
             toBase Base = value1.IsDec ? toBase.dec : toBase.hex;
 
@@ -650,7 +599,7 @@ namespace FullInt.Core
             return result;
         }
 
-        private static ulong FindDivisionCandidate(Span<ulong> partDividend, Span<ulong> divisor, toBase Base)
+        private ulong FindDivisionCandidate(Span<ulong> partDividend, Span<ulong> divisor, toBase Base)
         {
             //ulong hiDividend;
             //ulong loDividend;
@@ -763,7 +712,7 @@ namespace FullInt.Core
             */
         }
 
-        public static void div_internal(Span<ulong> value1, ulong value2, Span<ulong> result, out ulong remainder)
+        public void div_internal(Span<ulong> value1, ulong value2, Span<ulong> result, out ulong remainder)
         {
             if (value2 == 0)
             {
@@ -827,7 +776,7 @@ namespace FullInt.Core
         }
 
         //метод деления двух больших чисел 
-        public static FullInt64 div(FullInt64 value1, FullInt64 value2, out FullInt64 remainder) //propably need to add the internal div method
+        public FullInt64 div(FullInt64 value1, FullInt64 value2, out FullInt64 remainder) //propably need to add the internal div method
         {
             toBase Base = toEqualBase(ref value1, ref value2);
 
@@ -871,28 +820,10 @@ namespace FullInt.Core
 
             return result;
         }
-        public static void div_internal(Span<ulong> dividend, Span<ulong> divisor, Span<ulong> result, Span<ulong> remainder, toBase Base)
+		
+        public void div_internal(Span<ulong> dividend, Span<ulong> divisor, Span<ulong> result, Span<ulong> remainder, toBase Base)
         {
-            unsafe
-            {
-                ref ulong rA = ref MemoryMarshal.GetReference(dividend);
-                ref ulong rB = ref MemoryMarshal.GetReference(divisor);
-                ref ulong rQ = ref MemoryMarshal.GetReference(result);
-                ref ulong rR = ref MemoryMarshal.GetReference(remainder);
-
-                fixed (ulong* pA = &rA)
-                fixed (ulong* pB = &rB)
-                fixed (ulong* pQ = &rQ)
-                fixed (ulong* pR = &rR)
-                {
-                    IntPtr ipA = (IntPtr)pA;
-                    IntPtr ipB = (IntPtr)pB;
-                    IntPtr ipQ = (IntPtr)pQ;
-                    IntPtr ipR = (IntPtr)pR;
-                    Fullint64DivWin(ipA, ipB, ipQ, ipR, dividend.Length, divisor.Length);
-                }
-
-            }
+            _core.Div(dividend, divisor, result, remainder);
             
             /*
             if (CompareAbsInternal(divisor, stackalloc ulong[] {0}) == 0)
@@ -1027,5 +958,211 @@ namespace FullInt.Core
         }
 
         #endregion
-    }
+		
+		#region Convertations
+		
+		//maybe better to use only buffer in the param? and add abylity to suppor internal operation only with the buffers
+        public FullInt64 ConvertToBase(FullInt64 value, toBase Base) //use the generic or something bettor
+        {
+            var isDec = Base == toBase.dec;
+            Span<ulong> zoro = stackalloc ulong[] { 0 };
+
+            if (value.IsDec == isDec)
+            {
+                return value;// result.value = (ulong[])value.value.Clone(); //should we clone?
+            }
+            else
+            {
+                Span<ulong> a = value.IsDec
+                    ? stackalloc ulong[] { 1, ulong.MaxValue - FullInt64.maxDecCapasity + 1 }
+                    : stackalloc ulong[] { FullInt64.maxDecCapasity };
+
+                //calc the buf length
+                int length =  value.IsDec 
+                    ? value.value.Length //dec to hex
+                    : (int)(value.value.Length * 1.014 + 1); //hex to dec
+                
+                Span<ulong> resultBuf = length > 1024 
+                    ? new ulong[length] 
+                    : stackalloc ulong[length];
+                
+                Span<ulong> remainderBuf = length > 1024
+                    ? stackalloc ulong[a.Length + 2] // + 2 it uses internal calucation where remainder can be greate than the value 2
+                    : new ulong[a.Length + 2];
+
+                Span<ulong> valueBuf = value.value.Length > 1024 
+                    ? new ulong[value.value.Length] 
+                    : stackalloc ulong[value.value.Length];
+
+                //coppy value to the buffer
+                for(int i=0; i<value.value.Length; i++)
+                {
+                    valueBuf[i] = value.value[i];
+                }
+                
+                ulong remainder;
+                int index = 0;
+
+                while (CompareAbsInternal(valueBuf, zoro) == 1)
+                {
+                    //hex to dec
+                    if(a.Length == 1) //possible to use only one general method
+                    {
+                        div_internal(valueBuf, a[0], valueBuf, out remainder);
+                        resultBuf[resultBuf.Length - 1 - index] = remainder;
+                    }
+                    else //dec to hex
+                    {
+                        div_internal(valueBuf, a, valueBuf, remainderBuf, value.IsDec ? toBase.dec : toBase.hex);
+                        resultBuf[resultBuf.Length - 1 - index] = remainderBuf[remainderBuf.Length - 2] * FullInt64.maxDecCapasity + remainderBuf[remainderBuf.Length - 1];
+                    }
+                    index++;
+                }
+
+                //todo normilaze the buffer
+
+                return new FullInt64(value.Sing, deleteZeros(resultBuf).ToArray(), Base);
+            }
+
+            
+        }
+		
+		public FullInt64 ToFullInt64(String value)
+        {
+           
+
+            bool s = false;
+            byte Base = 10;
+            //result.IsDec = true;
+
+            if (value.Length == 0) value = "0";
+            if (value[0] == '-')
+            {
+                s = true;
+                value = value.Remove(0, 1);
+            }
+            if (value.Length > 1 && value[0] == '0')
+            {
+                Base = 8;
+                value = value.Remove(0, 1);
+            }
+            if (value.Length > 1 && value[0].ToString().ToLower() == "x")
+            {
+                Base = 16;
+                //result.Base = toBase.hex;
+                value = value.Remove(0, 1);
+            }
+            FullInt64 result = new FullInt64(s, new ulong[0], (toBase)Base);
+            int chunkSize = Base == 10 ? 19 : 16;
+            if (Base == (byte)(result.IsDec ? 10 :16))
+            {
+               
+                result.value = new ulong[value.Length / chunkSize + (value.Length % chunkSize > 0 ? 1 : 0)];
+               
+                int index = 0;
+                
+                var reversedChunks = Enumerable
+                .Range(0, (value.Length + chunkSize - 1) / chunkSize)
+                .Select(i => value
+                    .Reverse()
+                    .Skip(i * chunkSize)
+                    .Take(chunkSize)
+                    .Reverse()
+                    .ToArray()
+                )
+                .Reverse()
+                .Select(c => new string(c));
+
+                foreach (var chunk in reversedChunks)
+                {
+                    ulong b = Convert.ToUInt64(chunk, (byte)Base);
+                    result.value[index] = b;
+                    index++;
+                }
+            }
+            else
+            {
+                for (int i = 0; i < value.Length; i++)
+                {
+                    result = mult(result, Base);
+                    result = add(result, Convert.ToByte(value[i].ToString(), (int)Base));
+                }
+            }
+
+            return result;
+        }
+		
+		public String ToString(FullInt64 value, byte toBase)
+        {
+            String result = "";
+            //var bytes = new Stack<byte>();
+            String prefix = string.Empty;
+            //FullInt64 value = new FullInt64(fullint);
+            
+            FullInt64 convertedValue = value;
+            Span<ulong> zero = stackalloc ulong[] { 0 };
+
+            if (value.Sing)
+            {
+                //value.Sing = false;
+                prefix += "-";
+            }
+            if (toBase == 16)
+            {
+                prefix += "0x";
+            }
+
+            //try to conver the base
+            if(toBase != (byte)(value.IsDec ? 10 : 16) && (toBase == 10 || toBase == 16))
+            {
+                convertedValue = ConvertToBase(value, (toBase)toBase);
+            }
+
+            if (toBase == (byte)(convertedValue.IsDec ? 10 : 16))
+            {
+                ulong v;
+                for (int i = 0; i < convertedValue.value.Length; i++)
+                {
+                    v = convertedValue.value[i];
+
+                    if (result.Length == 0)
+                    {
+                        //skip zeros exept the last iteration
+                        if (v != 0 || i == convertedValue.value.Length - 1)
+                        {
+                            result += toBase == 10 ? v.ToString() : v.ToString("X");
+                        }
+                    }
+                    else
+                    {
+                        result += toBase == 10 ? v.ToString("D19") : v.ToString("X16");
+                    }
+                       
+                }
+            }
+            else
+            {
+                var buffer = (ulong[])value.value.Clone();
+                if (CompareAbsInternal(buffer, zero) == 0)
+                {
+                    result = "0";
+                }
+                else 
+                { 
+                    while (CompareAbsInternal(buffer, zero) == 1)
+                    {
+                        //todo 
+                        ulong remainder;
+
+                        div_internal(buffer, toBase, buffer, out remainder);//check if div in place works
+                        result = remainder.ToString((toBase == 10 ? "D" : "X")) + result;
+                    }
+                }
+               
+                //for (int i = 0; bytes.Count > 0; i++) result += bytes.Pop().ToString((toBase == 10 ? "D" : "X"));
+            }
+            return prefix + result;
+        }
+		#endregion
+	}
 }
