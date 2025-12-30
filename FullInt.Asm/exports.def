@@ -15,3 +15,8 @@ Fullint64Mult
 Fullint64MultWIN
 Fullint64Div
 Fullint64DivWin
+Fullint64Div2long
+Fullint64Div2longWin
+
+Fullint64Compare
+Fullint64CompareWIN

@@ -1,0 +1,40 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
+    <Optimize>False</Optimize>
+    <DebugType>none</DebugType>
+	  <SkipCompilerExecution>true</SkipCompilerExecution>
+  <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <Target Name="BuildAsm" AfterTargets="Build">
+    <Exec Condition="'$(OS)'=='Windows_NT' and ('$(PROCESSOR_ARCHITECTURE)'=='AMD64' or '$(PROCESSOR_ARCHITECTURE)'=='ARM64')" Command="BuildWin.bat $(Configuration) $(MSBuildProjectDirectory)\$(OutDir)" WorkingDirectory="..\FullInt.Asm" />
+    <Exec Condition="'$(RuntimeIdentifier)'=='linux-x64' Or '$(RuntimeIdentifier)'=='linux-arm64'" Command="BuildLinux.bat" WorkingDirectory="../FullInt.Asm" />
+    <Exec Condition="'$(RuntimeIdentifier)'=='osx-x64' Or '$(RuntimeIdentifier)'=='osx-arm64'" Command="../FullInt.Asm/BuildMac.bat" />
+   
+  </Target>
+
+    <ItemGroup>
+       <None Include="$(OutDir)\FullIntOperations_win_x64.dll">
+		   <Link>FullIntOperations_win_x64.dll</Link>
+         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+       </None>
+    </ItemGroup>
+    <ItemGroup>
+       <None Include="$(OutDir)\FullIntOperations_win_x64.pdb">
+		   <Link>FullIntOperations_win_x64.pdb</Link>
+         <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+       </None>
+    </ItemGroup>
+</Project>

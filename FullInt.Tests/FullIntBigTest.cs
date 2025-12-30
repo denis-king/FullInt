@@ -391,7 +391,7 @@ namespace FullInt.Tests
                 {
                     sign = false;
                 }
-                fullintC[i] = new FullInt64(sign, _engine.deleteZeros(resultBuf).ToArray(), isDec ? toBase.dec : toBase.hex);
+                fullintC[i] = new FullInt64(sign, FullHelper.DeleteZeros(resultBuf).ToArray(), isDec ? toBase.dec : toBase.hex);
                 for (int j = 0; j < remainderBuf.Length; j++) remainderBuf[j] = 0;
                 //remainder = new FullInt64(value1.Sing, deleteZeros(remainderBuf).ToArray(), Base);
 

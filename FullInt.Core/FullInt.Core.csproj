@@ -6,13 +6,10 @@
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
   </PropertyGroup>
 
+ 
+
   <ItemGroup>
-    <None Include="..\..\..\..\..\..\ASM\128Operations.dll" Link="128Operations.dll">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Include="D:\NASM\FullIntOperations.dll" Link="FullIntOperations.dll">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
+    <ProjectReference Include="..\FullInt.AsmForNet\FullInt.AsmForNet.csproj" />
   </ItemGroup>
 
 </Project>

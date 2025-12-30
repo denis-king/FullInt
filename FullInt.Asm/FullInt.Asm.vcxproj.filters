@@ -18,31 +18,43 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <MASM Include="128Operations.asm">
-      <Filter>Source Files</Filter>
-    </MASM>
-    <MASM Include="Sources\x64\Add.asm">
-      <Filter>Source Files\x64</Filter>
-    </MASM>
-    <MASM Include="Sources\x64\Div.asm">
-      <Filter>Source Files\x64</Filter>
-    </MASM>
-    <MASM Include="Sources\x64\Mult.asm">
-      <Filter>Source Files\x64</Filter>
-    </MASM>
-    <MASM Include="Sources\x64\NativeOperation.asm">
-      <Filter>Source Files\x64</Filter>
-    </MASM>
-    <MASM Include="Sources\x64\Sub.asm">
-      <Filter>Source Files\x64</Filter>
-    </MASM>
-    <MASM Include="Sources\x64\test.asm">
-      <Filter>Source Files\x64</Filter>
-    </MASM>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="Compile.bat">
+    <None Include="BuidNasm.bat">
       <Filter>Source Files</Filter>
     </None>
+    <None Include="BuildLinux.bat">
+      <Filter>Source Files</Filter>
+    </None>
+    <None Include="BuildMac.bat">
+      <Filter>Source Files</Filter>
+    </None>
+    <None Include="BuildWin.bat">
+      <Filter>Source Files</Filter>
+    </None>
+    <None Include="Sources\x64\Add.asm">
+      <Filter>Source Files</Filter>
+    </None>
+    <None Include="Sources\x64\Div.asm">
+      <Filter>Source Files</Filter>
+    </None>
+    <None Include="Sources\x64\Mult.asm">
+      <Filter>Source Files</Filter>
+    </None>
+    <None Include="Sources\x64\NativeOperation.asm">
+      <Filter>Source Files</Filter>
+    </None>
+    <None Include="Sources\x64\Sub.asm">
+      <Filter>Source Files</Filter>
+    </None>
+    <None Include="Sources\x64\test.asm">
+      <Filter>Source Files</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <MASM Include="Sources\x64\Compare.asm">
+      <Filter>Source Files\x64</Filter>
+    </MASM>
+    <MASM Include="Sources\x64\Div2Long.asm">
+      <Filter>Source Files\x64</Filter>
+    </MASM>
   </ItemGroup>
 </Project>

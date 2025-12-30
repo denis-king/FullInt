@@ -101,6 +101,45 @@ namespace FullInt.Core
             }
         }
 		
+		public void Div(Span<ulong> dividend, ulong divisor, Span<ulong> quotient, out ulong remainder)
+        {
+			unsafe
+            {
+                ref ulong rA = ref MemoryMarshal.GetReference(dividend);
+                ref ulong rQ = ref MemoryMarshal.GetReference(quotient);
+
+                fixed (ulong* pA = &rA)
+                fixed (ulong* pQ = &rQ)
+                {
+                    IntPtr ipA = (IntPtr)pA;
+                    IntPtr ipQ = (IntPtr)pQ;
+                    Div(ipA, divisor, ipQ, out remainder, dividend.Length);
+                }
+            }
+        }
+		
 		protected abstract void Div(IntPtr a, IntPtr b, IntPtr q, IntPtr r, int lenA, int lenB);
+		protected abstract void Div(IntPtr a, ulong b, IntPtr q, out ulong r, int lenA);
+		
+		public int Compare(Span<ulong> a, Span<ulong> b)
+		{
+			int compareResult;
+            unsafe
+            {
+                ref ulong rA = ref MemoryMarshal.GetReference(a);
+                ref ulong rB = ref MemoryMarshal.GetReference(b);
+
+                fixed (ulong* pA = &rA)
+                fixed (ulong* pB = &rB)
+                {
+                    IntPtr ipA = (IntPtr)pA;
+                    IntPtr ipB = (IntPtr)pB;
+                    compareResult = Compare(ipA, ipB, a.Length, b.Length);
+                }
+            }
+            return compareResult;
+		}
+		
+		protected abstract int Compare(IntPtr a, IntPtr b, int lenA, int lenB);
     }
 }

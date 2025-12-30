@@ -10,5 +10,8 @@ namespace FullInt.Core
         int Sub(Span<ulong> a, Span<ulong> b, Span<ulong> r);
 		void Mult(Span<ulong> a, Span<ulong> b, Span<ulong> r);
 		void Div(Span<ulong> dividend, Span<ulong> divisor, Span<ulong> quotient, Span<ulong> remainder);
+		void Div(Span<ulong> dividend, ulong divisor, Span<ulong> quotient, out ulong remainder);
+		
+		int Compare(Span<ulong> a, Span<ulong> b);
     }
 }
