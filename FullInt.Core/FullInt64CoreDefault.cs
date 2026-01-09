@@ -561,5 +561,10 @@ namespace FullInt.Core
                 
             return result;
 		}
+        
+        public void ToDecString(Span<ulong> value, Span<byte> resultBuf, out int resultStartIndex)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

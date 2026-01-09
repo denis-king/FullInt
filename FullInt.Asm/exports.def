@@ -20,3 +20,6 @@ Fullint64Div2longWin
 
 Fullint64Compare
 Fullint64CompareWIN
+
+Fullint64ToDecString
+Fullint64ToDecStringWin

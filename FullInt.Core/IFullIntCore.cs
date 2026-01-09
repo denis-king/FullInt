@@ -13,5 +13,6 @@ namespace FullInt.Core
 		void Div(Span<ulong> dividend, ulong divisor, Span<ulong> quotient, out ulong remainder);
 		
 		int Compare(Span<ulong> a, Span<ulong> b);
+        void ToDecString(Span<ulong> value, Span<byte> resultBuf, out int resultStartIndex);
     }
 }

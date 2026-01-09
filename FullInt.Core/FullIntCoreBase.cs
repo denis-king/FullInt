@@ -141,5 +141,29 @@ namespace FullInt.Core
 		}
 		
 		protected abstract int Compare(IntPtr a, IntPtr b, int lenA, int lenB);
+        
+        public void ToDecString(Span<ulong> value, Span<byte> resultBuf, out int resultStartIndex)
+        {
+            Span<ulong> valueBuf = stackalloc ulong[value.Length];
+            resultStartIndex = resultBuf.Length; 
+            unsafe
+            {
+                ref ulong rValue = ref MemoryMarshal.GetReference(value);
+                ref ulong rValueBuf = ref MemoryMarshal.GetReference(valueBuf);
+                ref byte rResultBuf = ref MemoryMarshal.GetReference(resultBuf);
+
+                fixed (ulong* pValue = &rValue)
+                fixed (ulong* pValueBuf = &rValueBuf)
+                fixed (byte* pResultBuf = &rResultBuf)
+                {
+                    IntPtr ipValue = (IntPtr)pValue;
+                    IntPtr ipValueBuf = (IntPtr)pValueBuf;
+                    IntPtr ipResultBuf = (IntPtr)pResultBuf;
+                    ToDecString(ipValue, ipValueBuf, ipResultBuf, value.Length, ref resultStartIndex);
+                }
+            }
+        }
+        
+        protected abstract void ToDecString(IntPtr value, IntPtr valueBuf, IntPtr resultBuf, int lenValue, ref int lenResult);
     }
 }

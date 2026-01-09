@@ -5,6 +5,8 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Xml.Linq;
 using System.Linq;
+using System.Text;
+
 namespace FullInt.Core
 {
     public class FullInt64Engine
@@ -459,77 +461,104 @@ namespace FullInt.Core
 
             return result;
         }
-		
+		private string ToDecString(FullInt64 value)
+        {
+            Span<byte> resultBuf = stackalloc byte[(int)(value.value.Length * 1.014 + 1) * 19 + 1];
+            
+            _core.ToDecString(value.value, resultBuf, out var startPosition);
+            
+            if(value.Sing && startPosition > 0)
+            {
+                startPosition--;
+                resultBuf[startPosition] = (byte)'-';
+            }
+            return Encoding.ASCII.GetString(resultBuf.Slice(startPosition));
+        }
+        private string ToDHexString(FullInt64 value)
+        {
+            throw new NotImplementedException();
+        }
 		public String ToString(FullInt64 value, byte toBase)
         {
-            String result = "";
-            //var bytes = new Stack<byte>();
-            String prefix = string.Empty;
-            //FullInt64 value = new FullInt64(fullint);
-            
-            FullInt64 convertedValue = value;
-            Span<ulong> zero = stackalloc ulong[] { 0 };
-
-            if (value.Sing)
+            if (value.IsDec == false && toBase == 10)
             {
-                //value.Sing = false;
-                prefix += "-";
+                return ToDecString(value);
             }
-            if (toBase == 16)
+            else if (value.IsDec == false && toBase == 16)
             {
-                prefix += "0x";
-            }
-
-            //try to conver the base
-            if(toBase != (byte)(value.IsDec ? 10 : 16) && (toBase == 10 || toBase == 16))
-            {
-                convertedValue = ConvertToBase(value, (toBase)toBase);
-            }
-
-            if (toBase == (byte)(convertedValue.IsDec ? 10 : 16))
-            {
-                ulong v;
-                for (int i = 0; i < convertedValue.value.Length; i++)
-                {
-                    v = convertedValue.value[i];
-
-                    if (result.Length == 0)
-                    {
-                        //skip zeros exept the last iteration
-                        if (v != 0 || i == convertedValue.value.Length - 1)
-                        {
-                            result += toBase == 10 ? v.ToString() : v.ToString("X");
-                        }
-                    }
-                    else
-                    {
-                        result += toBase == 10 ? v.ToString("D19") : v.ToString("X16");
-                    }
-                       
-                }
+                return ToDHexString(value);
             }
             else
             {
-                var buffer = (ulong[])value.value.Clone();
-                if (CompareAbsInternal(buffer, zero) == 0)
-                {
-                    result = "0";
-                }
-                else 
-                { 
-                    while (CompareAbsInternal(buffer, zero) == 1)
-                    {
-                        //todo 
-                        ulong remainder;
+                String result = "";
+                //var bytes = new Stack<byte>();
+                String prefix = string.Empty;
+                //FullInt64 value = new FullInt64(fullint);
+                
+                FullInt64 convertedValue = value;
+                Span<ulong> zero = stackalloc ulong[] { 0 };
 
-                        div_internal(buffer, toBase, buffer, out remainder);//check if div in place works
-                        result = remainder.ToString((toBase == 10 ? "D" : "X")) + result;
+                if (value.Sing)
+                {
+                    //value.Sing = false;
+                    prefix += "-";
+                }
+                if (toBase == 16)
+                {
+                    prefix += "0x";
+                }
+
+                //try to conver the base
+                if(toBase != (byte)(value.IsDec ? 10 : 16) && (toBase == 10 || toBase == 16))
+                {
+                    convertedValue = ConvertToBase(value, (toBase)toBase);
+                }
+
+                if (toBase == (byte)(convertedValue.IsDec ? 10 : 16))
+                {
+                    ulong v;
+                    for (int i = 0; i < convertedValue.value.Length; i++)
+                    {
+                        v = convertedValue.value[i];
+
+                        if (result.Length == 0)
+                        {
+                            //skip zeros exept the last iteration
+                            if (v != 0 || i == convertedValue.value.Length - 1)
+                            {
+                                result += toBase == 10 ? v.ToString() : v.ToString("X");
+                            }
+                        }
+                        else
+                        {
+                            result += toBase == 10 ? v.ToString("D19") : v.ToString("X16");
+                        }
+                           
                     }
                 }
-               
-                //for (int i = 0; bytes.Count > 0; i++) result += bytes.Pop().ToString((toBase == 10 ? "D" : "X"));
+                else
+                {
+                    var buffer = (ulong[])value.value.Clone();
+                    if (CompareAbsInternal(buffer, zero) == 0)
+                    {
+                        result = "0";
+                    }
+                    else 
+                    { 
+                        while (CompareAbsInternal(buffer, zero) == 1)
+                        {
+                            //todo 
+                            ulong remainder;
+
+                            div_internal(buffer, toBase, buffer, out remainder);//check if div in place works
+                            result = remainder.ToString((toBase == 10 ? "D" : "X")) + result;
+                        }
+                    }
+                   
+                    //for (int i = 0; bytes.Count > 0; i++) result += bytes.Pop().ToString((toBase == 10 ? "D" : "X"));
+                }
+                return prefix + result;
             }
-            return prefix + result;
         }
 		#endregion
 	}
