@@ -1,0 +1,23 @@
+input 1,9140883139302788569,8148216680369618943 (8FFFFFFFFFFFFFFF,FFFFFFFFFFFFFFFF)
+
+iteration 1
+parsed 1
+loop 0 0 0
+add, 0 0 1
+
+iteration 2
+parsed 7edaf0c8e3800dd9 9140883139302788569
+
+mult 0 0 8ac7230489e80000
+add 0 1 09a213cd`6d680dd9
+
+iteration 3
+parsed 711447e65257ffff 8148216680369618943
+
+mult 
+subiterations:
+i1 0 1 8eebb819ada80000 (09a213cd`6d680dd9 * 8ac7230489e80000 = 538dcfb7617ffff(dx) 8eebb819ada80000(ax))
+i2 0 f675ddc000000000 8eebb819ada80000 (1 + 538dcfb7617ffff) * 8ac7230489e80000 = 2d4b70a330bbb85(dx) f675ddc000000000(ax)
+i3 2d4b70a330bbb85 f675ddc000000000 8eebb819ada80000 (added dx to hi word)
+
+add 2d4b70a330bbb85 f675ddc000000000 ffffffff`ffffffff (added parsed) no carries
