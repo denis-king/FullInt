@@ -165,5 +165,30 @@ namespace FullInt.Core
         }
         
         protected abstract void ToDecString(IntPtr value, IntPtr valueBuf, IntPtr resultBuf, int lenValue, ref int lenResult);
+
+        public void FromDecString(Span<byte> value, Span<ulong> resultBuf, out int resultStartIndex)
+        {
+            resultStartIndex = resultBuf.Length; 
+            Span<ulong> valueBuf = stackalloc ulong[value.Length / 19 + 1];
+            unsafe
+            {
+                ref byte rValue = ref MemoryMarshal.GetReference(value);
+                ref ulong rValueBuf = ref MemoryMarshal.GetReference(valueBuf);
+                ref ulong rResultBuf = ref MemoryMarshal.GetReference(resultBuf);
+
+                fixed (byte* pValue = &rValue)
+                fixed (ulong* pValueBuf = &rValueBuf)
+                fixed (ulong* pResultBuf = &rResultBuf)
+                {
+                    IntPtr ipValue = (IntPtr)pValue;
+                    IntPtr ipValueBuf = (IntPtr)pValueBuf;
+                    IntPtr ipResultBuf = (IntPtr)pResultBuf;
+                    FromDecString(ipValue, ipValueBuf, ipResultBuf, value.Length, ref resultStartIndex);
+                }
+            }
+        }
+        
+        protected abstract void FromDecString(IntPtr value, IntPtr valueBuf, IntPtr resultBuf, int lenValue, ref int lenResult);
+    
     }
 }

@@ -14,5 +14,6 @@ namespace FullInt.Core
 		
 		int Compare(Span<ulong> a, Span<ulong> b);
         void ToDecString(Span<ulong> value, Span<byte> resultBuf, out int resultStartIndex);
+        void FromDecString(Span<byte> value, Span<ulong> resultBuf, out int resultStartIndex);
     }
 }

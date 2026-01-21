@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 
 namespace FullInt.Core
 {
@@ -565,6 +566,66 @@ namespace FullInt.Core
         public void ToDecString(Span<ulong> value, Span<byte> resultBuf, out int resultStartIndex)
         {
             throw new NotImplementedException();
+        }
+        
+        public void FromDecString(Span<byte> value, Span<ulong> resultBuf, out int resultStartIndex)
+        {
+            const ulong BASE10 = 10000000000000000000UL; // 10^19
+
+            // --- Шаг 1. Парсинг строки в массив десятичных слов ---
+            int len = value.Length;
+            int firstBlockSize = len % 19;
+            if (firstBlockSize == 0) firstBlockSize = 19;
+
+            List<ulong> decBuf = new List<ulong>();
+            int pos = 0;
+
+            // Первый блок
+            ulong block = 0;
+            for (int i = 0; i < firstBlockSize; i++)
+                block = block * 10 + (ulong)(value[pos++] - (byte)'0');
+            decBuf.Add(block);
+
+            // Остальные блоки по 19 цифр
+            while (pos < len)
+            {
+                block = 0;
+                for (int i = 0; i < 19 && pos < len; i++)
+                    block = block * 10 + (ulong)(value[pos++] - (byte)'0');
+                decBuf.Add(block);
+            }
+
+            // --- Шаг 2. Многословное деление ---
+            int hexIndex = resultBuf.Length;
+
+            while (decBuf.Count > 0)
+            {
+                ulong remainder = 0;
+
+                for (int i = 0; i < decBuf.Count; i++)
+                {
+                    // block = remainder * BASE10 + decBuf[i]
+                    ulong hi, lo;
+                    Mult128(remainder, BASE10, false, out hi, out lo);
+
+                    ulong blockLo = lo + decBuf[i];
+                    ulong blockHi = hi;
+                    if (blockLo < lo) blockHi++;
+
+                    // Делим на 2^64: hi = частное, lo = остаток
+                    decBuf[i] = blockHi;
+                    remainder = blockLo;
+                }
+
+                // Остаток = hex-слово
+                resultBuf[--hexIndex] = remainder;
+
+                // Убираем ведущие нули
+                while (decBuf.Count > 0 && decBuf[0] == 0)
+                    decBuf.RemoveAt(0);
+            }
+
+            resultStartIndex = hexIndex;
         }
     }
 }

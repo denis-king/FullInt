@@ -23,3 +23,6 @@ Fullint64CompareWIN
 
 Fullint64ToDecString
 Fullint64ToDecStringWin
+
+Fullint64FromDecString
+Fullint64FromDecStringWin

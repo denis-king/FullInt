@@ -29,7 +29,10 @@ namespace FullInt.Core
         
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern void Fullint64ToDecStringWin(IntPtr value, IntPtr valueBuf, IntPtr resultBuf, int lenValue, ref int lenResult);
-
+        
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern void Fullint64FromDecStringWin(IntPtr value, IntPtr valueBuf, IntPtr resultBuf, int lenValue, ref int lenResult);
+        
         protected override ulong Add(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR)
         {
             return Fullint64AddWIN(a, b, r, lenA, lenB, lenR);
@@ -63,6 +66,11 @@ namespace FullInt.Core
         protected override void ToDecString(IntPtr value, IntPtr valueBuf, IntPtr resultBuf, int lenValue, ref int lenResult)
         {
             Fullint64ToDecStringWin(value, valueBuf, resultBuf, lenValue, ref lenResult);
+        }
+        
+        protected override void FromDecString(IntPtr value, IntPtr valueBuf, IntPtr resultBuf, int lenValue, ref int lenResult)
+        {
+            Fullint64FromDecStringWin(value, valueBuf, resultBuf, lenValue, ref lenResult);
         }
     }
 }

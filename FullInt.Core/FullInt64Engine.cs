@@ -399,29 +399,39 @@ namespace FullInt.Core
 		
 		public FullInt64 ToFullInt64(String value)
         {
-           
+            
 
             bool s = false;
             byte Base = 10;
             //result.IsDec = true;
 
             if (value.Length == 0) value = "0";
-            if (value[0] == '-')
+            
+            var valueSpan = Encoding.ASCII.GetBytes(value).AsSpan();
+            
+            if (valueSpan[0] == 0x2D) //'-'
             {
                 s = true;
-                value = value.Remove(0, 1);
+                valueSpan = valueSpan.Slice(1);
             }
-            if (value.Length > 1 && value[0] == '0')
+            if (valueSpan.Length > 1 && valueSpan[0] == 0x30)
             {
                 Base = 8;
-                value = value.Remove(0, 1);
+                valueSpan = valueSpan.Slice(1);
             }
-            if (value.Length > 1 && value[0].ToString().ToLower() == "x")
+            if (valueSpan.Length > 1 && (valueSpan[0] == 0x58 || valueSpan[0] == 0x78)) //'x' or 'X'
             {
                 Base = 16;
                 //result.Base = toBase.hex;
-                value = value.Remove(0, 1);
+                valueSpan = valueSpan.Slice(1);
             }
+            if (Base == 10)
+            {
+                Span<ulong> resultBuf = stackalloc ulong[(int)(valueSpan.Length / 19 ) + 1];
+                _core.FromDecString(valueSpan, resultBuf, out var startPosition);
+                return new FullInt64(s, resultBuf.Slice(startPosition).ToArray(), toBase.hex);
+            }
+            value = Encoding.ASCII.GetString(valueSpan);
             FullInt64 result = new FullInt64(s, new ulong[0], (toBase)Base);
             int chunkSize = Base == 10 ? 19 : 16;
             if (Base == (byte)(result.IsDec ? 10 :16))
@@ -484,10 +494,10 @@ namespace FullInt.Core
             {
                 return ToDecString(value);
             }
-            else if (value.IsDec == false && toBase == 16)
-            {
-                return ToDHexString(value);
-            }
+            // else if (value.IsDec == false && toBase == 16)
+            // {
+                // return ToDHexString(value);
+            // }
             else
             {
                 String result = "";
