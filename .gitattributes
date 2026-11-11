@@ -61,3 +61,10 @@
 #*.PDF   diff=astextplain
 #*.rtf   diff=astextplain
 #*.RTF   diff=astextplain
+
+###############################################################################
+# Build scripts: cmd needs CRLF, bash needs LF
+###############################################################################
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.sh  text eol=lf

@@ -5,13 +5,24 @@ section .text
 global Fullint64FromDecStringWin
 Fullint64FromDecStringWin:
 	
+	; Win64 non-volatile registers used by the body (saved once per call)
+	push rdi
+	push rsi
+	push rbx
+	push r12
+	push r13
 	mov rdi, rcx ;originar value buff
 	mov rsi, rdx ;temp value buff
 	mov rcx, r8 ;result buf
-	mov rdx, r9 ;value lenth
-	mov r8, [rsp+28h] ;result lenth addr
-	
+	movsxd rdx, r9d ;value lenth (int)
+	mov r8, [rsp+50h] ;result lenth addr (28h + 5 pushes)
+
 	call Fullint64FromDecString
+	pop r13
+	pop r12
+	pop rbx
+	pop rsi
+	pop rdi
 	ret
 ;------------------------------------------------------------------------------------
 global Fullint64FromDecString
@@ -53,7 +64,7 @@ Fullint64FromDecString:
     jg .readLoop
 .readDone:    
     mov rdi, r10; value len
-    mov r10, [r8]; result len value
+    movsxd r10, dword [r8]; result len value (ref int: 4 bytes)
     
     ;srore rsi address
     mov r13, rsi
@@ -124,5 +135,5 @@ Fullint64FromDecString:
     xor r10, r10
 .done:
     
-    mov [r8], r10 ;retur the start position of the result chars
+    mov [r8], r10d ;retur the start position of the result chars (ref int: 4 bytes)
 	ret

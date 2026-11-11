@@ -158,6 +158,33 @@ namespace FullInt.Core
             return invertor(a);
         }
 
+        // bitwise, BigInteger semantics (negative numbers as two's complement)
+        public static FullInt64 operator &(FullInt64 a, FullInt64 b)
+        {
+            return _engine.and(a, b);
+        }
+        public static FullInt64 operator |(FullInt64 a, FullInt64 b)
+        {
+            return _engine.or(a, b);
+        }
+        // '^' is the power operator in FullInt64, so XOR is a method
+        public static FullInt64 Xor(FullInt64 a, FullInt64 b)
+        {
+            return _engine.xor(a, b);
+        }
+        public static FullInt64 operator ~(FullInt64 a)
+        {
+            return _engine.not(a);
+        }
+        public static FullInt64 operator <<(FullInt64 a, int shift)
+        {
+            return _engine.shiftLeft(a, shift);
+        }
+        public static FullInt64 operator >>(FullInt64 a, int shift)
+        {
+            return _engine.shiftRight(a, shift);
+        }
+
         public static implicit operator FullInt64(byte value)
         {
             return new FullInt64(value);

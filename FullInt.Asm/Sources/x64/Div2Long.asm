@@ -4,14 +4,19 @@ section .text
 
 global Fullint64Div2longWin
 Fullint64Div2longWin:
+	; Win64 non-volatile registers used by the body (saved once per call)
+	push rdi
+	push rsi
 	mov rdi, rcx ;dividend buf
 	mov rsi, rdx ;divisor long
 	mov rcx, r8 ;result len r8 - r9 + 1 and atleast 1
 	mov rdx, r9 ;remainder ref long
-	mov r8, [rsp+28h] ;lenDividend
-	
-	
+	movsxd r8, dword [rsp+38h] ;lenDividend (int; 28h + 2 pushes)
+
+
 	call Fullint64Div2long
+	pop rsi
+	pop rdi
 	ret
 
 global Fullint64Div2long

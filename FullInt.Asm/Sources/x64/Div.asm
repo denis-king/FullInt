@@ -4,14 +4,27 @@ section .text
 
 global Fullint64DivWin
 Fullint64DivWin:
+	; Win64 non-volatile registers used by the body (saved once per call, not in loops)
+	push rdi
+	push rsi
+	push rbx
+	push r12
+	push r13
+	push r14
 	mov rdi, rcx ;dividend
 	mov rsi, rdx ;divisor
 	mov rcx, r8 ;result len r8 - r9 + 1 and atleast 1
 	mov rdx, r9 ;remainder len r8 + 2
-	mov r8, [rsp+28h] ;lenDividend
-	mov r9, [rsp+30h] ;lenDivisor
-	
+	movsxd r8, dword [rsp+58h] ;lenDividend (int; 28h + 6 pushes)
+	movsxd r9, dword [rsp+60h] ;lenDivisor  (int; 30h + 6 pushes)
+
 	call Fullint64Div
+	pop r14
+	pop r13
+	pop r12
+	pop rbx
+	pop rsi
+	pop rdi
 	ret
 
 global Fullint64Div
@@ -33,7 +46,8 @@ Fullint64Div:
 	sub rax, r8
 	shl rax, 3 ; mul 8                                                                                                
 	add r11, rax ; now we skipe hi words, the buffer lenth from position is divident + 2
-.copyDividentToRemainderLoop: 
+	xor rcx, rcx ; loop index (rcx still held the result address here)
+.copyDividentToRemainderLoop:
 	mov rax, [rdi + rcx*8]
 	mov [r11+rcx*8+16], rax
 	inc rcx
@@ -114,7 +128,7 @@ Fullint64Div:
 	jnz .getU2
 	mov rax, [r11 + 16] ; Ulo
 	xor rdx, rdx ;Uhi
-	mov rcx, rax
+	xor ecx, ecx ; normalize by Dhi only (Ulo may be > Dhi; shld moves its top bits into Uhi)
 	jmp .getD1
 .getU2:
 	mov rdx, rax ; Uhi
@@ -130,16 +144,11 @@ Fullint64Div:
 	;store result
 	mov [r10], rax
 	add r10, 8
-	;store remainder
-	mov [r11 + 8], rdx
-	
-	;read and store the next work to lo reminder
-	mov rax, [rdi]
-	add rdi, 8
-	dec r8
-	mov [r11 + 16], rax
-	
-    jmp .mainLoop
+	;store remainder into the last window word; .readNexWord stops at the end
+	;of the dividend or shifts it up and loads the next word
+	mov qword [r11 + 8], 0 ; Uhi consumed by div
+	mov [r11 + 16], rdx
+	jmp .readNexWord
 	 
 .calcBit:	
 	;calc bit position
@@ -173,32 +182,38 @@ Fullint64Div:
     shld rbx, r14, cl    ; новый Dhi
     shld r14, rax, cl    ; новый Dlo
 
-;step1	
+;step1
 	mov rdx, r12 ; u2
 	mov rax, r13 ; u1
+	cmp rdx, rbx
+	jae .maxOverflow ; u2 >= Dhi: u2:u1 / Dhi does not fit 64 bits (#DE)
 	div rbx
-	
+
 	;exchange rax and r13
 	xor rax, r13
 	xor r13, rax ; resultMax to r13
 	xor rax, r13 ; u1 to ax
-	
+.minStep:
 	mov rdx, r12 ; u2
-	
+
+	cmp rbx, -1
+	je .step2 ; Dhi + 1 = 2^64: min = u2:u1 / 2^64 = u2, already in r12
 	inc rbx ; d2 + 1
 	div rbx
-	
+
 	mov r12, rax ; min result
-	
-	
+
+
 ;step2
+.step2:
 	cmp r12, r13
 	je .checkResult
-	
+
 	mov rcx, r13 ; max to cx
 	sub rcx, r12 ; max - min
 	inc rcx ; range
-	xor rdx, rdx 
+	jz .checkResult ; range = 2^64 (max = 2^64-1, min = 0): keep max, corrections below fix it
+	xor rdx, rdx
 	mov rax, 0ffffffffffffffffh ;ulong max value
 	div rcx ; 
 	; step in ax
@@ -210,6 +225,12 @@ Fullint64Div:
 	div rcx ; range offset in ax
 	
 	sub r13, rax ; max - offset
+	jc .clampMin ; offset > max
+	cmp r13, r12
+	jae .clampDone
+.clampMin:
+	mov r13, r12 ; never below min: the true digit is in [min, max]
+.clampDone:
 	mov rax, r13 ; result in ax
 	
 	;------------------------------
@@ -226,11 +247,14 @@ Fullint64Div:
 	sub [r11 + rcx*8 + 8], rax
 	sbb [r11 + rcx*8], rdx
 	sbb [r11 + rcx*8 - 8], rbx
-	
+	jc .calcBorrow ; rare: borrow runs past this word
+.calcBorrowDone:
+
 	dec rcx
 	jnz .calcRemainderLoop
-	
+
 	;check if reminder is negative
+.checkRemainder:
 	mov rax, [r11]   ; high word
 	test rax, rax
 	js .remainder_negative
@@ -261,15 +285,17 @@ Fullint64Div:
 	mov rax, [rsi + rcx*8 - 8] ;divisor
 	
 	sub [r11 + rcx*8 + 8], rax
-	sbb [r11 + rcx*8], rbx 
+	sbb [r11 + rcx*8], rbx
 	sbb [r11 + rcx*8 - 8], rbx
-	
+	jc .fixBorrow ; rare: borrow runs past this word
+.fixBorrowDone:
+
 	dec rcx
-	jnz .fixBiggerLoop  
-	
+	jnz .fixBiggerLoop
+
 	inc r13
 
-	jmp .storeResult	
+	jmp .checkRemainder ; candidate can be off by more than 1: check again
 
 .remainder_negative:
 	
@@ -282,13 +308,20 @@ Fullint64Div:
 	;mul r13
 	
 	add [r11 + rcx*8 + 8], rax
-	adc [r11 + rcx*8], rbx 
+	adc [r11 + rcx*8], rbx
 	adc [r11 + rcx*8 - 8], rbx
-	
+	jc .fixCarry ; rare: carry runs past this word
+.fixCarryDone:
+
 	dec rcx
-	jnz .fixNegativeLoop  
-	
+	jnz .fixNegativeLoop
+
 	dec r13
+	; still negative → add D once more; otherwise it is in [0, D) already
+	; (it was in (-D, 0) before adding D), no compare needed
+	mov rax, [r11]
+	test rax, rax
+	js .remainder_negative
 .storeResult:
 	;store result
 	mov [r10], r13
@@ -319,3 +352,43 @@ Fullint64Div:
 
 .done:
 	ret
+
+;------------------------------------------------------------------------------
+; cold paths: a borrow/carry ran past word [r11 + (rcx-1)*8];
+; push it further up the window, word by word, until it is absorbed or reaches [r11]
+; (rax is free here: it is reloaded at the start of every loop iteration)
+;------------------------------------------------------------------------------
+.maxOverflow: ; step1 with u2 >= Dhi: resultMax = 2^64 - 1
+	mov rax, r13 ; u1 to ax (same state as after the exchange)
+	mov r13, -1  ; resultMax
+	jmp .minStep
+
+.calcBorrow:
+	lea rax, [rcx - 2]
+.calcBorrowLoop:
+	test rax, rax
+	js .calcBorrowDone
+	sub qword [r11 + rax*8], 1
+	jnc .calcBorrowDone
+	dec rax
+	jmp .calcBorrowLoop
+
+.fixBorrow:
+	lea rax, [rcx - 2]
+.fixBorrowLoop:
+	test rax, rax
+	js .fixBorrowDone
+	sub qword [r11 + rax*8], 1
+	jnc .fixBorrowDone
+	dec rax
+	jmp .fixBorrowLoop
+
+.fixCarry:
+	lea rax, [rcx - 2]
+.fixCarryLoop:
+	test rax, rax
+	js .fixCarryDone
+	add qword [r11 + rax*8], 1
+	jnc .fixCarryDone
+	dec rax
+	jmp .fixCarryLoop

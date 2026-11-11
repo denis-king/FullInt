@@ -4,14 +4,23 @@ section .text
 
 global Fullint64ToDecStringWin
 Fullint64ToDecStringWin:
+	; Win64 non-volatile registers used by the body (saved once per call)
+	push rdi
+	push rsi
+	push rbx
+	push r12
 	mov rdi, rcx ;originar value buff
 	mov rsi, rdx ;temp value buff
 	mov rcx, r8 ;result buf
-	mov rdx, r9 ;value lenth
-	mov r8, [rsp+28h] ;result lenth addr
-	
-	
+	movsxd rdx, r9d ;value lenth (int)
+	mov r8, [rsp+48h] ;result lenth addr (28h + 4 pushes)
+
+
 	call Fullint64ToDecString
+	pop r12
+	pop rbx
+	pop rsi
+	pop rdi
 	ret
 
 global Fullint64ToDecString
@@ -29,7 +38,7 @@ Fullint64ToDecString:
 
 
     mov rdi, rdx; value len
-    mov r10, [r8]; result len value
+    movsxd r10, dword [r8]; result len value (ref int: 4 bytes)
    
 
 .mainLoop:
@@ -109,5 +118,5 @@ Fullint64ToDecString:
     jmp .storeZeroChars
     
 .done:
-    mov [r8], r10 ;retur the start position of the result chars
+    mov [r8], r10d ;retur the start position of the result chars (ref int: 4 bytes)
 	ret

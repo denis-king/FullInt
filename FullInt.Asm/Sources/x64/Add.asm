@@ -1,19 +1,30 @@
 
 default rel
-section .text
+section .text align=64
 
 ;WINDOWS wrapper
 global Fullint64AddWIN
 Fullint64AddWIN:
+	; Win64 non-volatile registers used by the body (saved once per call)
+	push rdi
+	push rsi
+	push r12
+	push r13
+	push r14
 	;transfor the windows ABI to the Linux/Mac ABI
 	mov rdi, rcx
 	mov rsi, rdx
 	mov rcx, r8
-	mov rdx, r9
-	mov r8, [rsp+28h]
-	mov r9, [rsp+30h]
-	
+	movsxd rdx, r9d             ; lenA (int)
+	movsxd r8, dword [rsp+50h]  ; lenB (int; 28h + 5 pushes)
+	movsxd r9, dword [rsp+58h]  ; lenR (int; 30h + 5 pushes)
+
 	call Fullint64Add
+	pop r14
+	pop r13
+	pop r12
+	pop rsi
+	pop rdi
 	ret
 
 ; void Fullint64Add(
@@ -23,6 +34,11 @@ Fullint64AddWIN:
 ; rdi=A, rsi=B, rcx=R, 
 ; rdx=LenA, r8=lenB, r9=lenR
 ; порядок: index 0 = MSW, index len-1 = LSW
+
+; Code placement: keep the body at offset 1Ch mod 64 (where it was before the
+; wrapper grew). The hot loop is placement-sensitive: other offsets measured
+; 10-30% slower on Zen 3. Padding sits after the wrapper's ret, never executed.
+	times (1Ch - ($ - $$)) & 63 int3
 global Fullint64Add
 Fullint64Add:
     ; Инициализация адресных счётчиков: ставим на "выход за конец"

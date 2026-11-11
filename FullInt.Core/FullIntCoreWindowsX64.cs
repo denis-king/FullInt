@@ -72,5 +72,35 @@ namespace FullInt.Core
         {
             Fullint64FromDecStringWin(value, valueBuf, resultBuf, lenValue, ref lenResult);
         }
+
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern int Fullint64AndWIN(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs);
+
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern int Fullint64OrWIN(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs);
+
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern int Fullint64XorWIN(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs);
+
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern void Fullint64ShlWIN(IntPtr a, IntPtr r, int lenA, int lenR, int shift);
+
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern void Fullint64ShrWIN(IntPtr a, IntPtr r, int lenA, int lenR, int shift);
+
+        protected override int And(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs)
+            => Fullint64AndWIN(a, b, r, lenA, lenB, lenR, signs);
+
+        protected override int Or(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs)
+            => Fullint64OrWIN(a, b, r, lenA, lenB, lenR, signs);
+
+        protected override int Xor(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs)
+            => Fullint64XorWIN(a, b, r, lenA, lenB, lenR, signs);
+
+        protected override void ShiftLeft(IntPtr a, IntPtr r, int lenA, int lenR, int shift)
+            => Fullint64ShlWIN(a, r, lenA, lenR, shift);
+
+        protected override void ShiftRight(IntPtr a, IntPtr r, int lenA, int lenR, int shift)
+            => Fullint64ShrWIN(a, r, lenA, lenR, shift);
     }
 }

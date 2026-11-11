@@ -329,6 +329,83 @@ namespace FullInt.Core
 
         #endregion
 		
+        #region bitwise
+        // BigInteger semantics: negative numbers behave as infinite two's complement.
+        public FullInt64 and(FullInt64 value1, FullInt64 value2) => bitwise(0, value1, value2);
+        public FullInt64 or(FullInt64 value1, FullInt64 value2) => bitwise(1, value1, value2);
+        public FullInt64 xor(FullInt64 value1, FullInt64 value2) => bitwise(2, value1, value2);
+
+        private FullInt64 bitwise(int op, FullInt64 value1, FullInt64 value2)
+        {
+            RequireBinary(value1, value2);
+            var a = FullHelper.DeleteZeros(value1.value);
+            var b = FullHelper.DeleteZeros(value2.value);
+            var r = new ulong[Math.Max(a.Length, b.Length) + 1];
+
+            int negative = op == 0 ? _core.And(a, value1.Sing, b, value2.Sing, r)
+                         : op == 1 ? _core.Or(a, value1.Sing, b, value2.Sing, r)
+                         : _core.Xor(a, value1.Sing, b, value2.Sing, r);
+
+            return Normalized(negative != 0, r);
+        }
+
+        // ~x = -x - 1
+        public FullInt64 not(FullInt64 value)
+        {
+            RequireBinary(value, value);
+            return sub(invertor(value), 1);
+        }
+
+        public FullInt64 shiftLeft(FullInt64 value, int shift)
+        {
+            RequireBinary(value, value);
+            if (shift < 0) return shiftRight(value, -shift);
+
+            var a = FullHelper.DeleteZeros(value.value);
+            var r = new ulong[a.Length + shift / 64 + 1];
+            _core.ShiftLeft(a, shift, r);
+            return Normalized(value.Sing, r);
+        }
+
+        // arithmetic shift: rounds toward negative infinity, like BigInteger
+        public FullInt64 shiftRight(FullInt64 value, int shift)
+        {
+            RequireBinary(value, value);
+            if (shift < 0) return shiftLeft(value, -shift);
+
+            var a = FullHelper.DeleteZeros(value.value);
+            bool isZero = a.Length == 1 && a[0] == 0;
+
+            if (!value.Sing || isZero)
+            {
+                var r = new ulong[Math.Max(a.Length - shift / 64, 1)];
+                _core.ShiftRight(a, shift, r);
+                return Normalized(false, r);
+            }
+
+            // -|a| >> k = -(((|a| - 1) >> k) + 1)
+            var shifted = shiftRight(sub(abs(value), 1), shift);
+            return invertor(add(shifted, 1));
+        }
+
+        private static FullInt64 invertor(FullInt64 value) => FullInt64.invertor(value);
+
+        private static FullInt64 Normalized(bool negative, Span<ulong> magnitude)
+        {
+            var m = FullHelper.DeleteZeros(magnitude);
+            bool isZero = m.Length == 1 && m[0] == 0;
+            return new FullInt64(negative && !isZero, m.ToArray(), toBase.hex);
+        }
+
+        private static void RequireBinary(FullInt64 value1, FullInt64 value2)
+        {
+            if (value1.IsDec || value2.IsDec)
+            {
+                throw new NotSupportedException("Bitwise operations require binary (hex) values; convert with ConvertToBase(value, toBase.hex).");
+            }
+        }
+        #endregion
+
 		#region Convertations
 		
 		//maybe better to use only buffer in the param? and add abylity to suppor internal operation only with the buffers

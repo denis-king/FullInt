@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
 using System.Security.Cryptography;
+using System.Linq;
 using FullIntCore = FullInt.Core.FullInt64;
 
 namespace FullInt.Tests
@@ -32,7 +33,7 @@ namespace FullInt.Tests
             bool isNegative = (bytes[^1] & 0x80) != 0;
 
             byte[] workingBytes = new byte[(bytes.Length / 8 + (bytes.Length % 8 == 0 ? 0 : 1)) * 8];
-            Buffer.BlockCopy(bytes.Reverse().ToArray(), 0, workingBytes, workingBytes.Length - bytes.Length, bytes.Length);
+            Buffer.BlockCopy(Enumerable.Reverse(bytes).ToArray(), 0, workingBytes, workingBytes.Length - bytes.Length, bytes.Length);
 
             if (isNegative)
             {
@@ -54,7 +55,7 @@ namespace FullInt.Tests
 
             ulong[] result = workingBytes
                 .Chunk(8)
-                .Select(x => BitConverter.ToUInt64(x.Reverse().ToArray()))
+                .Select(x => BitConverter.ToUInt64(Enumerable.Reverse(x).ToArray()))
                 .ToArray();
 
             

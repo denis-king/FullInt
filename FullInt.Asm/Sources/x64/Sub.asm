@@ -5,15 +5,30 @@ section .text
 ;WINDOWS wrapper
 global Fullint64SubWIN
 Fullint64SubWIN:
+	; Win64 non-volatile registers used by the body (saved once per call)
+	push rdi
+	push rsi
+	push rbx
+	push r12
+	push r13
+	push r14
+	push r15
 	;transfor the windows ABI to the Linux/Mac ABI
 	mov rdi, rcx
 	mov rsi, rdx
 	mov rcx, r8
-	mov rdx, r9
-	mov r8, [rsp+28h]
-	mov r9, [rsp+30h]
-	
+	movsxd rdx, r9d             ; lenA (int)
+	movsxd r8, dword [rsp+60h]  ; lenB (int; 28h + 7 pushes)
+	movsxd r9, dword [rsp+68h]  ; lenR (int; 30h + 7 pushes)
+
 	call Fullint64Sub
+	pop r15
+	pop r14
+	pop r13
+	pop r12
+	pop rbx
+	pop rsi
+	pop rdi
 	ret
 
 ; void Fullint64Add(

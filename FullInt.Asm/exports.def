@@ -26,3 +26,15 @@ Fullint64ToDecStringWin
 
 Fullint64FromDecString
 Fullint64FromDecStringWin
+
+Fullint64And
+Fullint64AndWIN
+Fullint64Or
+Fullint64OrWIN
+Fullint64Xor
+Fullint64XorWIN
+
+Fullint64Shl
+Fullint64ShlWIN
+Fullint64Shr
+Fullint64ShrWIN

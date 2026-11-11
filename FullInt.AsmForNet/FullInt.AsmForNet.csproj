@@ -1,40 +1,100 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
+  <!--
+    Builds the native assembly kernels (FullInt.Asm) for the target platform and flows
+    the resulting library to every project that references this one (directly or transitively).
+
+    Target platform = $(RuntimeIdentifier) if set, otherwise the build host.
+    Only RIDs listed in FullIntNativeSupportedRids are built; others get a warning and
+    the library runs on the managed fallback core.
+
+    Overrides (env or /p:):
+      FULLINT_NASM / FULLINT_LINK   tool paths for build-native.cmd
+      FullIntNativeRid=<rid>        build for a specific RID
+      FullIntSkipNative=true        do not build or copy native code
+  -->
+
   <PropertyGroup>
     <TargetFramework>netstandard2.1</TargetFramework>
     <IsPackable>false</IsPackable>
-    <PlatformTarget>AnyCPU</PlatformTarget>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <DebugType>none</DebugType>
+    <!-- this project has no C# sources -->
+    <NoWarn>$(NoWarn);CS2008</NoWarn>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
-    <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
-    <DebugType>none</DebugType>
+  <!-- ===================== target platform ===================== -->
+  <PropertyGroup>
+    <FullIntNativeSupportedRids>win-x64</FullIntNativeSupportedRids>
+
+    <FullIntNativeRid Condition="'$(FullIntNativeRid)' == ''">$(RuntimeIdentifier)</FullIntNativeRid>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
-    <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
-    <Optimize>False</Optimize>
-    <DebugType>none</DebugType>
-	  <SkipCompilerExecution>true</SkipCompilerExecution>
-  <IsPackable>false</IsPackable>
+  <PropertyGroup Condition="'$(FullIntNativeRid)' == ''">
+    <_FullIntHostOS Condition="$([MSBuild]::IsOSPlatform('Windows'))">win</_FullIntHostOS>
+    <_FullIntHostOS Condition="$([MSBuild]::IsOSPlatform('Linux'))">linux</_FullIntHostOS>
+    <_FullIntHostOS Condition="$([MSBuild]::IsOSPlatform('OSX'))">osx</_FullIntHostOS>
+    <_FullIntHostArch>$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)</_FullIntHostArch>
+    <_FullIntHostArch>$(_FullIntHostArch.ToLowerInvariant())</_FullIntHostArch>
+    <FullIntNativeRid>$(_FullIntHostOS)-$(_FullIntHostArch)</FullIntNativeRid>
   </PropertyGroup>
-  <Target Name="BuildAsm" AfterTargets="Build">
-    <Exec Condition="'$(OS)'=='Windows_NT' and ('$(PROCESSOR_ARCHITECTURE)'=='AMD64' or '$(PROCESSOR_ARCHITECTURE)'=='ARM64')" Command="BuildWin.bat $(Configuration) $(MSBuildProjectDirectory)\$(OutDir)" WorkingDirectory="..\FullInt.Asm" />
-    <Exec Condition="'$(RuntimeIdentifier)'=='linux-x64' Or '$(RuntimeIdentifier)'=='linux-arm64'" Command="BuildLinux.bat" WorkingDirectory="../FullInt.Asm" />
-    <Exec Condition="'$(RuntimeIdentifier)'=='osx-x64' Or '$(RuntimeIdentifier)'=='osx-arm64'" Command="../FullInt.Asm/BuildMac.bat" />
-   
+
+  <PropertyGroup>
+    <!-- os = first RID segment, arch = last (handles e.g. linux-musl-x64) -->
+    <FullIntNativeOS>$(FullIntNativeRid.Substring(0, $(FullIntNativeRid.IndexOf('-'))))</FullIntNativeOS>
+    <FullIntNativeArch>$(FullIntNativeRid.Substring($([MSBuild]::Add($(FullIntNativeRid.LastIndexOf('-')), 1))))</FullIntNativeArch>
+
+    <FullIntNativeSupported>false</FullIntNativeSupported>
+    <FullIntNativeSupported Condition="'$(FullIntSkipNative)' != 'true' and $([System.String]::Copy(';$(FullIntNativeSupportedRids);').Contains(';$(FullIntNativeRid);'))">true</FullIntNativeSupported>
+
+    <FullIntAsmDir>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', 'FullInt.Asm'))</FullIntAsmDir>
+    <FullIntNativeObjDir>$([MSBuild]::NormalizeDirectory('$(FullIntAsmDir)', 'obj', '$(FullIntNativeRid)', '$(Configuration)'))</FullIntNativeObjDir>
+    <FullIntNativeBinDir>$([MSBuild]::NormalizeDirectory('$(FullIntAsmDir)', 'bin', '$(FullIntNativeRid)', '$(Configuration)'))</FullIntNativeBinDir>
+
+    <FullIntNativeLibBase>FullIntOperations_$(FullIntNativeOS)_$(FullIntNativeArch)</FullIntNativeLibBase>
+    <FullIntNativeLibFile Condition="'$(FullIntNativeOS)' == 'win'">$(FullIntNativeLibBase).dll</FullIntNativeLibFile>
+    <FullIntNativeLibFile Condition="'$(FullIntNativeOS)' == 'linux'">lib$(FullIntNativeLibBase).so</FullIntNativeLibFile>
+    <FullIntNativeLibFile Condition="'$(FullIntNativeOS)' == 'osx'">lib$(FullIntNativeLibBase).dylib</FullIntNativeLibFile>
+    <FullIntNativeLibPath>$(FullIntNativeBinDir)$(FullIntNativeLibFile)</FullIntNativeLibPath>
+    <FullIntNativePdbPath>$(FullIntNativeBinDir)$(FullIntNativeLibBase).pdb</FullIntNativePdbPath>
+  </PropertyGroup>
+
+  <!-- ===================== build ===================== -->
+  <ItemGroup>
+    <FullIntNativeInput Include="$(FullIntAsmDir)Sources\**\*.asm;$(FullIntAsmDir)Sources\**\*.S" />
+    <FullIntNativeInput Include="$(FullIntAsmDir)exports.def;$(FullIntAsmDir)build\*" />
+  </ItemGroup>
+
+  <Target Name="FullIntBuildNative"
+          BeforeTargets="BeforeBuild"
+          Condition="'$(FullIntNativeSupported)' == 'true'"
+          Inputs="@(FullIntNativeInput);$(MSBuildThisFileFullPath)"
+          Outputs="$(FullIntNativeLibPath)">
+    <Exec Condition="'$(OS)' == 'Windows_NT'"
+          Command="call &quot;$(FullIntAsmDir)build\build-native.cmd&quot; $(Configuration) $(FullIntNativeArch) &quot;$(FullIntNativeObjDir.TrimEnd('\'))&quot; &quot;$(FullIntNativeBinDir.TrimEnd('\'))&quot;"
+          CustomErrorRegularExpression="(: error|^build-native: error)" />
+    <Exec Condition="'$(OS)' != 'Windows_NT'"
+          Command="bash &quot;$(FullIntAsmDir)build/build-native.sh&quot; $(Configuration) $(FullIntNativeOS) $(FullIntNativeArch) &quot;$(FullIntNativeObjDir)&quot; &quot;$(FullIntNativeBinDir)&quot;" />
   </Target>
 
-    <ItemGroup>
-       <None Include="$(OutDir)\FullIntOperations_win_x64.dll">
-		   <Link>FullIntOperations_win_x64.dll</Link>
-         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-       </None>
-    </ItemGroup>
-    <ItemGroup>
-       <None Include="$(OutDir)\FullIntOperations_win_x64.pdb">
-		   <Link>FullIntOperations_win_x64.pdb</Link>
-         <CopyToOutputDirectory>Never</CopyToOutputDirectory>
-       </None>
-    </ItemGroup>
+  <Target Name="FullIntNativeNotSupported"
+          BeforeTargets="BeforeBuild"
+          Condition="'$(FullIntNativeSupported)' != 'true' and '$(FullIntSkipNative)' != 'true'">
+    <Warning Code="FULLINT001"
+             Text="FullInt: no native backend for '$(FullIntNativeRid)' yet (supported: $(FullIntNativeSupportedRids)). The managed fallback core will be used." />
+  </Target>
+
+  <!-- ===================== flow to consumers ===================== -->
+  <ItemGroup Condition="'$(FullIntNativeSupported)' == 'true'">
+    <None Include="$(FullIntNativeLibPath)"
+          Link="$(FullIntNativeLibFile)"
+          CopyToOutputDirectory="PreserveNewest"
+          Visible="false" />
+    <None Include="$(FullIntNativePdbPath)"
+          Condition="'$(Configuration)' == 'Debug' and '$(FullIntNativeOS)' == 'win'"
+          Link="$(FullIntNativeLibBase).pdb"
+          CopyToOutputDirectory="PreserveNewest"
+          Visible="false" />
+  </ItemGroup>
+
 </Project>

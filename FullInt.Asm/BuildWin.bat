@@ -12,6 +12,11 @@ set SRC=Sources\x64
 set OBJ=Bin\Obj
 set DST=Bin
 
+if not exist "%OBJ%" mkdir "%OBJ%" 
+if not exist "%DST%" mkdir "%DST%"
+
+set LINK_X64="C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Tools\MSVC\14.50.35717\bin\Hostx64\x64\link.exe"
+
 echo === Compiling asm files (win64) %CONFIG% ===
 
 if "%CONFIG%"=="Debug" ( 
@@ -19,8 +24,9 @@ if "%CONFIG%"=="Debug" (
 		echo NASM %%f
 		..\Tools\nasm\nasm.exe -g -f win64 "%%f" -o "%OBJ%\%%~nf.obj"
 	)
-
-	link /DEBUG /dll /noentry /out:Bin\FullIntOperations_win_x64.dll %OBJ%\*.obj /def:exports.def
+	echo Linking...
+	
+	%LINK_X64% /DEBUG /dll /noentry /out:Bin\FullIntOperations_win_x64.dll %OBJ%\*.obj /def:exports.def
 	
 	echo copy FullIntOperations_win_x64.dll to %OUTDIR%
 	copy /Y Bin\FullIntOperations_win_x64.dll %OUTDIR%\FullIntOperations_win_x64.dll
@@ -31,8 +37,8 @@ if "%CONFIG%"=="Debug" (
 		echo NASM %%f
 		..\Tools\nasm\nasm.exe -f win64 "%%f" -o "%OBJ%\%%~nf.obj"
 	)
-
-	link /dll /noentry /out:Bin\FullIntOperations_win_x64.dll %OBJ%\*.obj /def:exports.def
+	echo Linking...
+	%LINK_X64% /dll /noentry /out:Bin\FullIntOperations_win_x64.dll %OBJ%\*.obj /def:exports.def
 	
 	echo copy FullIntOperations_win_x64.dll to %OUTDIR%
 	copy /Y Bin\FullIntOperations_win_x64.dll %OUTDIR%\FullIntOperations_win_x64.dll

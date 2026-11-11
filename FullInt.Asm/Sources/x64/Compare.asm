@@ -5,15 +5,22 @@ section .text
 ;WINDOWS wrapper
 global Fullint64CompareWIN
 Fullint64CompareWIN:
+	; Win64 non-volatile registers used by the body (saved once per call)
+	push rdi
+	push rsi
+	push rbx
 	;transfor the windows ABI to the Linux/Mac ABI
 	mov rdi, rcx
 	mov rsi, rdx
-	mov rcx, r8
-	mov rdx, r9
+	movsxd rcx, r8d             ; lenA (int)
+	movsxd rdx, r9d             ; lenB (int)
 	;mov r8, [rsp+28h]
 	;mov r9, [rsp+30h]
-	
+
 	call Fullint64Compare
+	pop rbx
+	pop rsi
+	pop rdi
 	ret
 
 global Fullint64Compare

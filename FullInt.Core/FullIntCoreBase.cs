@@ -189,6 +189,66 @@ namespace FullInt.Core
         }
         
         protected abstract void FromDecString(IntPtr value, IntPtr valueBuf, IntPtr resultBuf, int lenValue, ref int lenResult);
-    
+
+        #region bitwise
+        public int And(Span<ulong> a, bool negA, Span<ulong> b, bool negB, Span<ulong> r) => Bitwise(0, a, negA, b, negB, r);
+        public int Or(Span<ulong> a, bool negA, Span<ulong> b, bool negB, Span<ulong> r) => Bitwise(1, a, negA, b, negB, r);
+        public int Xor(Span<ulong> a, bool negA, Span<ulong> b, bool negB, Span<ulong> r) => Bitwise(2, a, negA, b, negB, r);
+
+        private unsafe int Bitwise(int op, Span<ulong> a, bool negA, Span<ulong> b, bool negB, Span<ulong> r)
+        {
+            if (a.Length < 1 || b.Length < 1 || r.Length < Math.Max(a.Length, b.Length) + 1)
+            {
+                throw new ArgumentException("Bitwise: operands must be non-empty and r.Length >= max(a.Length, b.Length) + 1");
+            }
+            int signs = (negA ? 1 : 0) | (negB ? 2 : 0);
+
+            fixed (ulong* pA = a)
+            fixed (ulong* pB = b)
+            fixed (ulong* pR = r)
+            {
+                switch (op)
+                {
+                    case 0: return And((IntPtr)pA, (IntPtr)pB, (IntPtr)pR, a.Length, b.Length, r.Length, signs);
+                    case 1: return Or((IntPtr)pA, (IntPtr)pB, (IntPtr)pR, a.Length, b.Length, r.Length, signs);
+                    default: return Xor((IntPtr)pA, (IntPtr)pB, (IntPtr)pR, a.Length, b.Length, r.Length, signs);
+                }
+            }
+        }
+
+        protected abstract int And(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs);
+        protected abstract int Or(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs);
+        protected abstract int Xor(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs);
+
+        public unsafe void ShiftLeft(Span<ulong> a, int shift, Span<ulong> r)
+        {
+            if (shift < 0 || a.Length < 1 || r.Length < a.Length + shift / 64 + 1)
+            {
+                throw new ArgumentException("ShiftLeft: shift >= 0, a non-empty, r.Length >= a.Length + shift / 64 + 1");
+            }
+            fixed (ulong* pA = a)
+            fixed (ulong* pR = r)
+            {
+                ShiftLeft((IntPtr)pA, (IntPtr)pR, a.Length, r.Length, shift);
+            }
+        }
+
+        public unsafe void ShiftRight(Span<ulong> a, int shift, Span<ulong> r)
+        {
+            if (shift < 0 || a.Length < 1 || r.Length < Math.Max(a.Length - shift / 64, 1))
+            {
+                throw new ArgumentException("ShiftRight: shift >= 0, a non-empty, r.Length >= max(a.Length - shift / 64, 1)");
+            }
+            fixed (ulong* pA = a)
+            fixed (ulong* pR = r)
+            {
+                ShiftRight((IntPtr)pA, (IntPtr)pR, a.Length, r.Length, shift);
+            }
+        }
+
+        protected abstract void ShiftLeft(IntPtr a, IntPtr r, int lenA, int lenR, int shift);
+        protected abstract void ShiftRight(IntPtr a, IntPtr r, int lenA, int lenR, int shift);
+        #endregion
+
     }
 }

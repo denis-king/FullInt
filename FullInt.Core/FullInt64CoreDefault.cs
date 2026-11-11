@@ -627,5 +627,91 @@ namespace FullInt.Core
 
             resultStartIndex = hexIndex;
         }
+
+        #region bitwise (managed reference of Logic.asm / Shift.asm)
+        public int And(Span<ulong> a, bool negA, Span<ulong> b, bool negB, Span<ulong> r) => Bitwise(0, a, negA, b, negB, r);
+        public int Or(Span<ulong> a, bool negA, Span<ulong> b, bool negB, Span<ulong> r) => Bitwise(1, a, negA, b, negB, r);
+        public int Xor(Span<ulong> a, bool negA, Span<ulong> b, bool negB, Span<ulong> r) => Bitwise(2, a, negA, b, negB, r);
+
+        private static ulong Op(int op, ulong x, ulong y) => op == 0 ? x & y : op == 1 ? x | y : x ^ y;
+
+        private static int Bitwise(int op, Span<ulong> a, bool negA, Span<ulong> b, bool negB, Span<ulong> r)
+        {
+            if (a.Length < 1 || b.Length < 1 || r.Length < Math.Max(a.Length, b.Length) + 1)
+            {
+                throw new ArgumentException("Bitwise: operands must be non-empty and r.Length >= max(a.Length, b.Length) + 1");
+            }
+
+            // two's complement on the fly: t = (word ^ mask) + carry
+            ulong maskA = negA ? ulong.MaxValue : 0UL, carryA = negA ? 1UL : 0UL;
+            ulong maskB = negB ? ulong.MaxValue : 0UL, carryB = negB ? 1UL : 0UL;
+            ulong maskR = Op(op, maskA, maskB), carryR = maskR & 1UL;
+
+            int ia = a.Length, ib = b.Length;
+            for (int ir = r.Length - 1; ir >= 0; ir--)
+            {
+                ulong wa = (ia > 0 ? a[--ia] : 0UL) ^ maskA;
+                ulong ta = wa + carryA;
+                carryA = ta < wa ? 1UL : 0UL;
+
+                ulong wb = (ib > 0 ? b[--ib] : 0UL) ^ maskB;
+                ulong tb = wb + carryB;
+                carryB = tb < wb ? 1UL : 0UL;
+
+                ulong w = Op(op, ta, tb) ^ maskR;
+                ulong tr = w + carryR;
+                carryR = tr < w ? 1UL : 0UL;
+                r[ir] = tr;
+            }
+            return (int)(maskR & 1UL);
+        }
+
+        public void ShiftLeft(Span<ulong> a, int shift, Span<ulong> r)
+        {
+            int ws = shift >> 6, s = shift & 63;
+            if (shift < 0 || a.Length < 1 || r.Length < a.Length + ws + 1)
+            {
+                throw new ArgumentException("ShiftLeft: shift >= 0, a non-empty, r.Length >= a.Length + shift / 64 + 1");
+            }
+            int lead = r.Length - (a.Length + 1 + ws);
+            int k = 0;
+            for (; k < lead; k++) r[k] = 0;
+
+            ulong prev = 0;
+            for (int i = 0; i < a.Length; i++)
+            {
+                ulong cur = a[i];
+                r[k++] = s == 0 ? prev : (prev << s) | (cur >> (64 - s));
+                prev = cur;
+            }
+            r[k++] = prev << s;
+            for (; k < r.Length; k++) r[k] = 0;
+        }
+
+        public void ShiftRight(Span<ulong> a, int shift, Span<ulong> r)
+        {
+            int ws = shift >> 6, s = shift & 63;
+            if (shift < 0 || a.Length < 1 || r.Length < Math.Max(a.Length - ws, 1))
+            {
+                throw new ArgumentException("ShiftRight: shift >= 0, a non-empty, r.Length >= max(a.Length - shift / 64, 1)");
+            }
+            int count = a.Length - ws;
+            if (count <= 0)
+            {
+                r.Clear();
+                return;
+            }
+            int lead = r.Length - count;
+            for (int k = 0; k < lead; k++) r[k] = 0;
+
+            ulong prev = 0;
+            for (int i = 0; i < count; i++)
+            {
+                ulong cur = a[i];
+                r[lead + i] = s == 0 ? cur : (cur >> s) | (prev << (64 - s));
+                prev = cur;
+            }
+        }
+        #endregion
     }
 }
