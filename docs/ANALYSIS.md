@@ -51,7 +51,7 @@
 
 | # | Серьёзность | Где | Проблема |
 |---|---|---|---|
-| C1 | 🔴 | [FullInt64CoreDefault.cs](../FullInt.Core/FullInt64CoreDefault.cs) | Fallback-ядро не работает: `Div128`, `Normalize3Words`, `ToDecString` бросают `NotImplementedException`; в `FromDecString` перепутаны `out hi`/`out lo` при вызове `Mult128`. Поскольку `FullIntCoreFactory` для всех платформ, кроме Win x64, отдаёт этот fallback, **на Linux, macOS и ARM деление, `%`, `ToString(10)` и разбор строк не работают**. |
+| C1 | ✅ исправлено | [FullInt64CoreDefault.cs](../FullInt.Core/FullInt64CoreDefault.cs) | Fallback дописан: `Div128` (Hacker's Delight `divlu`, т.к. `netstandard2.1` без `UInt128`), многословное деление — перенос исправленного `Div.asm` один в один, деление на слово как `Div2Long`, `ToDecString`; исправлены `hi/lo` в `FromDecString`, пропуск индекса в `Mult` при нулевом слове, потеря заёма в `Sbb64`. `FULLINT_FORCE_MANAGED=1` прогоняет все тесты на нём: результаты совпадают с asm. |
 | C2 | 🔴 | [FullIntCoreBase.cs:142,163](../FullInt.Core/FullIntCoreBase.cs#L142), [FullInt64Engine.cs:430,476](../FullInt.Core/FullInt64Engine.cs#L430) | `stackalloc` с размером, зависящим от входа, без порога. Для числа в ~1 млн цифр `ToDecString` просит ~1 МБ стека → `StackOverflowException`, который нельзя поймать и который роняет процесс. Для библиотеки «бесконечно длинных чисел» это критично. Нужен порог (≈ 256–512 слов) → `ArrayPool<ulong>`. |
 | C3 | 🟠 | [FullInt64.cs:88-91](../FullInt.Core/FullInt64.cs#L88-L91) | `GetHashCode()` берёт хеш **ссылки** на массив: равные числа дают разные хеши → `Dictionary`/`HashSet` ломаются. |
 | C4 | 🟠 | [FullInt64.cs:76-86](../FullInt.Core/FullInt64.cs#L76-L86) | `Equals(object)` для упакованного `int/long/byte` делает `(FullInt64)obj` — это unboxing-каст, а не пользовательское преобразование → `InvalidCastException`. |
@@ -155,10 +155,19 @@ public readonly struct FullInteger :           // имя на выбор
 
 ## 6. План работ
 
+### ⏭️ Следующий шаг (отложено): прогон тестов на других платформах
+Managed fallback готов и проверен только на Windows x64 через `FULLINT_FORCE_MANAGED=1`. Нужно прогнать **весь** набор тестов на настоящих платформах, где фабрика сама выбирает fallback:
+- Docker `linux/amd64` — нативная скорость на этой машине;
+- Docker `linux/arm64` — эмуляция QEMU в Docker Desktop (медленно, но достаточно);
+- позже, в CI: macOS (Docker не умеет), `win-arm64`, 32-битные (`win-x86`, `linux-arm`).
+
+Команды — в [PLATFORMS.md § Testing on other platforms](PLATFORMS.md#testing-on-other-platforms). Ожидаемый результат: тот же, что на Windows (сейчас 126/128, без `BigTestDec*`).
+
 ### Фаза 0 — стабилизация (до любых публикаций)
-1. A1, A3: исправить `Div.asm`, сохранять регистры в прологах/эпилогах, добавить unwind-информацию.
-2. A2: переписать оценку `q̂` по алгоритму D Кнута.
-3. B1, B2: `vswhere`, корректный путь к `.bat`, сборка одной командой `dotnet build`.
+1. ✅ A1, A3: исправлен `Div.asm`, регистры сохраняются в обёртках. Осталось: unwind-информация.
+2. ✅ A2: деление исправлено точечно в схеме автора (не классический Кнут).
+3. ✅ B1, B2: `vswhere`, сборка одной командой `dotnet build`.
+4. ✅ Managed fallback дописан, все тесты гоняются на обоих ядрах.
 4. C2: пороги `stackalloc` → `ArrayPool`.
 5. Тесты: фиксированный seed + случайный seed с логированием, 1000+ итераций в «long»-категории, граничные случаи, ночной fuzz против `BigInteger`.
 

@@ -7,124 +7,6 @@ namespace FullInt.Core
     {
         private static toBase Base = toBase.hex;
 
-        private void Normalize3Words(ref ulong d0, ref ulong d1, ulong d2, ref ulong u0, ref ulong u1, ulong u2)
-        {
-            throw new NotImplementedException();
-        }
-
-        private ulong FindDivisionCandidate(Span<ulong> partDividend, Span<ulong> divisor, toBase Base)
-        {
-            ulong hiDividend;
-            ulong loDividend;
-
-            ulong result;
-            ulong resultMin;
-            ulong resultMax;
-
-            divisor = FullHelper.DeleteZeros(divisor);
-            partDividend = FullHelper.DeleteZeros(partDividend);
-            
-            
-            // --- подготовка делителя ---
-            ulong D0, D1, D2;
-            if (divisor.Length >= 3)
-            {
-                D0 = divisor[0];
-                D1 = divisor[1];
-                D2 = divisor[2];
-            }
-            else if (divisor.Length == 2)
-            {
-                D0 = divisor[0];
-                D1 = divisor[1];
-                D2 = 0UL;
-            }
-            else if (divisor.Length == 1)
-            {
-                D0 = divisor[0];
-                D1 = 0UL;
-                D2 = 0UL;
-            }
-            else
-            {
-                // нет ни одного слова делителя — в твоей логике это недопустимо
-                throw new ArgumentException("Divisor must contain at least one word");
-            }
-
-            // --- подготовка делимого ---
-            ulong U0, U1, U2;
-            if (partDividend.Length >= 3)
-            {
-                U0 = partDividend[0];
-                U1 = partDividend[1];
-                U2 = partDividend[2];
-            }
-            else if (partDividend.Length == 2)
-            {
-                U0 = partDividend[0];
-                U1 = partDividend[1];
-                U2 = 0UL;
-            }
-            else if (partDividend.Length == 1)
-            {
-                U0 = partDividend[0];
-                U1 = 0UL;
-                U2 = 0UL;
-            }
-            else
-            {
-                U0 = 0UL; U1 = 0UL; U2 = 0UL;
-            }
-            if (Base == toBase.dec)
-            {
-                //todo придумать десятичную нормализацию методом сдвигов десятками умножение на степень 10 
-                //это дороже но пусть будет для совместимости и дебага
-            }
-            else
-            {
-                
-            }
-
-            Normalize3Words(ref D0, ref D1, D2, ref U0, ref U1, U2);
-            
-            //firs step
-            if (U0 < D0)
-            {
-                hiDividend = U0;
-                loDividend = U1;
-                
-                ////dec correction
-                //if (Base == toBase.dec)
-                //{
-                //    //byte carry = 0;
-                //    loDividend = Mul128(hiDividend, FullInt64.maxDecCapasity, out hiDividend) + loDividend;
-                //    //hiDividend += carry;
-                //}
-            }
-            else
-            {
-                hiDividend = 0;
-                loDividend = U0;
-            }
-            resultMin = Div128(hiDividend, loDividend, D0 + 1, out _);
-            resultMax = Div128(hiDividend, loDividend, D0, out _);
-
-            result = resultMax;
-
-            if (resultMin == resultMax)
-            {
-                return result;
-            }
-
-            //step 2
-           
-            var range = resultMax - resultMin + 1;
-            var step = (Base == toBase.dec ? FullInt64.maxDecValue : ulong.MaxValue) / range;
-            result -= D1 / step;
-
-            return result;
-            
-        }
 
         protected virtual void Mult128(ulong x, ulong y, bool isDec, out ulong lo, out ulong hi)
         {
@@ -161,10 +43,61 @@ namespace FullInt.Core
             }
         }
 
+        // (hi:lo) / divisor, requires hi < divisor (quotient fits 64 bits) — same contract as x64 `div r64`.
+        // netstandard2.1 has no UInt128 / Math.BigMul, so this is Hacker's Delight `divlu`
+        // (two 64/32 steps on a normalized divisor).
         protected virtual ulong Div128(ulong hi, ulong lo, ulong divisor, out ulong remainder)
         {
-            throw new NotImplementedException();
+            if (divisor == 0) throw new DivideByZeroException();
+            if (hi >= divisor) throw new OverflowException("Div128: quotient does not fit 64 bits");
+
+            const ulong b = 1UL << 32;
+            int s = LeadingZeroCount(divisor);
+            ulong v = divisor << s;
+            ulong vn1 = v >> 32, vn0 = v & 0xFFFFFFFF;
+
+            ulong un32 = s == 0 ? hi : (hi << s) | (lo >> (64 - s));
+            ulong un10 = lo << s;
+            ulong un1 = un10 >> 32, un0 = un10 & 0xFFFFFFFF;
+
+            ulong q1 = un32 / vn1;
+            ulong rhat = un32 - q1 * vn1;
+            while (q1 >= b || q1 * vn0 > b * rhat + un1)
+            {
+                q1--;
+                rhat += vn1;
+                if (rhat >= b) break;
+            }
+
+            ulong un21 = un32 * b + un1 - q1 * v;
+            ulong q0 = un21 / vn1;
+            rhat = un21 - q0 * vn1;
+            while (q0 >= b || q0 * vn0 > b * rhat + un0)
+            {
+                q0--;
+                rhat += vn1;
+                if (rhat >= b) break;
+            }
+
+            remainder = (un21 * b + un0 - q0 * v) >> s;
+            return q1 * b + q0;
         }
+
+        private static int LeadingZeroCount(ulong x)
+        {
+            if (x == 0) return 64;
+            int n = 0;
+            if (x <= 0x0000_0000_FFFF_FFFFUL) { n += 32; x <<= 32; }
+            if (x <= 0x0000_FFFF_FFFF_FFFFUL) { n += 16; x <<= 16; }
+            if (x <= 0x00FF_FFFF_FFFF_FFFFUL) { n += 8; x <<= 8; }
+            if (x <= 0x0FFF_FFFF_FFFF_FFFFUL) { n += 4; x <<= 4; }
+            if (x <= 0x3FFF_FFFF_FFFF_FFFFUL) { n += 2; x <<= 2; }
+            if (x <= 0x7FFF_FFFF_FFFF_FFFFUL) { n += 1; }
+            return n;
+        }
+
+        // shld dst, src, s  (s = 0..63)
+        private static ulong Shld(ulong dst, ulong src, int s) => s == 0 ? dst : (dst << s) | (src >> (64 - s));
         protected virtual ulong Adc64(ulong a, ulong b, ref byte carry)
         {
             //save adding two ulongs and carry
@@ -179,7 +112,7 @@ namespace FullInt.Core
         {
             ulong sum = 0;
             ulong baseMaxValue = Base == toBase.dec ? FullInt64.maxDecValue : ulong.MaxValue;
-            if (a < b + borrow)
+            if (a < b || a - b < borrow) // not `a < b + borrow`: b + borrow overflows for b = MaxValue
             {
                 sum = baseMaxValue - b - borrow + a + 1;
                 borrow = 1;
@@ -231,187 +164,231 @@ namespace FullInt.Core
             return carry;
         }
 
+		
+
+        #region division (managed mirror of Div.asm / Div2Long.asm)
+
+        // Same algorithm and buffer contract as Div.asm, so both cores produce identical results:
+        //   remainder: n + 2 words, [0] sign word, [1 .. n+1] working window, result in [2 .. n+1]
+        //   quotient:  max(m - n + 1, 1) words, MSW first
+        //   divisor[0] != 0 (normalized)
+        // Digit estimate: q_min = U/(Dhi+1), q_max = U/Dhi, interpolation by the next divisor word,
+        // clamped to [q_min, q_max], then corrected until exact.
         public void Div(Span<ulong> dividend, Span<ulong> divisor, Span<ulong> quotient, Span<ulong> remainder)
         {
-            if (Compare(divisor, stackalloc ulong[] {0}) == 0)
+            if (Compare(divisor, stackalloc ulong[] { 0 }) == 0)
             {
                 throw new System.DivideByZeroException();
             }
 
-            int bytesIndex = 0;
-            bool isInit = true;
+            int m = dividend.Length, n = divisor.Length;
+            var R = remainder.Slice(0, n + 2);
+            R.Clear();
 
-            Span<ulong> partDividend = remainder.Slice(1);
-
-            Span<ulong> partResult = stackalloc ulong[] { 0UL };
-
-            Span<ulong> divMult = divisor.Length <= 1024
-                ? stackalloc ulong[partDividend.Length]
-                : new ulong[partDividend.Length];
-
-            
-
-            var remainderSing = false;
-            //пропуск старших нулей операндов
-            int zeros1 = 0, zeros2 = 0; //todo use span slice to awoid zeros
-            dividend = FullHelper.DeleteZeros(dividend);
-            divisor = FullHelper.DeleteZeros(divisor);
-
-            if (isInit)
+            if (m < n)
             {
-                if (dividend.Length >= divisor.Length)
-                {
-                    partDividend = dividend.Slice(0, divisor.Length);
-                    zeros1 += divisor.Length;
-                    if (Compare(partDividend, divisor) == -1)
-                    {
-                        partDividend = dividend.Slice(zeros1 - divisor.Length, divisor.Length + 1);
-                        zeros1++;
-                    }
-                }
-                else
-                {
-                    partDividend = dividend;
-                    zeros1 += dividend.Length;
-                }
+                dividend.CopyTo(R.Slice(n + 2 - m)); // copy first: quotient may alias dividend
+                quotient[0] = 0;
+                return;
             }
 
+            dividend.Slice(0, n).CopyTo(R.Slice(2));
+            int pos = n, qi = 0;
 
-            while (dividend.Length - zeros1 > 0 || isInit)
+            while (true)
             {
-
-                //если делимое меньше частичного делителя, то добавляем к нему еще один байт
-                if (!isInit && Compare(partDividend, divisor) == -1)
+                ulong digit;
+                int cmp = R[1] != 0 ? 1 : CompareWindow(R, divisor, n);
+                if (cmp < 0)
                 {
-                    if (bytesIndex > 0)
-                    {
-                        quotient[bytesIndex++] = 0;//!!!!!!!!!!!
-                    }
+                    digit = 0;
+                }
+                else if (cmp == 0)
+                {
+                    digit = 1;
+                    R.Slice(2, n).Clear();
                 }
                 else
                 {
-                   
-
-                    var candidate = FindDivisionCandidate(partDividend, divisor, Base);
-                    partResult[0] = candidate;
-
-                    #region remainder = partDividend - (divisor * partResult)
-                    //divMult = |value2| * partResult
-                    Mult(divisor, partResult, divMult);
-                    //remainder = divs - divMult
-                    var compare = Sub(partDividend, divMult, remainder);
-                    remainderSing = compare < 0;
-                    #endregion
-
-
-                    while (remainderSing || (compare = Compare(remainder, divisor)) >= 0)
-                    {
-                        //candidate correction
-                        compare = Sub(remainder, divisor, remainder);
-                        if (remainderSing)
-                        {
-                            partResult[0]--;
-                            remainderSing = compare > 0;
-                            if (!remainderSing)
-                            {
-                                ////it's just for the debug
-                                //var diff = candidate - partResult[0];
-                                //candidate = FindDivisionCandidate(partDividend, divisor);
-                                break;
-                            }
-                        }
-                        else
-                        {
-                            partResult[0]++;
-                        }
-                    }
-                   
-                    if (isInit)
-                    {
-                        isInit = false;
-                        partDividend = remainder.Slice(1);
-                    }
-
-                    quotient[bytesIndex++] = partResult[0];
+                    digit = DivDigit(R, divisor, n);
                 }
-                //если есть еще байти из делимого числа
-                if (dividend.Length - zeros1 >= 1)
-                {
-                    //move divs left and add new byte
-                    for (int i = 0; i < partDividend.Length - 1; i++)
-                    {
-                        partDividend[i] = partDividend[i + 1];
-                    }
-                    partDividend[partDividend.Length - 1] = dividend[zeros1];
+                quotient[qi++] = digit;
 
-                    zeros1 += 1;
-                }
-                else
-                {
-                    break;
-                }
-            }
+                if (pos == m) break;
 
-            
-
-            //move result to the riht buffer end
-            if (bytesIndex < quotient.Length)
-            {
-                quotient = quotient.Slice(0, bytesIndex);
+                // shift the window one word left, bring in the next dividend word
+                R[0] = 0;
+                for (int i = 0; i < n; i++) R[1 + i] = R[2 + i];
+                R[n + 1] = dividend[pos++];
             }
         }
-		
-		public void Div(Span<ulong> dividend, ulong divisor, Span<ulong> quotient, out ulong remainder)
+
+        private ulong DivDigit(Span<ulong> R, Span<ulong> D, int n)
         {
-			if (divisor == 0)
+            ulong uhi = R[1], ulo = R[2], dhi = D[0];
+
+            if (n == 1)
+            {
+                ulong digit1 = Div128(uhi, ulo, dhi, out ulong rem);
+                R[1] = 0;
+                R[2] = rem;
+                return digit1;
+            }
+
+            // normalization shift (as in Div.asm: by Uhi | Dhi, Uhi <= Dhi, i.e. by Dhi)
+            int s = LeadingZeroCount(uhi | dhi);
+            ulong u2 = Shld(uhi, ulo, s);
+            ulong u1 = Shld(ulo, R[3], s);
+            ulong d1 = D[1], d2 = n > 2 ? D[2] : 0;
+            ulong vhi = Shld(dhi, d1, s);
+            ulong vlo = Shld(d1, d2, s);
+
+            // step 1: max and min candidates
+            ulong qmax = u2 >= vhi ? ulong.MaxValue : Div128(u2, u1, vhi, out _);
+            ulong qmin = vhi == ulong.MaxValue ? u2 : Div128(u2, u1, vhi + 1, out _);
+
+            // step 2: interpolate by the next divisor word, clamp to [min, max]
+            ulong q = qmax;
+            if (qmin != qmax)
+            {
+                ulong range = qmax - qmin + 1;
+                if (range != 0)
+                {
+                    ulong step = ulong.MaxValue / range;
+                    ulong offset = vlo / step;
+                    q = offset > qmax ? qmin : qmax - offset;
+                    if (q < qmin) q = qmin;
+                }
+            }
+
+            // step 3: window -= q * D  (D aligned with R[2 .. n+1], borrow runs into R[1], R[0])
+            ulong carry = 0;
+            for (int i = n - 1; i >= 0; i--)
+            {
+                Mult128(q, D[i], false, out ulong lo, out ulong hi);
+                lo += carry;
+                if (lo < carry) hi++;
+                ulong r = R[i + 2];
+                R[i + 2] = r - lo;
+                if (r < lo) hi++;
+                carry = hi;
+            }
+            ulong r1 = R[1];
+            R[1] = r1 - carry;
+            if (r1 < carry) R[0]--;
+
+            // corrections until exact
+            while (true)
+            {
+                if ((long)R[0] < 0)
+                {
+                    // negative: add D back; once non-negative it is already < D
+                    do { AddWindow(R, D, n); q--; } while ((long)R[0] < 0);
+                    break;
+                }
+                if (R[1] != 0 || CompareWindow(R, D, n) >= 0)
+                {
+                    SubWindow(R, D, n);
+                    q++;
+                    continue;
+                }
+                break;
+            }
+            return q;
+        }
+
+        // compare R[2 .. n+1] with D[0 .. n-1]
+        private static int CompareWindow(Span<ulong> R, Span<ulong> D, int n)
+        {
+            for (int i = 0; i < n; i++)
+            {
+                if (R[2 + i] != D[i]) return R[2 + i] < D[i] ? -1 : 1;
+            }
+            return 0;
+        }
+
+        // R[0 .. n+1] += D (aligned at the end), wraps in n + 2 words
+        private static void AddWindow(Span<ulong> R, Span<ulong> D, int n)
+        {
+            ulong carry = 0;
+            for (int i = n - 1; i >= 0; i--)
+            {
+                ulong a = R[i + 2], s1 = a + D[i], s2 = s1 + carry;
+                carry = (s1 < a || s2 < s1) ? 1UL : 0UL;
+                R[i + 2] = s2;
+            }
+            for (int i = 1; i >= 0 && carry != 0; i--)
+            {
+                R[i]++;
+                carry = R[i] == 0 ? 1UL : 0UL;
+            }
+        }
+
+        // R[0 .. n+1] -= D (aligned at the end), wraps in n + 2 words
+        private static void SubWindow(Span<ulong> R, Span<ulong> D, int n)
+        {
+            ulong borrow = 0;
+            for (int i = n - 1; i >= 0; i--)
+            {
+                ulong a = R[i + 2], d1 = a - D[i], d2 = d1 - borrow;
+                borrow = (a < D[i] || d1 < borrow) ? 1UL : 0UL;
+                R[i + 2] = d2;
+            }
+            for (int i = 1; i >= 0 && borrow != 0; i--)
+            {
+                borrow = R[i] == 0 ? 1UL : 0UL;
+                R[i]--;
+            }
+        }
+
+        // Same contract as Div2Long.asm: every dividend word produces a quotient word
+        // (leading zeros included), quotient may alias dividend.
+        public void Div(Span<ulong> dividend, ulong divisor, Span<ulong> quotient, out ulong remainder)
+        {
+            if (divisor == 0)
             {
                 throw new System.DivideByZeroException();
             }
-            Span<ulong> divisorBuf = stackalloc ulong[] { divisor };
-            Span<ulong> divs = stackalloc ulong[2];
-            int bytesIndex = 0;
-            
-            //пропуск старших нулей операндов
-            int zeros1 = FullHelper.CountZeros(dividend);
-
-            while (dividend.Length - zeros1 > 0)
+            ulong r = 0;
+            for (int i = 0; i < dividend.Length; i++)
             {
-                //если есть еще байти из делимого числа
-                if (dividend.Length - zeros1 >= 1)
-                {
-                    //move divs left and add new byte
-                    divs[0] = divs[1];
-                    divs[1] = dividend[zeros1];
-                    zeros1++;
-                }
-                else
-                {
-                    break;
-                }
-
-                //если делимое меньше частичного делителя, то добавляем к нему еще один байт
-                if (divs[0] == 0 && divs[1] < divisor)
-                {
-                    quotient[bytesIndex++] = 0;//!!!!!!!!!!!
-                }
-                else
-                {
-                    ulong b;
-
-                    //128long / long div
-                    quotient[bytesIndex++] = Div128(divs[divs.Length - 2], divs[divs.Length - 1], divisor, out b);
-                    divs[0] = 0;
-                    divs[1] = b;
-                }
+                quotient[i] = Div128(r, dividend[i], divisor, out r);
             }
+            remainder = r;
+        }
+        #endregion
 
-            //move result to the riht buffer end
-            if(bytesIndex < quotient.Length)
+        public void ToDecString(Span<ulong> value, Span<byte> resultBuf, out int resultStartIndex)
+        {
+            const ulong BASE10 = 10000000000000000000UL; // 10^19
+
+            // repeated division by 10^19 (as ToDecString.asm); digits written right-aligned
+            ulong[] tmp = value.ToArray();
+            int start = 0;
+            while (start < tmp.Length && tmp[start] == 0) start++;
+
+            int pos = resultBuf.Length;
+            while (true)
             {
-                quotient = quotient.Slice(0, bytesIndex);
+                ulong rem = 0;
+                for (int i = start; i < tmp.Length; i++)
+                {
+                    tmp[i] = Div128(rem, tmp[i], BASE10, out rem);
+                }
+                while (start < tmp.Length && tmp[start] == 0) start++;
+                bool last = start == tmp.Length;
+
+                // 19 digits per chunk; the most significant chunk without leading zeros
+                for (int d = 0; d < 19; d++)
+                {
+                    resultBuf[--pos] = (byte)('0' + (int)(rem % 10));
+                    rem /= 10;
+                    if (last && rem == 0) break;
+                }
+                if (last) break;
             }
-            remainder = divs[1];
-		}
+            resultStartIndex = pos;
+        }
 
         public void Mult(Span<ulong> value1, Span<ulong> value2, Span<ulong> result)
         {
@@ -438,6 +415,7 @@ namespace FullInt.Core
                         multB = value2[value2LastIndex - j];
                         if (multA == 0 || multB == 0)
                         {
+                            value1ShiftedIndex++; // `continue` skipped the increment below
                             continue;
                         }
                         Multiply(multA, multB, Base == toBase.dec, out multLo, out multHi);
@@ -563,10 +541,6 @@ namespace FullInt.Core
             return result;
 		}
         
-        public void ToDecString(Span<ulong> value, Span<byte> resultBuf, out int resultStartIndex)
-        {
-            throw new NotImplementedException();
-        }
         
         public void FromDecString(Span<byte> value, Span<ulong> resultBuf, out int resultStartIndex)
         {
@@ -606,7 +580,7 @@ namespace FullInt.Core
                 {
                     // block = remainder * BASE10 + decBuf[i]
                     ulong hi, lo;
-                    Mult128(remainder, BASE10, false, out hi, out lo);
+                    Mult128(remainder, BASE10, false, out lo, out hi);
 
                     ulong blockLo = lo + decBuf[i];
                     ulong blockHi = hi;

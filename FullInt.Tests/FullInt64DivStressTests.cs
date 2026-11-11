@@ -15,7 +15,14 @@ namespace FullInt.Tests
     {
         public TestContext TestContext { get; set; } = null!;
 
-        private static readonly IFullIntCore Core = FullIntCoreFactory.Create();
+        public static IEnumerable<object[]> Cores()
+        {
+            yield return new object[] { "native" };
+            yield return new object[] { "managed" };
+        }
+
+        private static IFullIntCore GetCore(string name) =>
+            name == "managed" ? new FullInt64CoreDefault() : FullIntCoreFactory.Create();
 
         private static readonly ulong[] SpecialWords =
         {
@@ -82,13 +89,13 @@ namespace FullInt.Tests
         }
 
         /// <summary>Runs one core division and returns a failure description, or null if correct.</summary>
-        private static string? CheckCoreDiv(ulong[] a, ulong[] d)
+        private static string? CheckCoreDiv(IFullIntCore core, ulong[] a, ulong[] d)
         {
             int qLen = Math.Max(a.Length - d.Length + 1, 1);
             var q = new ulong[qLen];
             var r = new ulong[d.Length + 2];
 
-            Core.Div(a, d, q, r);
+            core.Div(a, d, q, r);
 
             var A = ToBig(a);
             var D = ToBig(d);
@@ -101,7 +108,7 @@ namespace FullInt.Tests
             return $"a={Hex(a)}\n d={Hex(d)}\n expected q={expQ:X} r={expR:X}\n actual   q={gotQ:X} r={gotR:X}\n q diff (expected-actual)={expQ - gotQ}";
         }
 
-        private void RunCoreStress(int seed, int iterations, Func<Random, (ulong[] a, ulong[] d)> generate)
+        private void RunCoreStress(IFullIntCore core, int seed, int iterations, Func<Random, (ulong[] a, ulong[] d)> generate)
         {
             var rnd = new Random(seed);
             int failures = 0;
@@ -110,7 +117,7 @@ namespace FullInt.Tests
             for (int i = 0; i < iterations; i++)
             {
                 var (a, d) = generate(rnd);
-                var failure = CheckCoreDiv(a, d);
+                var failure = CheckCoreDiv(core, a, d);
                 if (failure != null)
                 {
                     failures++;
@@ -124,11 +131,12 @@ namespace FullInt.Tests
 
         // ---------------------------------------------------------------- core tests
 
-        [TestMethod]
+        [DataTestMethod]
+        [DynamicData(nameof(Cores), DynamicDataSourceType.Method)]
         [TestCategory("Stress")]
-        public void Div_Core_RandomPatterns_MatchesBigInteger()
+        public void Div_Core_RandomPatterns_MatchesBigInteger(string coreName)
         {
-            RunCoreStress(seed: 20261111, iterations: 50_000, rnd =>
+            RunCoreStress(GetCore(coreName), seed: 20261111, iterations: 50_000, rnd =>
             {
                 int n = rnd.Next(1, 9);
                 int m = n + rnd.Next(0, 9);
@@ -136,11 +144,12 @@ namespace FullInt.Tests
             });
         }
 
-        [TestMethod]
+        [DataTestMethod]
+        [DynamicData(nameof(Cores), DynamicDataSourceType.Method)]
         [TestCategory("Stress")]
-        public void Div_Core_HardQuotientDigits_MatchesBigInteger()
+        public void Div_Core_HardQuotientDigits_MatchesBigInteger(string coreName)
         {
-            RunCoreStress(seed: 424242, iterations: 50_000, rnd =>
+            RunCoreStress(GetCore(coreName), seed: 424242, iterations: 50_000, rnd =>
             {
                 int n = rnd.Next(2, 9);
                 var d = NextNumber(rnd, n, nonZeroTop: true);
@@ -148,11 +157,12 @@ namespace FullInt.Tests
             });
         }
 
-        [TestMethod]
+        [DataTestMethod]
+        [DynamicData(nameof(Cores), DynamicDataSourceType.Method)]
         [TestCategory("Stress")]
-        public void Div_Core_DividendShorterThanDivisor_ReturnsZeroAndDividend()
+        public void Div_Core_DividendShorterThanDivisor_ReturnsZeroAndDividend(string coreName)
         {
-            RunCoreStress(seed: 7, iterations: 5_000, rnd =>
+            RunCoreStress(GetCore(coreName), seed: 7, iterations: 5_000, rnd =>
             {
                 int n = rnd.Next(2, 9);
                 int m = rnd.Next(1, n);

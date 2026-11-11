@@ -5,8 +5,17 @@ namespace FullInt.Core
 {
     public class FullIntCoreFactory
     {
+		// FULLINT_FORCE_MANAGED=1 forces the managed fallback core on every platform
+		// (used to run the whole test suite against it and compare with the native core).
+		public const string ForceManagedEnvVar = "FULLINT_FORCE_MANAGED";
+
 		public static IFullIntCore Create()
 		{
+			if (Environment.GetEnvironmentVariable(ForceManagedEnvVar) == "1")
+			{
+				return new FullInt64CoreDefault();
+			}
+
 			var os = Environment.OSVersion.Platform;
 			var arch = RuntimeInformation.ProcessArchitecture;
 			

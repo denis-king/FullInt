@@ -39,12 +39,12 @@ The current public API is listed in [docs/OPERATIONS.md](docs/OPERATIONS.md).
 |---|---|---|
 | `+`, `-`, unary `-` | ✅ | ✅ |
 | `*` (schoolbook) | ✅ | ✅ |
-| `/`, `%` | ✅ | ❌ not implemented |
+| `/`, `%` | ✅ | ✅ |
 | `&`, `\|`, `Xor`, `~`, `<<`, `>>` (BigInteger semantics) | ✅ | ✅ |
 | Compare, `==`, `<`, … | ✅ | ✅ |
-| `^` (power, square-and-multiply) | ✅ | ❌ (converts the exponent to a base-2 string through division) |
-| Parse decimal string | ✅ | ⚠️ bug |
-| `ToString(10)` | ✅ | ❌ not implemented |
+| `^` (power, square-and-multiply) | ✅ | ✅ |
+| Parse decimal string | ✅ | ✅ |
+| `ToString(10)` | ✅ | ✅ |
 | Decimal storage mode (`toBase.dec`) | ❌ wrong results | partial |
 
 ## Platforms
@@ -54,7 +54,7 @@ The current public API is listed in [docs/OPERATIONS.md](docs/OPERATIONS.md).
 | `win-x64` | NASM x86-64 | working, has known bugs |
 | `linux-x64`, `osx-x64` | NASM x86-64 (System V ABI) | sources exist, build scripts are not functional |
 | `win-arm64`, `linux-arm64`, `osx-arm64` | AArch64 assembly | planned |
-| anything else | managed C# | incomplete |
+| anything else (incl. 32-bit) | managed C# | ✅ complete, slower than asm |
 
 Details: [docs/PLATFORMS.md](docs/PLATFORMS.md).
 

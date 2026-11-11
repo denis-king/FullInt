@@ -10,7 +10,7 @@
 | `linux-arm64` | AArch64 asm | GNU `as` / `clang` | ❌ not started |
 | `osx-arm64` (Apple Silicon) | AArch64 asm | `clang` | ❌ not started |
 | `win-arm64` | AArch64 asm | `clang --target=aarch64-pc-windows-msvc` or `armasm64` | ❌ not started |
-| `linux-musl-*`, `browser-wasm`, `ios-*`, `android-*`, others | managed fallback | — | ⚠️ fallback is incomplete |
+| `linux-musl-*`, `browser-wasm`, `ios-*`, `android-*`, others | managed fallback | — | ✅ complete (all tests pass on it) |
 
 ## x86-64
 
@@ -111,6 +111,32 @@ The fallback must be **complete and correct on every platform**. It is both the 
 | Count leading zeros | `BitOperations.LeadingZeroCount` |
 
 On .NET 8+ the managed kernels typically reach 30–60% of the speed of good asm for multiplication. The gap is mostly carry propagation.
+
+**Current implementation** (`FullInt64CoreDefault`, `netstandard2.1`): 64×64 → 128 via four 32-bit products, 128/64 via Hacker's Delight `divlu`, multi-word division is a 1:1 port of `Div.asm` (same digit estimate and buffer contract, so both cores give identical results). Speed was not a goal yet.
+
+## Testing on other platforms
+
+> **TODO** — not done yet. So far the fallback has only been tested on Windows x64 with `FULLINT_FORCE_MANAGED=1`.
+
+`FULLINT_FORCE_MANAGED=1` forces the managed core on any machine:
+
+```powershell
+$env:FULLINT_FORCE_MANAGED = "1"; dotnet test FullInt.Tests -c Release --filter "FullyQualifiedName!~BigTestDec"
+```
+
+On Linux the factory picks the fallback by itself, and the native build only emits warning `FULLINT001`. Planned Docker runs from the repository root:
+
+```powershell
+# linux x64 (native speed)
+docker run --rm -v "${PWD}:/src" -w /src mcr.microsoft.com/dotnet/sdk:8.0 `
+  dotnet test FullInt.Tests -c Release --filter "FullyQualifiedName!~BigTestDec"
+
+# linux arm64 (QEMU emulation in Docker Desktop, slow)
+docker run --rm --platform linux/arm64 -v "${PWD}:/src" -w /src mcr.microsoft.com/dotnet/sdk:8.0 `
+  dotnet test FullInt.Tests -c Release --filter "FullyQualifiedName!~BigTestDec"
+```
+
+Mounting the Windows working tree shares `bin/` and `obj/` between Windows and Linux builds. If restore or build gets confused, copy the sources into the container or build with `-p:BaseIntermediateOutputPath=/tmp/obj/` instead. macOS, `win-arm64` and 32-bit targets (`win-x86`, `linux-arm`) need CI runners or real machines.
 
 ## Native packaging for NuGet
 
