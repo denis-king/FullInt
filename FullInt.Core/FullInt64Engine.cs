@@ -113,7 +113,13 @@ namespace FullInt.Core
 
         public FullInt64 pow(FullInt64 value1, FullInt64 value2)
         {
-            
+            // integer power is undefined for negative exponents (same as BigInteger.Pow);
+            // before, the '-' of the exponent's base-2 string was silently ignored: a^-n == a^n
+            if (value2.Sing)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value2), "The exponent must be non-negative.");
+            }
+
             toBase Base = toEqualBase(ref value1, ref value2);
             FullInt64 result = new FullInt64(1, Base);
 
@@ -279,34 +285,39 @@ namespace FullInt.Core
         {
             toBase Base = toEqualBase(ref value1, ref value2);
 
+            // the division kernels expect divisor[0] != 0, and the buffer sizes depend on the
+            // real lengths, so leading zero words are stripped from both operands first
+            var dividend = FullHelper.DeleteZeros(value1.value);
+            var divisor = FullHelper.DeleteZeros(value2.value);
+
             //comented this optimalizations to test the general algorithm
             //optimalizations for small numbers
-            if (CompareAbsInternal(value1.value, value2.value) == -1)// comparation can be expensive
+            if (CompareAbsInternal(dividend, divisor) == -1)// comparation can be expensive
             {
                 remainder = new FullInt64(value1);
                 return new FullInt64(false, new ulong[] { 0UL }, Base);
             }
 
-            if (value2.value.Length == 1)
+            if (divisor.Length == 1)
             {
                 ulong r = 0UL;
-                var res = div(value1, value2.value[0], out r);
+                var res = div(value1, divisor[0], out r);
                 remainder = new FullInt64(value1.Sing, new ulong[] { r }, Base);
                 res.Sing = value1.Sing != value2.Sing;
 
                 return res;
             }
 
-            Span<ulong> remainderBuf = value2.value.Length <= 1024
-                ? stackalloc ulong[value2.value.Length + 2] // + 2 it uses internal calucation where remainder can be greate than the value 2
-                : new ulong[value2.value.Length + 2];//use the buffer pool
+            Span<ulong> remainderBuf = divisor.Length <= FullHelper.StackAllocLimitWords
+                ? stackalloc ulong[divisor.Length + 2] // + 2 it uses internal calucation where remainder can be greate than the value 2
+                : new ulong[divisor.Length + 2];//use the buffer pool
 
-            var resultLenght = Math.Max(value1.value.Length - value2.value.Length + 1, 1);
-            Span<ulong> resultBuf = resultLenght <= 1024
+            var resultLenght = Math.Max(dividend.Length - divisor.Length + 1, 1);
+            Span<ulong> resultBuf = resultLenght <= FullHelper.StackAllocLimitWords
                 ? stackalloc ulong[resultLenght]
                 : new ulong[resultLenght];
-            
-            div_internal(value1.value, value2.value, resultBuf, remainderBuf, Base);
+
+            div_internal(dividend, divisor, resultBuf, remainderBuf, Base);
             var sign = value1.Sing != value2.Sing;
 
             //propably ussless if value1 >= value2. remove when uncommented the optimalization above
@@ -433,9 +444,7 @@ namespace FullInt.Core
                     ? new ulong[length] 
                     : stackalloc ulong[length];
                 
-                Span<ulong> remainderBuf = length > 1024
-                    ? stackalloc ulong[a.Length + 2] // + 2 it uses internal calucation where remainder can be greate than the value 2
-                    : new ulong[a.Length + 2];
+                Span<ulong> remainderBuf = stackalloc ulong[a.Length + 2]; // + 2 it uses internal calucation where remainder can be greate than the value 2 (a is 1-2 words)
 
                 Span<ulong> valueBuf = value.value.Length > 1024 
                     ? new ulong[value.value.Length] 
@@ -504,7 +513,10 @@ namespace FullInt.Core
             }
             if (Base == 10)
             {
-                Span<ulong> resultBuf = stackalloc ulong[(int)(valueSpan.Length / 19 ) + 1];
+                int resultWords = valueSpan.Length / 19 + 1;
+                Span<ulong> resultBuf = resultWords <= FullHelper.StackAllocLimitWords
+                    ? stackalloc ulong[resultWords]
+                    : new ulong[resultWords];
                 _core.FromDecString(valueSpan, resultBuf, out var startPosition);
                 return new FullInt64(s, resultBuf.Slice(startPosition).ToArray(), toBase.hex);
             }
@@ -550,7 +562,10 @@ namespace FullInt.Core
         }
 		private string ToDecString(FullInt64 value)
         {
-            Span<byte> resultBuf = stackalloc byte[(int)(value.value.Length * 1.014 + 1) * 19 + 1];
+            int resultBytes = (int)(value.value.Length * 1.014 + 1) * 19 + 1;
+            Span<byte> resultBuf = resultBytes <= FullHelper.StackAllocLimitBytes
+                ? stackalloc byte[resultBytes]
+                : new byte[resultBytes];
             
             _core.ToDecString(value.value, resultBuf, out var startPosition);
             

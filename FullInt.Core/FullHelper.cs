@@ -7,6 +7,22 @@ namespace FullInt.Core
 {
     public static class FullHelper
     {
+        // Max buffer size taken from the stack; larger buffers go to the heap.
+        // Buffers sized by the input must never be stackalloc'ed unbounded:
+        // a stack overflow cannot be caught and kills the process.
+        public const int StackAllocLimitWords = 1024;            // 8 KB
+        public const int StackAllocLimitBytes = 8 * 1024;        // 8 KB
+
+        public static bool IsZero(ulong[]? value)
+        {
+            if (value == null) return true;
+            for (int i = 0; i < value.Length; i++)
+            {
+                if (value[i] != 0) return false;
+            }
+            return true;
+        }
+
         public static int CountZeros(ulong[] value)
         {
             return CountZeros(value.AsSpan());

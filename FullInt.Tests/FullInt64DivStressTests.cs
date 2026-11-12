@@ -181,8 +181,8 @@ namespace FullInt.Tests
             "879376197509531337395492")]
         public void Div_Engine_KnownFailures_MatchesBigInteger(string a, string b)
         {
-            FullInt64 fa = a;
-            FullInt64 fb = b;
+            FullInt64 fa = FullInt64.Parse(a);
+            FullInt64 fb = FullInt64.Parse(b);
             var ba = BigInteger.Parse(a);
             var bb = BigInteger.Parse(b);
 

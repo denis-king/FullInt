@@ -144,7 +144,9 @@ namespace FullInt.Core
         
         public void ToDecString(Span<ulong> value, Span<byte> resultBuf, out int resultStartIndex)
         {
-            Span<ulong> valueBuf = stackalloc ulong[value.Length];
+            Span<ulong> valueBuf = value.Length <= FullHelper.StackAllocLimitWords
+                ? stackalloc ulong[value.Length]
+                : new ulong[value.Length];
             resultStartIndex = resultBuf.Length; 
             unsafe
             {
@@ -169,7 +171,10 @@ namespace FullInt.Core
         public void FromDecString(Span<byte> value, Span<ulong> resultBuf, out int resultStartIndex)
         {
             resultStartIndex = resultBuf.Length; 
-            Span<ulong> valueBuf = stackalloc ulong[value.Length / 19 + 1];
+            int valueWords = value.Length / 19 + 1;
+            Span<ulong> valueBuf = valueWords <= FullHelper.StackAllocLimitWords
+                ? stackalloc ulong[valueWords]
+                : new ulong[valueWords];
             unsafe
             {
                 ref byte rValue = ref MemoryMarshal.GetReference(value);

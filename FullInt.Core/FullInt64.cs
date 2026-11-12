@@ -6,7 +6,7 @@ using System.Text;
 namespace FullInt.Core
 {
     
-    public class FullInt64
+    public class FullInt64 : IEquatable<FullInt64>
     {
         public bool IsDec { get; private set; } = false;
 
@@ -14,7 +14,15 @@ namespace FullInt.Core
         public const ulong maxDecValue = maxDecCapasity - 1;
 
         public ulong[] value { get; set; }
-        public bool Sing { get; set; }
+
+        // Zero is never negative: the sign is normalized on read, so "-0" cannot leak
+        // out of any operation (or be constructed by hand).
+        private bool _sing;
+        public bool Sing
+        {
+            get => _sing && !FullHelper.IsZero(value);
+            set => _sing = value;
+        }
 		private static FullInt64Engine _engine = FullInt64Engine.Instance;
 		
         public FullInt64()
@@ -56,6 +64,28 @@ namespace FullInt.Core
         public FullInt64(int value, toBase Base = toBase.hex) : this((long)value, Base)
         {
         }
+
+        /// <summary>
+        /// Magnitude from bytes, little-endian: magnitude[0] is the least significant byte.
+        /// The sign is a separate flag (the bytes are never two's complement).
+        /// </summary>
+        public FullInt64(byte[] magnitude, bool negative = false)
+        {
+            if (magnitude is null) throw new ArgumentNullException(nameof(magnitude));
+            int words = Math.Max((magnitude.Length + 7) / 8, 1);
+            var limbs = new ulong[words];                 // limbs[0] is the most significant word
+            for (int i = 0; i < magnitude.Length; i++)
+            {
+                limbs[words - 1 - i / 8] |= (ulong)magnitude[i] << ((i % 8) * 8);
+            }
+            this.value = limbs;
+            this.Sing = negative;
+        }
+
+        public static FullInt64 Parse(string value)
+        {
+            return _engine.ToFullInt64(value);
+        }
         
         public override String ToString()
         {
@@ -72,21 +102,42 @@ namespace FullInt.Core
             return result;
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
-            if (obj is FullInt64 || obj is byte || obj is int || obj is long)
+            // boxed primitives need an explicit conversion: (FullInt64)obj on a boxed int is an
+            // unboxing cast and throws InvalidCastException
+            switch (obj)
             {
-                return _engine.IsEquals(this, (FullInt64)obj);
-            }
-            else
-            {
-                return base.Equals(obj);
+                case FullInt64 f: return Equals(f);
+                case int i: return Equals(new FullInt64(i));
+                case long l: return Equals(new FullInt64(l));
+                case byte b: return Equals(new FullInt64(b));
+                case sbyte sb: return Equals(new FullInt64((long)sb));
+                case short s: return Equals(new FullInt64((long)s));
+                case ushort us: return Equals(new FullInt64((long)us));
+                case uint ui: return Equals(new FullInt64((long)ui));
+                case ulong ul: return Equals(new FullInt64(ul));
+                default: return false;
             }
         }
 
+        public bool Equals(FullInt64? other)
+        {
+            return !(other is null) && _engine.IsEquals(this, other);
+        }
+
+        // Consistent with Equals: same numeric value → same hash, regardless of
+        // leading zero words or decimal/binary storage.
         public override int GetHashCode()
         {
-            return this.value.GetHashCode();
+            var words = IsDec ? _engine.ConvertToBase(this, toBase.hex).value : value;
+            int start = 0;
+            while (start < words.Length - 1 && words[start] == 0) start++;
+
+            var hash = new HashCode();
+            hash.Add(Sing);
+            for (int i = start; i < words.Length; i++) hash.Add(words[i]);
+            return hash.ToHashCode();
         }
 
         public static FullInt64 operator +(FullInt64 a, FullInt64 b)
@@ -137,13 +188,15 @@ namespace FullInt.Core
         {
             return _engine.IsABiggerOrEqualsB(b, a);
         }
-        public static bool operator ==(FullInt64 a, FullInt64 b)
+        public static bool operator ==(FullInt64? a, FullInt64? b)
         {
+            if (ReferenceEquals(a, b)) return true;
+            if (a is null || b is null) return false;
             return _engine.IsEquals(a, b);
         }
-        public static bool operator !=(FullInt64 a, FullInt64 b)
+        public static bool operator !=(FullInt64? a, FullInt64? b)
         {
-            return !_engine.IsEquals(a, b);
+            return !(a == b);
         }
         public static FullInt64 operator ++(FullInt64 a)
         {
@@ -205,11 +258,14 @@ namespace FullInt.Core
         {
             return value.value;
         }
-        public static implicit operator string(FullInt64 value)
+        // explicit: use ToString()/ToString(base); an implicit conversion silently allocated a string
+        public static explicit operator string(FullInt64 value)
         {
             return _engine.ToString(value, (byte)(value.IsDec ? 10 : 16));
         }
-        public static implicit operator FullInt64(String value)
+        // explicit: an implicit string → number conversion made e.g. x.Equals("5") compile and
+        // return true, and turns any string into a number silently
+        public static explicit operator FullInt64(String value)
         {
             return _engine.ToFullInt64(value);
         }
