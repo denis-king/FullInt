@@ -176,7 +176,7 @@ Managed fallback готов и проверен только на Windows x64 ч
 6. Убрать `IsDec` из ядра (A4/§4.2), перейти на little-endian лимбы (§4.3).
 7. Переделать нативный слой на mpn-примитивы (§4.1); дописать managed fallback на `Math.BigMul`/`UInt128` — он должен проходить **все** тесты сам по себе.
 8. Новый публичный тип (§4.4), generic math, `Parse`/`TryParse`/`TryFormat`.
-9. BenchmarkDotNet-проект: сравнение с `BigInteger` по размерам 1, 4, 16, 64, 256, 1024, 16k, 256k лимбов.
+9. ✅ (базовый) `FullInt.Benchmarks`: `ab.ps1` — A/B нативных сборок против git-ревизии (шум A/A ≈ ±5%), BenchmarkDotNet — ядро native vs managed и API vs `BigInteger` на 1…1024 лимбах. На потом: 16k/256k лимбов (после Karatsuba).
 
 ### Фаза 2 — NuGet 0.1.0-preview
 10. Пакет `FullInt` с `runtimes/win-x64`, `linux-x64`, `osx-x64` + managed fallback для всех остальных RID.

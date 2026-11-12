@@ -69,6 +69,7 @@ Requirements (Windows x64):
 ```powershell
 dotnet build FullInt.sln -c Release
 dotnet test  FullInt.Tests/FullInt.Tests.csproj
+.\FullInt.Benchmarks\ab.ps1      # after an asm edit: speed vs HEAD
 ```
 
 `dotnet build` builds the native library too. `FullInt.AsmForNet` runs `FullInt.Asm/build/build-native.cmd`, which assembles `Sources/x64/*.asm` and links `FullIntOperations_win_x64.dll` into `FullInt.Asm/bin/<rid>/<Configuration>/`. The DLL (and its `.pdb` in Debug) is then copied to the output of every project that references `FullInt.Core`. The native step is incremental: it only reruns when a source, `exports.def` or a build script changes.
@@ -89,6 +90,7 @@ FullInt.Core/        main library: FullInt64 type, engine, core abstraction, P/I
 FullInt.Asm/         native kernels (NASM, x86-64) and build scripts
 FullInt.AsmForNet/   MSBuild glue that builds the native DLL and copies it next to managed outputs
 FullInt.Tests/       MSTest suite; randomized differential tests against System.Numerics.BigInteger
+FullInt.Benchmarks/  asm regression check (ab.ps1) and BenchmarkDotNet suites, see its README
 FullInt.Net/         legacy byte-based implementation (to be removed)
 FullInt/             legacy SQL CLR wrapper, .NET Framework 3.5 (to be removed)
 Tools/nasm/          bundled NASM assembler
