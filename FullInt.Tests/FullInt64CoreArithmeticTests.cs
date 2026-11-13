@@ -74,6 +74,29 @@ namespace FullInt.Tests
             }
         }
 
+        /// <summary>
+        /// Mult on longer and very unequal operands, and with a result buffer longer than
+        /// lenA + lenB (the extra high words must come out zero).
+        /// </summary>
+        [DataTestMethod]
+        [DynamicData(nameof(Cores), DynamicDataSourceType.Method)]
+        public void Core_Mult_LongAndUnequal_MatchesBigInteger(string coreName)
+        {
+            var core = GetCore(coreName);
+            var rnd = new Random(6161);
+            for (int it = 0; it < 3_000; it++)
+            {
+                var a = Next(rnd, rnd.Next(1, 101));
+                var b = Next(rnd, rnd.Next(1, 101));
+                int extra = rnd.Next(4) == 0 ? rnd.Next(1, 4) : 0;
+                var prod = new ulong[a.Length + b.Length + extra];
+                for (int k = 0; k < prod.Length; k++) prod[k] = 0xDEAD_BEEF_DEAD_BEEFUL;   // must be overwritten
+
+                core.Mult(a, b, prod);
+                Assert.AreEqual(ToBig(a) * ToBig(b), ToBig(prod), $"mult {a.Length}x{b.Length} lenR={prod.Length}");
+            }
+        }
+
         [DataTestMethod]
         [DynamicData(nameof(Cores), DynamicDataSourceType.Method)]
         public void Core_DivByWord_MatchesBigInteger(string coreName)
