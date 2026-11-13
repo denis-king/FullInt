@@ -66,6 +66,12 @@ Div (2N / N limbs), And (one negative operand), Shl, decimal ToString / Parse.
 `ApiBenchmarks` uses whichever core the library picks (native on win-x64). For the managed
 fallback: `$env:FULLINT_FORCE_MANAGED = "1"` before running.
 
-A full `CoreBenchmarks` run is 120 cases; use `--filter` and `--job short` while iterating.
+A full `CoreBenchmarks` run is 120 cases, about 3 hours on a laptop; use `--filter` and `--job short` while iterating.
 
 Operands are generated from fixed seeds (`Data.Limbs`), so numbers are comparable between runs.
+
+## Saved baselines
+
+Full runs worth keeping go to [docs/benchmarks/](../docs/benchmarks/) (summary + raw report + csv):
+
+- [2026-11-13-core-baseline.md](../docs/benchmarks/2026-11-13-core-baseline.md) — the original algorithms and asm before any optimization
