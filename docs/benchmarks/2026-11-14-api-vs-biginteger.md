@@ -82,6 +82,35 @@ What is left:
   drops it.
 - **1–4 limbs**: the P/Invoke transition and the wrapper dominate (a managed fast path is planned).
 
+## Update 2: "/" and "%" allocate only their result, one-word fast paths (same day)
+
+- `/` no longer materializes the remainder and `%` no longer materializes the quotient;
+  the divide-by-zero check no longer allocates a `FullInt64` for the literal `0`.
+- One word op one word (`+`, `-`, `*`, `/`, `%`, binary mode): plain 64-bit arithmetic in C#,
+  no native call. At this size the P/Invoke transition costs more than the operation.
+
+Same ShortRun setup. Raw data: [2026-11-14-api-vs-biginteger-after-fast-paths.csv](2026-11-14-api-vs-biginteger-after-fast-paths.csv).
+In this suite Div at N=1 is 2 words / 1 word, so it does not take the one-word path.
+
+FullInt64 time / BigInteger time, first run → after the allocation fix → now:
+
+| Op | N=1 | 4 | 16 | 64 | 256 | 1024 |
+|---|---|---|---|---|---|---|
+| Add | 1.43 → 1.36 → **0.71** | 1.95 → 1.24 → **0.91** | 1.33 → 0.84 → 0.84 | 0.92 → 0.65 → 0.58 | 0.91 → 0.67 → 0.60 | 0.91 → 0.63 → 0.60 |
+| Mult | 1.01 → 1.03 → **0.59** | 0.56 → 0.49 → 0.52 | 0.25 → 0.24 → 0.30 | 0.27 → 0.25 → 0.30 | 0.42 → 0.39 → 0.51 | 0.66 → 0.94 → 0.80 |
+| Div | 1.57 → 1.32 → 1.03 | 1.16 → 1.31 → 1.07 | 0.63 → 0.69 → 0.77 | 0.30 → 0.21 → 0.21 | 0.10 → 0.08 → 0.06 | 0.10 → 0.09 → 0.07 |
+
+Div allocated bytes: N=1 200 → **72** (BigInteger 40), N=4 240 → **88** (56),
+N=256 4 272 → **2 104** (2 073), N=1024 24 784 → **16 473** (8 239).
+
+Mult and Add between 4 and 1024 limbs did not change in code; their spread between runs
+(±15–25%) is ShortRun noise on a laptop, mostly on the BigInteger side.
+
+What is left:
+- **Div at 1024+ limbs** allocates 2× BigInteger: the remainder work buffer (divisor + 2 words)
+  no longer fits the 1024-word stack limit and goes to the heap. An `ArrayPool` would remove it.
+- **N=1**: our result is a class plus an array (64–72 B), BigInteger is a struct plus an array (32–40 B).
+
 ## Raw report (first run, before the allocation fix)
 
 ```

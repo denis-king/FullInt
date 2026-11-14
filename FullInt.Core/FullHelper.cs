@@ -63,6 +63,21 @@ namespace FullInt.Core
         public static ulong[] ResultArray(Span<ulong> buffer, ulong[]? heap) =>
             heap != null ? Trimmed(heap) : DeleteZeros(buffer).ToArray();
 
+        /// <summary>
+        /// Full 64 x 64 -> 128 product, returns the high word (netstandard2.1 has no
+        /// Math.BigMul(ulong, ulong, out ulong); same 32-bit split as the managed core).
+        /// </summary>
+        public static ulong BigMul(ulong x, ulong y, out ulong lo)
+        {
+            const ulong mask32 = 0xFFFFFFFF;
+            ulong x0 = x & mask32, x1 = x >> 32, y0 = y & mask32, y1 = y >> 32;
+            ulong z0 = x0 * y0;
+            ulong mid1 = x0 * y1 + (z0 >> 32);
+            ulong mid2 = x1 * y0 + (mid1 & mask32);
+            lo = (mid2 << 32) | (z0 & mask32);
+            return x1 * y1 + (mid1 >> 32) + (mid2 >> 32);
+        }
+
         public static Span<ulong> DeleteZeros(Span<ulong> value)
         {
             //пропуск старших нулей операнда

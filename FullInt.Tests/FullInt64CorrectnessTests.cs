@@ -198,6 +198,80 @@ namespace FullInt.Tests
             }
         }
 
+        /// <summary>
+        /// The one-word fast paths (add/sub/mult/div/mod in plain C#, no native call):
+        /// every sign combination, boundary words and random words, against BigInteger.
+        /// </summary>
+        [TestMethod]
+        public void OneWordFastPaths_MatchBigInteger()
+        {
+            ulong[] special = { 0, 1, 2, ulong.MaxValue, ulong.MaxValue - 1, 1UL << 63, (1UL << 63) - 1, 1UL << 32, uint.MaxValue };
+            var words = new List<ulong>(special);
+            var rnd = new Random(31337);
+            for (int i = 0; i < 40; i++) words.Add((ulong)rnd.NextInt64() ^ ((ulong)rnd.Next(2) << 63));
+
+            static BigInteger Big(FullInt64 x) => BigInteger.Parse(x.ToString(10));
+            static void AssertCanonical(FullInt64 x, string what)
+            {
+                Assert.IsTrue(x.value.Length == 1 || x.value[0] != 0, what + ": leading zero word");
+                if (x.value.Length == 1 && x.value[0] == 0) Assert.IsFalse(x.Sing, what + ": negative zero");
+            }
+
+            foreach (var aw in words)
+            foreach (var bw in words)
+            foreach (bool an in new[] { false, true })
+            foreach (bool bn in new[] { false, true })
+            {
+                var fa = new FullInt64(an, new[] { aw });
+                var fb = new FullInt64(bn, new[] { bw });
+                BigInteger A = an ? -(BigInteger)aw : aw, B = bn ? -(BigInteger)bw : bw;
+                string ctx = $"a={A} b={B}";
+
+                var s = fa + fb; Assert.AreEqual(A + B, Big(s), "add " + ctx); AssertCanonical(s, "add " + ctx);
+                var d = fa - fb; Assert.AreEqual(A - B, Big(d), "sub " + ctx); AssertCanonical(d, "sub " + ctx);
+                var p = fa * fb; Assert.AreEqual(A * B, Big(p), "mult " + ctx); AssertCanonical(p, "mult " + ctx);
+                if (bw != 0)
+                {
+                    var q = fa / fb; Assert.AreEqual(A / B, Big(q), "div " + ctx); AssertCanonical(q, "div " + ctx);
+                    var r = fa % fb; Assert.AreEqual(A % B, Big(r), "mod " + ctx); AssertCanonical(r, "mod " + ctx);
+                }
+                else
+                {
+                    Assert.ThrowsException<DivideByZeroException>(() => fa / fb, "div by zero " + ctx);
+                    Assert.ThrowsException<DivideByZeroException>(() => fa % fb, "mod by zero " + ctx);
+                }
+            }
+        }
+
+        /// <summary>
+        /// "/" and "%" (which no longer materialize the result they don't return) agree with
+        /// the combined div(a, b, out remainder) and with BigInteger, on multi-word operands.
+        /// </summary>
+        [TestMethod]
+        public void DivAndMod_Separately_MatchDivRem()
+        {
+            var rnd = new Random(2718);
+            for (int i = 0; i < 3_000; i++)
+            {
+                var aw = new ulong[rnd.Next(1, 9)];
+                var bw = new ulong[rnd.Next(1, 6)];
+                for (int k = 0; k < aw.Length; k++) aw[k] = (ulong)rnd.NextInt64() ^ ((ulong)rnd.Next(2) << 63);
+                for (int k = 0; k < bw.Length; k++) bw[k] = (ulong)rnd.NextInt64() | 1;
+                var fa = new FullInt64(rnd.Next(2) == 0, aw);
+                var fb = new FullInt64(rnd.Next(2) == 0, bw);
+                var A = BigInteger.Parse(fa.ToString(10));
+                var B = BigInteger.Parse(fb.ToString(10));
+
+                var q = fa / fb;
+                var r = fa % fb;
+                var q2 = FullInt64Engine.Instance.div(fa, fb, out var r2);
+                Assert.AreEqual((A / B).ToString(), q.ToString(10), $"q: {A} / {B}");
+                Assert.AreEqual((A % B).ToString(), r.ToString(10), $"r: {A} % {B}");
+                Assert.AreEqual(q2.ToString(10), q.ToString(10), "q vs divRem");
+                Assert.AreEqual(r2.ToString(10), r.ToString(10), "r vs divRem");
+            }
+        }
+
         // ---------------------------------------------------------------- unnormalized divisor (engine)
 
         [TestMethod]

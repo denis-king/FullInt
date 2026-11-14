@@ -25,6 +25,11 @@ namespace FullInt.Core
         {
             toBase Base = toEqualBase(ref value1, ref value2);
 
+            if (Base == toBase.hex && value1.value.Length == 1 && value2.value.Length == 1)
+            {
+                return addOneWord(value1.value[0], value1.Sing, value2.value[0], value2.Sing);
+            }
+
             // Exact size, no word reserved for the carry: one allocation and no copy in the
             // common case. A carry out (rare) widens the result by one word.
             var r = new ulong[Math.Max(value1.value.Length, value2.value.Length)];
@@ -43,6 +48,21 @@ namespace FullInt.Core
             }
             return result;
         }
+        // One word and one word: plain 64-bit arithmetic in C#. The native call costs more than
+        // the add itself at this size. (A zero result is never negative: Sing normalizes on read.)
+        private static FullInt64 addOneWord(ulong a, bool aNegative, ulong b, bool bNegative)
+        {
+            if (aNegative == bNegative)
+            {
+                ulong sum = a + b;
+                return new FullInt64(aNegative, sum < a ? new ulong[] { 1UL, sum } : new ulong[] { sum });
+            }
+            // opposite signs: the larger magnitude minus the smaller, with its sign
+            return a >= b
+                ? new FullInt64(aNegative, new ulong[] { a - b })
+                : new FullInt64(bNegative, new ulong[] { b - a });
+        }
+
         public void add(FullInt64 value1, FullInt64 value2, FullInt64 result, toBase Base, bool useCarry = true)
         {
             if(result.value.Length < Math.Max(value1.value.Length, value2.value.Length) + (useCarry ? 1 : 0))
@@ -113,6 +133,14 @@ namespace FullInt.Core
         public FullInt64 mult(FullInt64 value1, FullInt64 value2)
         {
             toBase Base = toEqualBase(ref value1, ref value2);
+
+            // one word by one word: a single 64x64 -> 128 multiply in C# (FullHelper.BigMul), no native call
+            if (Base == toBase.hex && value1.value.Length == 1 && value2.value.Length == 1)
+            {
+                ulong hi = FullHelper.BigMul(value1.value[0], value2.value[0], out ulong lo);
+                return new FullInt64(value1.Sing != value2.Sing, hi == 0 ? new ulong[] { lo } : new ulong[] { hi, lo }, Base);
+            }
+
             var lenth = value1.value.Length + value2.value.Length;
             // small: stack buffer, one exact-size copy out; large: the heap buffer becomes the result
             var heap = lenth <= FullHelper.StackAllocLimitWords ? null : new ulong[lenth];
@@ -258,24 +286,25 @@ namespace FullInt.Core
 
         #region div methods
 
+        // a / b: the remainder is not materialized (no allocation for it)
         public FullInt64 div(FullInt64 value1, FullInt64 value2)
         {
-            if (value2 == 0)
+            if (FullHelper.IsZero(value2.value))   // not "value2 == 0": that allocates a FullInt64 for the 0
             {
                 throw new System.DivideByZeroException();
             }
-            return div(value1, value2, out _);
+            return divRem(value1, value2, wantQuotient: true, wantRemainder: false, out _)!;
         }
 
+        // a % b: the quotient is not materialized (no allocation for it)
         public FullInt64 mod(FullInt64 value1, FullInt64 value2)
         {
-            if (value2 == 0)
+            if (FullHelper.IsZero(value2.value))
             {
                 throw new System.DivideByZeroException();
             }
-            FullInt64 result;
-            div(value1, value2, out result);
-            return result;
+            divRem(value1, value2, wantQuotient: false, wantRemainder: true, out var remainder);
+            return remainder!;
         }
 
         //быстрое деление на байтовое число (для преобразования числа в строку)
@@ -305,6 +334,15 @@ namespace FullInt.Core
         //метод деления двух больших чисел 
         public FullInt64 div(FullInt64 value1, FullInt64 value2, out FullInt64 remainder) //propably need to add the internal div method
         {
+            var quotient = divRem(value1, value2, wantQuotient: true, wantRemainder: true, out var r);
+            remainder = r!;
+            return quotient!;
+        }
+
+        // The division itself. Only the requested results are allocated; the other one is
+        // computed in a scratch buffer (the kernels produce both) and dropped.
+        private FullInt64? divRem(FullInt64 value1, FullInt64 value2, bool wantQuotient, bool wantRemainder, out FullInt64? remainder)
+        {
             toBase Base = toEqualBase(ref value1, ref value2);
 
             // the division kernels expect divisor[0] != 0, and the buffer sizes depend on the
@@ -316,16 +354,36 @@ namespace FullInt.Core
             //optimalizations for small numbers
             if (CompareAbsInternal(dividend, divisor) == -1)// comparation can be expensive
             {
-                remainder = new FullInt64(value1);
-                return new FullInt64(false, new ulong[] { 0UL }, Base);
+                remainder = wantRemainder ? new FullInt64(value1) : null;
+                return wantQuotient ? new FullInt64(false, new ulong[] { 0UL }, Base) : null;
+            }
+
+            // one word by one word: plain 64-bit division, no native call
+            if (dividend.Length == 1 && divisor.Length == 1 && Base == toBase.hex)
+            {
+                ulong q1 = dividend[0] / divisor[0];
+                ulong r1 = dividend[0] - q1 * divisor[0];
+                remainder = wantRemainder ? new FullInt64(value1.Sing, new ulong[] { r1 }, Base) : null;
+                return wantQuotient ? new FullInt64(value1.Sing != value2.Sing, new ulong[] { q1 }, Base) : null;
             }
 
             if (divisor.Length == 1)
             {
                 ulong r = 0UL;
-                var res = div(value1, divisor[0], out r);
-                remainder = new FullInt64(value1.Sing, new ulong[] { r }, Base);
-                res.Sing = value1.Sing != value2.Sing;
+                FullInt64? res = null;
+                if (wantQuotient)
+                {
+                    res = div(value1, divisor[0], out r);
+                    res.Sing = value1.Sing != value2.Sing;
+                }
+                else
+                {
+                    // quotient into a scratch buffer, only the remainder is kept
+                    var scratchHeap = value1.value.Length <= FullHelper.StackAllocLimitWords ? null : new ulong[value1.value.Length];
+                    Span<ulong> scratch = scratchHeap ?? stackalloc ulong[value1.value.Length];
+                    div_internal(value1.value, divisor[0], scratch, out r);
+                }
+                remainder = wantRemainder ? new FullInt64(value1.Sing, new ulong[] { r }, Base) : null;
 
                 return res;
             }
@@ -340,6 +398,13 @@ namespace FullInt.Core
             Span<ulong> resultBuf = resultHeap ?? stackalloc ulong[resultLenght];
 
             div_internal(dividend, divisor, resultBuf, remainderBuf, Base);
+
+            remainder = wantRemainder ? new FullInt64(value1.Sing, FullHelper.DeleteZeros(remainderBuf).ToArray(), Base) : null;
+            if (!wantQuotient)
+            {
+                return null;
+            }
+
             var sign = value1.Sing != value2.Sing;
 
             //propably ussless if value1 >= value2. remove when uncommented the optimalization above
@@ -347,10 +412,7 @@ namespace FullInt.Core
             {
                 sign = false;
             }
-            var result = new FullInt64(sign, FullHelper.ResultArray(resultBuf, resultHeap), Base);
-            remainder = new FullInt64(value1.Sing, FullHelper.DeleteZeros(remainderBuf).ToArray(), Base);
-
-            return result;
+            return new FullInt64(sign, FullHelper.ResultArray(resultBuf, resultHeap), Base);
         }
 		
         public void div_internal(Span<ulong> dividend, Span<ulong> divisor, Span<ulong> result, Span<ulong> remainder, toBase Base)
