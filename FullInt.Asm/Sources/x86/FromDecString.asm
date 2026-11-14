@@ -19,8 +19,8 @@
 ;    rbx chunk digits left -> BLK    r10 word count / result index -> CNT / RIDX
 ;    rdi value length -> ebp (passes)    r13 temp base -> BASE    rcx result -> edi (passes)
 ;
-;  Note: x64 stops with `test rdi, 1` / jb / ja after a pass; the compare intended there (and
-;  used by ToDecString) is `cmp rdi, 1`, which is what this port does.
+;  After a pass both versions stop by length with `cmp len, 1` / jb / ja, as ToDecString does
+;  (x64 had `test rdi, 1` there until 898c2aa).
 ; =============================================================================
 
 section .text
