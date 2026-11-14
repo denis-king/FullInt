@@ -42,36 +42,44 @@ namespace FullInt.Core
                 return addOneWord(a[0], neg1, b[0], neg2);
             }
 
+            // The two magnitude paths are separate methods: with Dynamic PGO (.NET 8) one shared
+            // method gets compiled on the profile of whichever path ran first, and the other one
+            // then runs as a cold path (measured ~10-20 ns slower at 2-8 words).
+            return neg1 == neg2 ? addMagnitudes(a, b, neg1, Base) : subMagnitudes(a, b, neg1, neg2, Base);
+        }
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private FullInt64 addMagnitudes(ulong[] a, ulong[] b, bool negative, toBase Base)
+        {
+            // Exact size, no word reserved for the carry: one allocation and no copy in the
+            // common case. When the top words of equal-length operands overflow, the carry out
+            // is certain: the wider result is allocated at once (the core writes the carry into
+            // its extra top word). Otherwise a carry out (rare) widens the result by one word.
             int n = Math.Max(a.Length, b.Length);
-            if (neg1 == neg2)
+            bool carryCertain = Base == toBase.hex && a.Length == b.Length && a[0] + b[0] < a[0];
+            var r = new ulong[carryCertain ? n + 1 : n];
+            ulong carry = addInternal(a, b, r, Base);
+            if (carry != 0)
             {
-                // Exact size, no word reserved for the carry: one allocation and no copy in the
-                // common case. When the top words of equal-length operands overflow, the carry out
-                // is certain: the wider result is allocated at once (the core writes the carry into
-                // its extra top word). Otherwise a carry out (rare) widens the result by one word.
-                bool carryCertain = Base == toBase.hex && a.Length == b.Length && a[0] + b[0] < a[0];
-                var r = new ulong[carryCertain ? n + 1 : n];
-                ulong carry = addInternal(a, b, r, Base);
-                if (carry != 0)
-                {
-                    var wider = new ulong[r.Length + 1];
-                    wider[0] = carry;
-                    r.CopyTo(wider, 1);
-                    r = wider;
-                }
-                else
-                {
-                    r = FullHelper.Trimmed(r);
-                }
-                return new FullInt64(neg1, r, Base);
+                var wider = new ulong[r.Length + 1];
+                wider[0] = carry;
+                r.CopyTo(wider, 1);
+                r = wider;
             }
             else
             {
-                var r = new ulong[n];   // |a - b| always fits
-                int compareResult = subInternal(a, b, r, Base);
-                bool sign = compareResult > 0 ? neg1 : compareResult < 0 ? neg2 : false;
-                return new FullInt64(sign, FullHelper.Trimmed(r), Base);
+                r = FullHelper.Trimmed(r);
             }
+            return new FullInt64(negative, r, Base);
+        }
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private FullInt64 subMagnitudes(ulong[] a, ulong[] b, bool neg1, bool neg2, toBase Base)
+        {
+            var r = new ulong[Math.Max(a.Length, b.Length)];   // |a - b| always fits
+            int compareResult = subInternal(a, b, r, Base);
+            bool sign = compareResult > 0 ? neg1 : compareResult < 0 ? neg2 : false;
+            return new FullInt64(sign, FullHelper.Trimmed(r), Base);
         }
         // One word and one word: plain 64-bit arithmetic in C#. The native call costs more than
         // the add itself at this size. (A zero result is never negative: Sing normalizes on read.)
