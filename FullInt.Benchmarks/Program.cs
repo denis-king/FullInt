@@ -13,6 +13,11 @@ if (args.Length > 0 && args[0] == "kara")
     return KaratsubaTune.Run(args.Skip(1).ToArray());
 }
 
+// dec [rounds]                               → decimal conversion thresholds (see BzTune.RunDecimal)
+if (args.Length > 0 && args[0] == "dec")
+{
+    return BzTune.RunDecimal(args.Skip(1).ToArray());
+}
 // bz [rounds]                                → Burnikel–Ziegler threshold tuning (see BzTune)
 if (args.Length > 0 && args[0] == "bz")
 {

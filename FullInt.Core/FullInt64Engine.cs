@@ -9,7 +9,7 @@ using System.Text;
 
 namespace FullInt.Core
 {
-    public class FullInt64Engine
+    public partial class FullInt64Engine
     {
 		private static readonly Lazy<FullInt64Engine> _instance = new Lazy<FullInt64Engine>(() => new FullInt64Engine());
 		public static FullInt64Engine Instance => _instance.Value;
@@ -846,6 +846,11 @@ namespace FullInt.Core
                 //result.Base = toBase.hex;
                 valueSpan = valueSpan.Slice(1);
             }
+            if (Base == 10 && valueSpan.Length > DecimalConversion.ParseThreshold)   // long text: by halves
+            {
+                var magnitude = ParseDecimal(valueSpan);
+                return new FullInt64(s, magnitude.value, toBase.hex);
+            }
             if (Base == 10)
             {
                 int resultWords = valueSpan.Length / 19 + 1;
@@ -904,6 +909,10 @@ namespace FullInt.Core
             {
                 var text1 = value.value[0].ToString(System.Globalization.CultureInfo.InvariantCulture);
                 return value.Sing ? "-" + text1 : text1;   // the sign exactly as the general path writes it
+            }
+            if (value.value.Length > DecimalConversion.ToStringThreshold)   // long: by halves (FullInt64Engine.Decimal.cs)
+            {
+                return ToDecStringRecursive(value);
             }
 
             int resultBytes = (int)(value.value.Length * 1.014 + 1) * 19 + 1;

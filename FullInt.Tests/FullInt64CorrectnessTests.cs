@@ -422,6 +422,62 @@ namespace FullInt.Tests
         }
 
         /// <summary>
+        /// Decimal text by halves (FullInt64Engine.Decimal.cs): ToString(10) and Parse against
+        /// BigInteger, at the default thresholds and at tiny ones (deep recursion). The values
+        /// stress the zero padding of the low halves: powers of ten and their neighbours, long
+        /// zero blocks inside, and random digits.
+        /// </summary>
+        [TestMethod]
+        public void DecimalByHalves_MatchesBigInteger()
+        {
+            int savedTo = DecimalConversion.ToStringThreshold, savedParse = DecimalConversion.ParseThreshold;
+            try
+            {
+                var rnd = new Random(4141);
+                var cases = new List<BigInteger>();
+                foreach (int e in new[] { 19, 38, 76, 152, 304, 608, 1216, 2432, 4864, 9728, 20000 })
+                {
+                    var p = BigInteger.Pow(10, e);
+                    cases.Add(p); cases.Add(p - 1); cases.Add(p + 1); cases.Add(p * 7 + 3);
+                }
+                for (int i = 0; i < 40; i++)
+                {
+                    int digits = rnd.Next(20, i < 36 ? 3000 : 20000);   // BigInteger's own text conversion is n² as well
+                    var sb = new StringBuilder();
+                    sb.Append((char)('1' + rnd.Next(9)));
+                    for (int d = 1; d < digits; d++)
+                    {
+                        // runs of zeros now and then
+                        sb.Append(rnd.Next(10) == 0 ? new string('0', rnd.Next(1, 120)) : ((char)('0' + rnd.Next(10))).ToString());
+                    }
+                    cases.Add(BigInteger.Parse(sb.ToString()));
+                }
+
+                foreach (var (to, parse) in new[] { (savedTo, savedParse), (2, 20), (3, 39), (5, 100) })
+                {
+                    DecimalConversion.ToStringThreshold = to;
+                    DecimalConversion.ParseThreshold = parse;
+                    bool tiny = to != savedTo;
+                    foreach (var big in cases)
+                    {
+                        if (tiny && big.GetByteCount() > 2100) continue;   // deep recursion: up to ~5000 digits
+                        foreach (var v in new[] { big, -big })
+                        {
+                            string text = v.ToString();
+                            var parsed = FullInt64.Parse(text);
+                            Assert.AreEqual(text, parsed.ToString(10), $"thresholds {to}/{parse}, {text.Length} chars");
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                DecimalConversion.ToStringThreshold = savedTo;
+                DecimalConversion.ParseThreshold = savedParse;
+            }
+        }
+
+        /// <summary>
         /// The in-place API (FullInt64.Add(result, a, b) etc.) against BigInteger: result fresh,
         /// reused, and the same object as a or b; signs; sizes across the Karatsuba threshold.
         /// </summary>

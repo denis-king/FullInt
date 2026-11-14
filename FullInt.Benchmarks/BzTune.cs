@@ -15,6 +15,52 @@ namespace FullInt.Benchmarks
         private static readonly int[] Sizes = { 64, 96, 128, 192, 256, 512, 1024, 2048, 4096 };
         private static readonly int[] Thresholds = { 24, 32, 48, 64, 80, 96, 128, 192 };
 
+        /// <summary>
+        /// "dec": the thresholds of the decimal conversion by halves (DecimalConversion): ToString
+        /// and Parse of N-word numbers, time in us per threshold (words; Parse: words·19 digits).
+        /// </summary>
+        public static int RunDecimal(string[] args)
+        {
+            int rounds = args.Length > 0 ? int.Parse(args[0]) : 3;
+            int[] sizes = { 32, 64, 128, 256, 512, 1024, 4096 };
+            int[] thresholds = { 16, 24, 32, 48, 64, 96, 128, 100000 };   // 100000: the kernels alone
+            var rnd = new Random(2);
+            Console.WriteLine($"rounds={rounds}; us per call; columns: threshold in words (100000 = kernels alone)");
+            foreach (string what in new[] { "ToString", "Parse" })
+            {
+                Console.Write($"{what,-9}{"N",6}");
+                foreach (int t in thresholds) Console.Write($" {t,9}");
+                Console.WriteLine();
+                foreach (int n in sizes)
+                {
+                    var w = new ulong[n];
+                    for (int i = 0; i < n; i++) w[i] = (ulong)rnd.NextInt64() ^ ((ulong)rnd.Next(2) << 63);
+                    w[0] |= 1;
+                    var x = new FullInt64(false, w);
+                    string text = x.ToString(10);
+                    Console.Write($"{"",-9}{n,6}");
+                    foreach (int t in thresholds)
+                    {
+                        DecimalConversion.ToStringThreshold = t;
+                        DecimalConversion.ParseThreshold = t * 19;
+                        Action f = what == "ToString" ? () => x.ToString(10) : () => FullInt64.Parse(text);
+                        f();
+                        double best = double.MaxValue;
+                        for (int r = 0; r < rounds; r++)
+                        {
+                            int it = 0;
+                            var sw = Stopwatch.StartNew();
+                            do { f(); it++; } while (sw.ElapsedMilliseconds < 20);
+                            best = Math.Min(best, sw.Elapsed.TotalMilliseconds * 1000 / it);
+                        }
+                        Console.Write($" {best,9:F1}");
+                    }
+                    Console.WriteLine();
+                }
+            }
+            return 0;
+        }
+
         public static int Run(string[] args)
         {
             int rounds = args.Length > 0 ? int.Parse(args[0]) : 5;
