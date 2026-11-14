@@ -21,32 +21,57 @@ namespace FullInt.Core
 			_core = FullIntCoreFactory.Create();
 		}
         #region add methods
-        public  FullInt64 add(FullInt64 value1, FullInt64 value2)
+        public FullInt64 add(FullInt64 value1, FullInt64 value2)
         {
-            toBase Base = toEqualBase(ref value1, ref value2);
-
-            if (Base == toBase.hex && value1.value.Length == 1 && value2.value.Length == 1)
+            if (!value1.IsDec && !value2.IsDec && value1.value.Length == 1 && value2.value.Length == 1)
             {
                 return addOneWord(value1.value[0], value1.Sing, value2.value[0], value2.Sing);
             }
+            return addOrSub(value1, value2, negate2: false);
+        }
 
-            // Exact size, no word reserved for the carry: one allocation and no copy in the
-            // common case. A carry out (rare) widens the result by one word.
-            var r = new ulong[Math.Max(value1.value.Length, value2.value.Length)];
-            var result = new FullInt64(false, r, Base);
-            ulong carry = addSigned(value1, value2, result, Base);
-            if (carry != 0)
+        // a + b, or a - b with negate2 (no FullInt64 is made for -b). The signs are read once.
+        private FullInt64 addOrSub(FullInt64 value1, FullInt64 value2, bool negate2)
+        {
+            toBase Base = toEqualBase(ref value1, ref value2);
+            bool neg1 = value1.Sing, neg2 = value2.Sing != negate2;   // -0 is fine here: a zero result is normalized on read
+            ulong[] a = value1.value, b = value2.value;
+
+            if (Base == toBase.hex && a.Length == 1 && b.Length == 1)   // after a base conversion (add / sub check it first)
             {
-                var wider = new ulong[r.Length + 1];
-                wider[0] = carry;
-                r.CopyTo(wider, 1);
-                result.value = wider;
+                return addOneWord(a[0], neg1, b[0], neg2);
+            }
+
+            int n = Math.Max(a.Length, b.Length);
+            if (neg1 == neg2)
+            {
+                // Exact size, no word reserved for the carry: one allocation and no copy in the
+                // common case. When the top words of equal-length operands overflow, the carry out
+                // is certain: the wider result is allocated at once (the core writes the carry into
+                // its extra top word). Otherwise a carry out (rare) widens the result by one word.
+                bool carryCertain = Base == toBase.hex && a.Length == b.Length && a[0] + b[0] < a[0];
+                var r = new ulong[carryCertain ? n + 1 : n];
+                ulong carry = addInternal(a, b, r, Base);
+                if (carry != 0)
+                {
+                    var wider = new ulong[r.Length + 1];
+                    wider[0] = carry;
+                    r.CopyTo(wider, 1);
+                    r = wider;
+                }
+                else
+                {
+                    r = FullHelper.Trimmed(r);
+                }
+                return new FullInt64(neg1, r, Base);
             }
             else
             {
-                result.value = FullHelper.Trimmed(r);
+                var r = new ulong[n];   // |a - b| always fits
+                int compareResult = subInternal(a, b, r, Base);
+                bool sign = compareResult > 0 ? neg1 : compareResult < 0 ? neg2 : false;
+                return new FullInt64(sign, FullHelper.Trimmed(r), Base);
             }
-            return result;
         }
         // One word and one word: plain 64-bit arithmetic in C#. The native call costs more than
         // the add itself at this size. (A zero result is never negative: Sing normalizes on read.)
@@ -108,7 +133,11 @@ namespace FullInt.Core
 
         public FullInt64 sub(FullInt64 value1, FullInt64 value2)
         {
-            return add(value1, -value2);//possible negative makes a new objext!
+            if (!value1.IsDec && !value2.IsDec && value1.value.Length == 1 && value2.value.Length == 1)
+            {
+                return addOneWord(value1.value[0], value1.Sing, value2.value[0], !value2.Sing);   // -0 is fine: normalized on read
+            }
+            return addOrSub(value1, value2, negate2: true);
         }
         private ulong addInternal(Span<ulong> value1, Span<ulong> value2, Span<ulong> result, toBase Base) 
         {
@@ -207,7 +236,20 @@ namespace FullInt.Core
             var result = Compare(value1, value2);
             return result > 0;
         }
-        public int Compare(FullInt64 value1, FullInt64 value2) 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+        public int Compare(FullInt64 value1, FullInt64 value2)
+        {
+            if (value1.IsDec == value2.IsDec)   // the common case: no base conversion, each sign read once
+            {
+                bool neg1 = value1.Sing, neg2 = value2.Sing;
+                if (neg1 != neg2) return neg1 ? -1 : 1;
+                int abs = CompareAbsQuick(value1.value, value2.value);
+                return neg1 ? -abs : abs;
+            }
+            return CompareMixedBase(value1, value2);
+        }
+
+        private int CompareMixedBase(FullInt64 value1, FullInt64 value2)
         {
             int result;
             toEqualBase(ref value1, ref value2);
@@ -236,6 +278,20 @@ namespace FullInt.Core
         }
         public int CompareAbsInternal(Span<ulong> value1, Span<ulong> value2)
         {
+            return _core.Compare(value1, value2);
+        }
+
+        // Magnitudes almost always differ in the length or the top word: with no leading zero
+        // words that decides it here, without the core call. Otherwise (equal top words, leading
+        // zeros) the core compares as before.
+        private static int CompareAbsQuick(Span<ulong> value1, Span<ulong> value2)
+        {
+            if (value1.Length > 0 && value2.Length > 0 && value1[0] != 0 && value2[0] != 0)
+            {
+                if (value1.Length != value2.Length) return value1.Length > value2.Length ? 1 : -1;
+                if (value1[0] != value2[0]) return value1[0] > value2[0] ? 1 : -1;
+                if (value1.Length == 1) return 0;
+            }
             return _core.Compare(value1, value2);
         }
 
@@ -357,21 +413,21 @@ namespace FullInt.Core
             var dividend = FullHelper.DeleteZeros(value1.value);
             var divisor = FullHelper.DeleteZeros(value2.value);
 
-            //comented this optimalizations to test the general algorithm
-            //optimalizations for small numbers
-            if (CompareAbsInternal(dividend, divisor) == -1)// comparation can be expensive
-            {
-                remainder = wantRemainder ? new FullInt64(value1) : null;
-                return wantQuotient ? new FullInt64(false, new ulong[] { 0UL }, Base) : null;
-            }
-
-            // one word by one word: plain 64-bit division, no native call
+            // one word by one word: plain 64-bit division, no native call (before the compare:
+            // a < b gives q = 0, r = a here as well)
             if (dividend.Length == 1 && divisor.Length == 1 && Base == toBase.hex)
             {
                 ulong q1 = dividend[0] / divisor[0];
                 ulong r1 = dividend[0] - q1 * divisor[0];
                 remainder = wantRemainder ? new FullInt64(value1.Sing, new ulong[] { r1 }, Base) : null;
                 return wantQuotient ? new FullInt64(value1.Sing != value2.Sing, new ulong[] { q1 }, Base) : null;
+            }
+
+            //optimalizations for small numbers
+            if (CompareAbsQuick(dividend, divisor) == -1)
+            {
+                remainder = wantRemainder ? new FullInt64(value1) : null;
+                return wantQuotient ? new FullInt64(false, new ulong[] { 0UL }, Base) : null;
             }
 
             if (divisor.Length == 1)
@@ -469,7 +525,23 @@ namespace FullInt.Core
             return sub(invertor(value), 1);
         }
 
+        // The one-word paths are checked here, in front: a branch inside the general methods
+        // made the JIT compile them worse (2-32 words measured 15-50% slower on .NET 8).
         public FullInt64 shiftLeft(FullInt64 value, int shift)
+        {
+            var w = value.value;
+            if (w.Length == 1 && (uint)shift < 64 && !value.IsDec) return shiftLeftOneWord(w[0], value.Sing, shift);
+            return shiftLeftGeneral(value, shift);
+        }
+
+        public FullInt64 shiftRight(FullInt64 value, int shift)
+        {
+            var w = value.value;
+            if (w.Length == 1 && shift >= 0 && !value.IsDec) return shiftRightOneWord(w[0], value.Sing, shift);   // Sing is false for 0
+            return shiftRightGeneral(value, shift);
+        }
+
+        private FullInt64 shiftLeftGeneral(FullInt64 value, int shift)
         {
             RequireBinary(value, value);
             if (shift < 0) return shiftRight(value, -shift);
@@ -481,7 +553,7 @@ namespace FullInt.Core
         }
 
         // arithmetic shift: rounds toward negative infinity, like BigInteger
-        public FullInt64 shiftRight(FullInt64 value, int shift)
+        private FullInt64 shiftRightGeneral(FullInt64 value, int shift)
         {
             RequireBinary(value, value);
             if (shift < 0) return shiftLeft(value, -shift);
@@ -499,6 +571,24 @@ namespace FullInt.Core
             // -|a| >> k = -(((|a| - 1) >> k) + 1)
             var shifted = shiftRight(sub(abs(value), 1), shift);
             return invertor(add(shifted, 1));
+        }
+
+        // One word: in C#, no buffers and no native call. Separate methods keep the general
+        // shift paths as they were (frame, locals).
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static FullInt64 shiftLeftOneWord(ulong m, bool negative, int shift)   // shift < 64
+        {
+            ulong lo = m << shift, hi = shift == 0 ? 0 : m >> (64 - shift);
+            return new FullInt64(negative, hi == 0 ? new ulong[] { lo } : new ulong[] { hi, lo });
+        }
+
+        // negative (m >= 1): -m >> k = -(((m - 1) >> k) + 1), rounding toward negative infinity
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static FullInt64 shiftRightOneWord(ulong m, bool negative, int shift)
+        {
+            return negative
+                ? new FullInt64(true, new ulong[] { (shift >= 64 ? 0 : (m - 1) >> shift) + 1 })
+                : new FullInt64(false, new ulong[] { shift >= 64 ? 0 : m >> shift });
         }
 
         private static FullInt64 invertor(FullInt64 value) => FullInt64.invertor(value);

@@ -266,6 +266,64 @@ namespace FullInt.Tests
         }
 
         /// <summary>
+        /// The C# fast paths of compare (sign, length, top word; the core only for equal top words
+        /// or leading zero words), of one-word shifts and of one-word ToString: every sign, shifts
+        /// across 0..130 bits, operands with and without leading zero words, against BigInteger.
+        /// </summary>
+        [TestMethod]
+        public void CompareShiftAndToString_FastPaths_MatchBigInteger()
+        {
+            ulong[] special = { 0, 1, 2, ulong.MaxValue, ulong.MaxValue - 1, 1UL << 63, (1UL << 63) - 1, 1UL << 32, uint.MaxValue };
+            var rnd = new Random(8128);
+            var values = new List<(ulong[] w, bool neg)>();
+            foreach (var w in special) foreach (bool n in new[] { false, true })
+            {
+                values.Add((new[] { w }, n));
+                values.Add((new[] { 0UL, w }, n));             // a leading zero word
+                values.Add((new[] { w, 5UL }, n));             // same top word as the one-word value
+                values.Add((new[] { w, w, ulong.MaxValue }, n));
+            }
+            for (int i = 0; i < 60; i++)
+            {
+                var w = new ulong[rnd.Next(1, 5)];
+                for (int k = 0; k < w.Length; k++) w[k] = rnd.Next(4) == 0 ? special[rnd.Next(special.Length)] : (ulong)rnd.NextInt64();
+                values.Add((w, rnd.Next(2) == 0));
+            }
+
+            static BigInteger Big(ulong[] w, bool neg)
+            {
+                BigInteger m = 0;
+                foreach (var x in w) m = (m << 64) + x;
+                return neg ? -m : m;
+            }
+
+            foreach (var (aw, an) in values)
+            {
+                var fa = new FullInt64(an, aw);
+                var A = Big(aw, an);
+                Assert.AreEqual(A.ToString(), fa.ToString(10), $"ToString a={A}");
+
+                foreach (int k in new[] { 0, 1, 7, 37, 63, 64, 65, 100, 127, 128, 130 })
+                {
+                    Assert.AreEqual(A << k, BigInteger.Parse((fa << k).ToString(10)), $"shl a={A} k={k}");
+                    Assert.AreEqual(BigCompat.ShiftRightFloor(A, k), BigInteger.Parse((fa >> k).ToString(10)), $"shr a={A} k={k}");
+                }
+
+                foreach (var (bw, bn) in values)
+                {
+                    var fb = new FullInt64(bn, bw);
+                    var B = Big(bw, bn);
+                    string ctx = $"a={A} b={B}";
+                    Assert.AreEqual(A < B, fa < fb, "< " + ctx);
+                    Assert.AreEqual(A > B, fa > fb, "> " + ctx);
+                    Assert.AreEqual(A <= B, fa <= fb, "<= " + ctx);
+                    Assert.AreEqual(A >= B, fa >= fb, ">= " + ctx);
+                    Assert.AreEqual(A == B, fa == fb, "== " + ctx);
+                }
+            }
+        }
+
+        /// <summary>
         /// "/" and "%" (which no longer materialize the result they don't return) agree with
         /// the combined div(a, b, out remainder) and with BigInteger, on multi-word operands.
         /// </summary>

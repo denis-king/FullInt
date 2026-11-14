@@ -19,15 +19,18 @@
 ;    rdi A, rsi B          -> esi, edi   (bases; the current limb is [base + left*8 - 8])
 ;    rdx A left, r8 B left -> ebx, ecx
 ;    rcx R, r9 R left      -> ebp (walks down from the end of R), stack [esp+24]
-;    rbx maskA, r12 carryA -> stack [esp], [esp+4]
-;    r13 maskB, r14 carryB -> stack [esp+8], [esp+12]
-;    r15 maskR, r10 carryR -> stack [esp+16], [esp+20]
+;    rbx maskA, r12 carryA -> stack [esp], [esp+4] (byte: NOT carryA)
+;    r13 maskB, r14 carryB -> stack [esp+8], [esp+12] (byte: NOT carryB)
+;    r15 maskR, r10 carryR -> stack [esp+16], [esp+20] (byte: NOT carryR)
 ;    rax / r11 A / B word  -> eax / edx (one dword at a time)
 ; =============================================================================
 
 section .text
 
 ; one 32-bit half (%3 = 0 low, 4 high) of the current limb, %2 = and / or / xor
+;  The carries live on the stack as one byte holding NOT carry, read back as a byte:
+;  cmp byte [nc], 1 sets CF = carry, then adc / setnc. (A byte store read back as a dword
+;  cannot be forwarded and stalled every half on all three chains.)
 %macro HALF 3
 	xor eax, eax
 	test ebx, ebx
@@ -35,8 +38,9 @@ section .text
 	mov eax, [esi + ebx*8 - 8 + %3]
 %%noA:
 	xor eax, [esp]                ; A dword -> two's complement
-	add eax, [esp+4]
-	setc byte [esp+4]
+	cmp byte [esp+4], 1           ; CF = carryA
+	adc eax, 0
+	setnc byte [esp+4]
 
 	xor edx, edx
 	test ecx, ecx
@@ -44,14 +48,16 @@ section .text
 	mov edx, [edi + ecx*8 - 8 + %3]
 %%noB:
 	xor edx, [esp+8]              ; B dword -> two's complement
-	add edx, [esp+12]
-	setc byte [esp+12]
+	cmp byte [esp+12], 1          ; CF = carryB
+	adc edx, 0
+	setnc byte [esp+12]
 
 	%2 eax, edx
 
 	xor eax, [esp+16]             ; result -> magnitude
-	add eax, [esp+20]
-	setc byte [esp+20]
+	cmp byte [esp+20], 1          ; CF = carryR
+	adc eax, 0
+	setnc byte [esp+20]
 	mov [ebp + %3], eax
 %endmacro
 
@@ -77,19 +83,21 @@ Fullint64%1WIN:
 	mov eax, [esp+72]             ; signs
 	mov edx, eax
 	and edx, 1
-	mov [esp+4], edx              ; carryA = signA
 	neg edx
 	mov [esp], edx                ; maskA = signA ? all-ones : 0
+	inc edx
+	mov [esp+4], edx              ; NOT carryA (carryA = signA)
 	shr eax, 1
 	and eax, 1
-	mov [esp+12], eax             ; carryB = signB
 	neg eax
 	mov [esp+8], eax              ; maskB
+	lea edx, [eax + 1]
+	mov [esp+12], edx             ; NOT carryB
 	mov edx, [esp]
 	%2 edx, eax                   ; maskR = op(maskA, maskB)
 	mov [esp+16], edx
-	and edx, 1
-	mov [esp+20], edx             ; carryR = signR
+	inc edx
+	mov [esp+20], edx             ; NOT carryR (carryR = signR)
 
 %%loop:
 	sub ebp, 8                    ; R limb, from the lowest up
