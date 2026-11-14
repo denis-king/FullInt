@@ -1,0 +1,9 @@
+EXPORTS
+Fullint64AddWIN
+Fullint64SubWIN
+Fullint64CompareWIN
+Fullint64AndWIN
+Fullint64OrWIN
+Fullint64XorWIN
+Fullint64ShlWIN
+Fullint64ShrWIN

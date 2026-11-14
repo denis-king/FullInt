@@ -16,17 +16,20 @@ namespace FullInt.Tests
 
         /// <summary>
         /// The factory falls back to the managed core when the native library cannot be loaded.
-        /// That must not hide a broken native build: in a 64-bit Windows process the asm core is
-        /// expected (unless FULLINT_FORCE_MANAGED=1); in any other process the managed one.
+        /// That must not hide a broken native build: in a 64-bit or 32-bit Windows process the
+        /// matching asm core is expected (unless FULLINT_FORCE_MANAGED=1); elsewhere the managed one.
         /// </summary>
         [TestMethod]
         public void Factory_PicksTheExpectedCore()
         {
             var core = FullIntCoreFactory.Create();
             bool forced = Environment.GetEnvironmentVariable(FullIntCoreFactory.ForceManagedEnvVar) == "1";
-            bool winX64 = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows)
-                && System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture == System.Runtime.InteropServices.Architecture.X64;
-            var expected = winX64 && !forced ? typeof(FullIntCoreWindowsX64) : typeof(FullInt64CoreDefault);
+            bool windows = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows);
+            var arch = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture;
+            var expected = forced || !windows ? typeof(FullInt64CoreDefault)
+                : arch == System.Runtime.InteropServices.Architecture.X64 ? typeof(FullIntCoreWindowsX64)
+                : arch == System.Runtime.InteropServices.Architecture.X86 ? typeof(FullIntCoreWindowsX86)
+                : typeof(FullInt64CoreDefault);
             Assert.AreEqual(expected, core.GetType(),
                 $"process: {System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture}, framework: {System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}");
         }

@@ -40,31 +40,31 @@ namespace FullInt.Core
         private const int FastWords = 2048;        // add / sub / compare / logic / shifts: ~1 us at the limit
         private const long FastProducts = 4096;    // mult: lenA * lenB word products, ~3 us at the limit
 
-        [DllImport(dll, EntryPoint = "Fullint64AddWIN"), SuppressGCTransition]
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "Fullint64AddWIN"), SuppressGCTransition]
         private static extern ulong Fullint64AddWIN_Fast(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR);
 
-        [DllImport(dll, EntryPoint = "Fullint64SubWIN"), SuppressGCTransition]
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "Fullint64SubWIN"), SuppressGCTransition]
         private static extern int Fullint64SubWIN_Fast(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR);
 
-        [DllImport(dll, EntryPoint = "Fullint64MultWIN"), SuppressGCTransition]
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "Fullint64MultWIN"), SuppressGCTransition]
         private static extern ulong Fullint64MultWIN_Fast(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR);
 
-        [DllImport(dll, EntryPoint = "Fullint64CompareWIN"), SuppressGCTransition]
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "Fullint64CompareWIN"), SuppressGCTransition]
         private static extern int Fullint64CompareWIN_Fast(IntPtr a, IntPtr b, int lenA, int lenB);
 
-        [DllImport(dll, EntryPoint = "Fullint64AndWIN"), SuppressGCTransition]
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "Fullint64AndWIN"), SuppressGCTransition]
         private static extern int Fullint64AndWIN_Fast(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs);
 
-        [DllImport(dll, EntryPoint = "Fullint64OrWIN"), SuppressGCTransition]
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "Fullint64OrWIN"), SuppressGCTransition]
         private static extern int Fullint64OrWIN_Fast(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs);
 
-        [DllImport(dll, EntryPoint = "Fullint64XorWIN"), SuppressGCTransition]
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "Fullint64XorWIN"), SuppressGCTransition]
         private static extern int Fullint64XorWIN_Fast(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs);
 
-        [DllImport(dll, EntryPoint = "Fullint64ShlWIN"), SuppressGCTransition]
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "Fullint64ShlWIN"), SuppressGCTransition]
         private static extern void Fullint64ShlWIN_Fast(IntPtr a, IntPtr r, int lenA, int lenR, int shift);
 
-        [DllImport(dll, EntryPoint = "Fullint64ShrWIN"), SuppressGCTransition]
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "Fullint64ShrWIN"), SuppressGCTransition]
         private static extern void Fullint64ShrWIN_Fast(IntPtr a, IntPtr r, int lenA, int lenR, int shift);
 
         private static bool Short(int lenA, int lenB, int lenR) => lenA <= FastWords && lenB <= FastWords && lenR <= FastWords;

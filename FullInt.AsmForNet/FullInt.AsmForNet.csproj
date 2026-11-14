@@ -25,7 +25,7 @@
 
   <!-- ===================== target platform ===================== -->
   <PropertyGroup>
-    <FullIntNativeSupportedRids>win-x64</FullIntNativeSupportedRids>
+    <FullIntNativeSupportedRids>win-x64;win-x86</FullIntNativeSupportedRids>
 
     <FullIntNativeRid Condition="'$(FullIntNativeRid)' == ''">$(RuntimeIdentifier)</FullIntNativeRid>
   </PropertyGroup>
@@ -59,6 +59,15 @@
     <FullIntNativePdbPath>$(FullIntNativeBinDir)$(FullIntNativeLibBase).pdb</FullIntNativePdbPath>
   </PropertyGroup>
 
+  <!-- A Windows x64 build also builds the 32-bit library: an AnyCPU app may run as a 32-bit
+       process (x86 machine, or "Prefer 32-bit"), and the core factory then loads the x86 one. -->
+  <PropertyGroup>
+    <FullIntBuildX86Companion Condition="'$(FullIntNativeSupported)' == 'true' and '$(FullIntNativeRid)' == 'win-x64' and '$(OS)' == 'Windows_NT'">true</FullIntBuildX86Companion>
+    <FullIntX86ObjDir>$([MSBuild]::NormalizeDirectory('$(FullIntAsmDir)', 'obj', 'win-x86', '$(Configuration)'))</FullIntX86ObjDir>
+    <FullIntX86BinDir>$([MSBuild]::NormalizeDirectory('$(FullIntAsmDir)', 'bin', 'win-x86', '$(Configuration)'))</FullIntX86BinDir>
+    <FullIntX86LibPath>$(FullIntX86BinDir)FullIntOperations_win_x86.dll</FullIntX86LibPath>
+  </PropertyGroup>
+
   <!-- ===================== build ===================== -->
   <ItemGroup>
     <FullIntNativeInput Include="$(FullIntAsmDir)Sources\**\*.asm;$(FullIntAsmDir)Sources\**\*.S" />
@@ -77,6 +86,15 @@
           Command="bash &quot;$(FullIntAsmDir)build/build-native.sh&quot; $(Configuration) $(FullIntNativeOS) $(FullIntNativeArch) &quot;$(FullIntNativeObjDir)&quot; &quot;$(FullIntNativeBinDir)&quot;" />
   </Target>
 
+  <Target Name="FullIntBuildNativeX86Companion"
+          BeforeTargets="BeforeBuild"
+          Condition="'$(FullIntBuildX86Companion)' == 'true'"
+          Inputs="@(FullIntNativeInput);$(FullIntAsmDir)exports_x86.def;$(MSBuildThisFileFullPath)"
+          Outputs="$(FullIntX86LibPath)">
+    <Exec Command="call &quot;$(FullIntAsmDir)build\build-native.cmd&quot; $(Configuration) x86 &quot;$(FullIntX86ObjDir.TrimEnd('\'))&quot; &quot;$(FullIntX86BinDir.TrimEnd('\'))&quot;"
+          CustomErrorRegularExpression="(: error|^build-native: error)" />
+  </Target>
+
   <Target Name="FullIntNativeNotSupported"
           BeforeTargets="BeforeBuild"
           Condition="'$(FullIntNativeSupported)' != 'true' and '$(FullIntSkipNative)' != 'true'">
@@ -85,6 +103,18 @@
   </Target>
 
   <!-- ===================== flow to consumers ===================== -->
+  <ItemGroup Condition="'$(FullIntBuildX86Companion)' == 'true'">
+    <None Include="$(FullIntX86LibPath)"
+          Link="FullIntOperations_win_x86.dll"
+          CopyToOutputDirectory="PreserveNewest"
+          Visible="false" />
+    <None Include="$(FullIntX86BinDir)FullIntOperations_win_x86.pdb"
+          Condition="'$(Configuration)' == 'Debug'"
+          Link="FullIntOperations_win_x86.pdb"
+          CopyToOutputDirectory="PreserveNewest"
+          Visible="false" />
+  </ItemGroup>
+
   <ItemGroup Condition="'$(FullIntNativeSupported)' == 'true'">
     <None Include="$(FullIntNativeLibPath)"
           Link="$(FullIntNativeLibFile)"

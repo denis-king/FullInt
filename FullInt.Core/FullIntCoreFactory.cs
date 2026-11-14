@@ -25,6 +25,10 @@ namespace FullInt.Core
 				{
 					return NativeOrManaged(() => new FullIntCoreWindowsX64());
 				}
+				else if (arch == Architecture.X86)
+				{
+					return NativeOrManaged(() => new FullIntCoreWindowsX86());
+				}
 				else if (arch == Architecture.Arm64)
 				{
 					
@@ -68,9 +72,9 @@ namespace FullInt.Core
 			try
 			{
 				var core = createNative();
-				Span<ulong> a = stackalloc ulong[] { 2 }, b = stackalloc ulong[] { 3 }, r = stackalloc ulong[2];
-				core.Mult(a, b, r);
-				if (r[0] == 0 && r[1] == 6)
+				Span<ulong> a = stackalloc ulong[] { ulong.MaxValue }, b = stackalloc ulong[] { 3 }, r = stackalloc ulong[2];
+				core.Add(a, b, r);
+				if (r[0] == 1 && r[1] == 2)
 				{
 					return core;
 				}
