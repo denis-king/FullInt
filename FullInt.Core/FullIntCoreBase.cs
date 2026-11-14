@@ -144,9 +144,10 @@ namespace FullInt.Core
         
         public void ToDecString(Span<ulong> value, Span<byte> resultBuf, out int resultStartIndex)
         {
+            ulong[]? rented = null;
             Span<ulong> valueBuf = value.Length <= FullHelper.StackAllocLimitWords
                 ? stackalloc ulong[value.Length]
-                : new ulong[value.Length];
+                : FullHelper.RentZeroed(value.Length, out rented);
             resultStartIndex = resultBuf.Length; 
             unsafe
             {
@@ -164,6 +165,7 @@ namespace FullInt.Core
                     ToDecString(ipValue, ipValueBuf, ipResultBuf, value.Length, ref resultStartIndex);
                 }
             }
+            FullHelper.Return(rented);
         }
         
         protected abstract void ToDecString(IntPtr value, IntPtr valueBuf, IntPtr resultBuf, int lenValue, ref int lenResult);
@@ -172,9 +174,10 @@ namespace FullInt.Core
         {
             resultStartIndex = resultBuf.Length; 
             int valueWords = value.Length / 19 + 1;
+            ulong[]? rented = null;
             Span<ulong> valueBuf = valueWords <= FullHelper.StackAllocLimitWords
                 ? stackalloc ulong[valueWords]
-                : new ulong[valueWords];
+                : FullHelper.RentZeroed(valueWords, out rented);
             unsafe
             {
                 ref byte rValue = ref MemoryMarshal.GetReference(value);
@@ -191,6 +194,7 @@ namespace FullInt.Core
                     FromDecString(ipValue, ipValueBuf, ipResultBuf, value.Length, ref resultStartIndex);
                 }
             }
+            FullHelper.Return(rented);
         }
         
         protected abstract void FromDecString(IntPtr value, IntPtr valueBuf, IntPtr resultBuf, int lenValue, ref int lenResult);

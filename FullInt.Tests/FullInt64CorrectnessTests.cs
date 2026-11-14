@@ -299,6 +299,41 @@ namespace FullInt.Tests
             }
         }
 
+        /// <summary>
+        /// Division with work buffers above the stack limit, which come from ArrayPool: divisor
+        /// over 1024 words (remainder buffer), '%' with a quotient over 1024 words (dropped
+        /// quotient), '%' by one word with a dividend over 1024 words. Each case runs several
+        /// times in a row, so the pool hands back used (dirty) arrays.
+        /// </summary>
+        [TestMethod]
+        public void DivMod_PooledWorkBuffers_MatchBigInteger()
+        {
+            var rnd = new Random(1717);
+            FullInt64 Make(int words, out BigInteger big)
+            {
+                var w = new ulong[words];
+                for (int k = 0; k < words; k++) w[k] = (ulong)rnd.NextInt64() ^ ((ulong)rnd.Next(2) << 63);
+                w[0] |= 1;
+                var f = new FullInt64(rnd.Next(2) == 0, w);
+                big = BigInteger.Parse(f.ToString(10));
+                return f;
+            }
+
+            for (int rep = 0; rep < 3; rep++)
+            {
+                var a = Make(2600, out var A);
+                var bigDivisor = Make(1100, out var D);          // remainder buffer > 1024 words
+                var smallDivisor = Make(300, out var d);         // quotient > 1024 words
+                var word = Make(1, out var w);
+
+                Assert.AreEqual((A / D).ToString(), (a / bigDivisor).ToString(10), "a / D");
+                Assert.AreEqual((A % D).ToString(), (a % bigDivisor).ToString(10), "a % D");
+                Assert.AreEqual((A % d).ToString(), (a % smallDivisor).ToString(10), "a % d (dropped quotient)");
+                Assert.AreEqual((A / d).ToString(), (a / smallDivisor).ToString(10), "a / d");
+                Assert.AreEqual((A % w).ToString(), (a % word).ToString(10), "a % one word");
+            }
+        }
+
         // ---------------------------------------------------------------- unnormalized divisor (engine)
 
         [TestMethod]

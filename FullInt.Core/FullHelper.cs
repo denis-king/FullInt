@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -12,6 +13,38 @@ namespace FullInt.Core
         // a stack overflow cannot be caught and kills the process.
         public const int StackAllocLimitWords = 1024;            // 8 KB
         public const int StackAllocLimitBytes = 8 * 1024;        // 8 KB
+
+        /// <summary>
+        /// A work buffer above the stack limit: rented from ArrayPool, cut to the exact length and
+        /// zeroed (like stackalloc and new). Give it back with Return when done; a buffer that is
+        /// not given back (an exception on the way) is just left to the GC.
+        /// </summary>
+        public static Span<ulong> RentZeroed(int length, out ulong[]? rented)
+        {
+            rented = ArrayPool<ulong>.Shared.Rent(length);
+            var span = rented.AsSpan(0, length);
+            span.Clear();
+            return span;
+        }
+
+        /// <summary>Byte version of RentZeroed.</summary>
+        public static Span<byte> RentZeroedBytes(int length, out byte[]? rented)
+        {
+            rented = ArrayPool<byte>.Shared.Rent(length);
+            var span = rented.AsSpan(0, length);
+            span.Clear();
+            return span;
+        }
+
+        public static void Return(ulong[]? rented)
+        {
+            if (rented != null) ArrayPool<ulong>.Shared.Return(rented);
+        }
+
+        public static void Return(byte[]? rented)
+        {
+            if (rented != null) ArrayPool<byte>.Shared.Return(rented);
+        }
 
         public static bool IsZero(ulong[]? value)
         {

@@ -386,29 +386,40 @@ namespace FullInt.Core
                 else
                 {
                     // quotient into a scratch buffer, only the remainder is kept
-                    var scratchHeap = value1.value.Length <= FullHelper.StackAllocLimitWords ? null : new ulong[value1.value.Length];
-                    Span<ulong> scratch = scratchHeap ?? stackalloc ulong[value1.value.Length];
+                    ulong[]? rented = null;
+                    Span<ulong> scratch = value1.value.Length <= FullHelper.StackAllocLimitWords
+                        ? stackalloc ulong[value1.value.Length]
+                        : FullHelper.RentZeroed(value1.value.Length, out rented);
                     div_internal(value1.value, divisor[0], scratch, out r);
+                    FullHelper.Return(rented);
                 }
                 remainder = wantRemainder ? new FullInt64(value1.Sing, new ulong[] { r }, Base) : null;
 
                 return res;
             }
 
+            ulong[]? remainderRented = null;
             Span<ulong> remainderBuf = divisor.Length <= FullHelper.StackAllocLimitWords
                 ? stackalloc ulong[divisor.Length + 2] // + 2 it uses internal calucation where remainder can be greate than the value 2
-                : new ulong[divisor.Length + 2];//use the buffer pool
+                : FullHelper.RentZeroed(divisor.Length + 2, out remainderRented);   // a work buffer: copied out below
 
             var resultLenght = Math.Max(dividend.Length - divisor.Length + 1, 1);
             // small: stack buffer, one exact-size copy out; large: the heap buffer becomes the result
-            var resultHeap = resultLenght <= FullHelper.StackAllocLimitWords ? null : new ulong[resultLenght];
-            Span<ulong> resultBuf = resultHeap ?? stackalloc ulong[resultLenght];
+            // ("%" drops the quotient, so there a large one is only a work buffer and comes from the pool)
+            ulong[]? resultRented = null;
+            var resultHeap = resultLenght <= FullHelper.StackAllocLimitWords || !wantQuotient ? null : new ulong[resultLenght];
+            Span<ulong> resultBuf = resultHeap
+                ?? (resultLenght <= FullHelper.StackAllocLimitWords
+                    ? stackalloc ulong[resultLenght]
+                    : FullHelper.RentZeroed(resultLenght, out resultRented));
 
             div_internal(dividend, divisor, resultBuf, remainderBuf, Base);
 
             remainder = wantRemainder ? new FullInt64(value1.Sing, FullHelper.DeleteZeros(remainderBuf).ToArray(), Base) : null;
+            FullHelper.Return(remainderRented);
             if (!wantQuotient)
             {
+                FullHelper.Return(resultRented);
                 return null;
             }
 
@@ -606,11 +617,14 @@ namespace FullInt.Core
             if (Base == 10)
             {
                 int resultWords = valueSpan.Length / 19 + 1;
+                ulong[]? rented = null;
                 Span<ulong> resultBuf = resultWords <= FullHelper.StackAllocLimitWords
                     ? stackalloc ulong[resultWords]
-                    : new ulong[resultWords];
+                    : FullHelper.RentZeroed(resultWords, out rented);   // a work buffer: copied out below
                 _core.FromDecString(valueSpan, resultBuf, out var startPosition);
-                return new FullInt64(s, resultBuf.Slice(startPosition).ToArray(), toBase.hex);
+                var parsed = new FullInt64(s, resultBuf.Slice(startPosition).ToArray(), toBase.hex);
+                FullHelper.Return(rented);
+                return parsed;
             }
             value = Encoding.ASCII.GetString(valueSpan);
             FullInt64 result = new FullInt64(s, new ulong[0], (toBase)Base);
@@ -655,18 +669,21 @@ namespace FullInt.Core
 		private string ToDecString(FullInt64 value)
         {
             int resultBytes = (int)(value.value.Length * 1.014 + 1) * 19 + 1;
+            byte[]? rented = null;
             Span<byte> resultBuf = resultBytes <= FullHelper.StackAllocLimitBytes
                 ? stackalloc byte[resultBytes]
-                : new byte[resultBytes];
-            
+                : FullHelper.RentZeroedBytes(resultBytes, out rented);   // a work buffer: copied into the string
+
             _core.ToDecString(value.value, resultBuf, out var startPosition);
-            
+
             if(value.Sing && startPosition > 0)
             {
                 startPosition--;
                 resultBuf[startPosition] = (byte)'-';
             }
-            return Encoding.ASCII.GetString(resultBuf.Slice(startPosition));
+            var text = Encoding.ASCII.GetString(resultBuf.Slice(startPosition));
+            FullHelper.Return(rented);
+            return text;
         }
         private string ToDHexString(FullInt64 value)
         {
