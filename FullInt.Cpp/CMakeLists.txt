@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 
 # FullInt C++ library: the same asm kernels as the .NET package (FullInt.Asm/Sources),
 # linked statically into the C++ binary - no DLL and no interop on a kernel call.
+# The upper layer (src/, include/fullint/) is a port of FullInt.Core (C# is the master).
 project(FullIntCpp LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -9,7 +10,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(FULLINT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/..")
 
-option(FULLINT_BUILD_BENCH "Build the benchmarks against GMP (needs GMP: vcpkg feature 'gmp')" OFF)
+option(FULLINT_WITH_GMP "Build the tests and benchmarks against GMP (needs GMP: vcpkg feature 'gmp')" OFF)
+
+if(MSVC)
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/utf-8> $<$<COMPILE_LANGUAGE:CXX>:/permissive->)
+endif()
 
 # ----------------------------------------------------------------------------
 # asm kernels
@@ -47,13 +52,36 @@ endif()
 add_library(FullInt::kernels ALIAS fullint_kernels)
 
 # ----------------------------------------------------------------------------
-# benchmarks
+# the library: FullInt64 and its engine
 # ----------------------------------------------------------------------------
-if(FULLINT_BUILD_BENCH)
+add_library(fullint STATIC
+    src/FullInt64Engine.cpp
+    src/Karatsuba.cpp
+    src/Toom3.cpp)
+target_link_libraries(fullint PUBLIC FullInt::kernels)
+add_library(FullInt::fullint ALIAS fullint)
+
+# ----------------------------------------------------------------------------
+# tests and benchmarks (GMP is the reference)
+# ----------------------------------------------------------------------------
+if(FULLINT_WITH_GMP)
     find_path(GMP_INCLUDE_DIR gmp.h REQUIRED)
     find_library(GMP_LIBRARY NAMES gmp libgmp REQUIRED)
+    find_library(GMPXX_LIBRARY NAMES gmpxx libgmpxx)
 
-    add_executable(fullint_bench_kernels bench/kernels_vs_gmp.cpp)
-    target_include_directories(fullint_bench_kernels PRIVATE "${GMP_INCLUDE_DIR}")
-    target_link_libraries(fullint_bench_kernels PRIVATE FullInt::kernels "${GMP_LIBRARY}")
+    enable_testing()
+    add_executable(fullint_tests tests/fullint_tests.cpp)
+    target_include_directories(fullint_tests PRIVATE "${GMP_INCLUDE_DIR}")
+    target_link_libraries(fullint_tests PRIVATE FullInt::fullint "${GMP_LIBRARY}")
+    add_test(NAME fullint_tests COMMAND fullint_tests)
+
+    add_executable(fullint_bench_api bench/api_vs_gmp.cpp)
+    target_include_directories(fullint_bench_api PRIVATE "${GMP_INCLUDE_DIR}")
+    target_link_libraries(fullint_bench_api PRIVATE FullInt::fullint "${GMP_LIBRARY}")
+
+    if(FULLINT_ARCH STREQUAL "x64")   # the kernel benchmark compares 64-bit limbs with GMP's
+        add_executable(fullint_bench_kernels bench/kernels_vs_gmp.cpp)
+        target_include_directories(fullint_bench_kernels PRIVATE "${GMP_INCLUDE_DIR}")
+        target_link_libraries(fullint_bench_kernels PRIVATE FullInt::kernels "${GMP_LIBRARY}")
+    endif()
 endif()

@@ -13,7 +13,7 @@
       "hidden": true,
       "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
       "cacheVariables": {
-        "FULLINT_BUILD_BENCH": "ON",
+        "FULLINT_WITH_GMP": "ON",
         "VCPKG_MANIFEST_FEATURES": "gmp"
       }
     },
@@ -31,13 +31,13 @@
     },
     {
       "name": "x64-bench",
-      "displayName": "Windows x64 + GMP benchmarks",
+      "displayName": "Windows x64 + GMP tests and benchmarks",
       "inherits": [ "x64", "vcpkg" ],
       "cacheVariables": { "VCPKG_TARGET_TRIPLET": "x64-windows-static-md" }
     },
     {
       "name": "x86-bench",
-      "displayName": "Windows x86 + GMP benchmarks",
+      "displayName": "Windows x86 + GMP tests and benchmarks",
       "inherits": [ "x86", "vcpkg" ],
       "cacheVariables": { "VCPKG_TARGET_TRIPLET": "x86-windows-static-md" }
     }

@@ -1,0 +1,260 @@
+// FullInt C++ against GMP (mpz) as the reference: every operation on random and edge values,
+// sizes from one word to Toom-3 range, all sign combinations; plus the C# semantics that GMP
+// does not define the same way (parse prefixes, hex format).
+#include <fullint/FullInt64.h>
+#include <fullint/Karatsuba.h>
+#include <gmp.h>
+
+#include <cstdio>
+#include <cstdlib>
+#include <random>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+using fullint::FullInt64;
+
+namespace {
+
+int failures = 0;
+long checks = 0;
+
+#define CHECK(cond, what)                                                          \
+    do                                                                             \
+    {                                                                              \
+        checks++;                                                                  \
+        if (!(cond))                                                               \
+        {                                                                          \
+            failures++;                                                            \
+            if (failures <= 20) std::printf("FAIL %s:%d %s\n", __FILE__, __LINE__, std::string(what).c_str()); \
+        }                                                                          \
+    } while (0)
+
+struct Mpz
+{
+    mpz_t v;
+    Mpz() { mpz_init(v); }
+    ~Mpz() { mpz_clear(v); }
+    Mpz(const Mpz&) = delete;
+    Mpz& operator=(const Mpz&) = delete;
+};
+
+void ToMpz(const FullInt64& x, mpz_t out)
+{
+    auto w = x.Words();
+    mpz_import(out, w.size(), 1, sizeof(uint64_t), 0, 0, w.data());   // order 1: most significant word first
+    if (x.IsNegative()) mpz_neg(out, out);
+}
+
+std::string MpzDec(const mpz_t v)
+{
+    std::vector<char> buf(mpz_sizeinbase(v, 10) + 2);
+    mpz_get_str(buf.data(), 10, v);
+    return buf.data();
+}
+
+bool Same(const FullInt64& x, const mpz_t expected)
+{
+    Mpz t;
+    ToMpz(x, t.v);
+    return mpz_cmp(t.v, expected) == 0;
+}
+
+std::mt19937_64 rng(20261114);
+
+FullInt64 RandomValue(int words)
+{
+    std::vector<uint64_t> w(words);
+    int kind = (int)(rng() % 8);
+    for (auto& x : w) x = rng();
+    if (kind == 0) for (auto& x : w) x = ~0ull;                         // all ones
+    if (kind == 1) { for (auto& x : w) x = 0; w[0] = 1ull << (rng() % 64); }   // a power of two
+    if (kind == 2 && words > 1) w[words - 1] = 0;                        // low zero word
+    if (w[0] == 0) w[0] = 1;
+    return FullInt64((rng() & 1) != 0, fullint::CSpan(w));
+}
+
+std::string Desc(const char* op, const FullInt64& a, const FullInt64& b)
+{
+    return std::string(op) + " a(" + std::to_string(a.Length()) + (a.IsNegative() ? "w,-) b(" : "w,+) b(") +
+           std::to_string(b.Length()) + (b.IsNegative() ? "w,-)" : "w,+)");
+}
+
+void CheckPair(const FullInt64& a, const FullInt64& b)
+{
+    Mpz ma, mb, e, e2;
+    ToMpz(a, ma.v);
+    ToMpz(b, mb.v);
+
+    mpz_add(e.v, ma.v, mb.v);
+    CHECK(Same(a + b, e.v), Desc("add", a, b));
+    mpz_sub(e.v, ma.v, mb.v);
+    CHECK(Same(a - b, e.v), Desc("sub", a, b));
+    mpz_mul(e.v, ma.v, mb.v);
+    CHECK(Same(a * b, e.v), Desc("mul", a, b));
+
+    if (!b.IsZero())
+    {
+        mpz_tdiv_qr(e.v, e2.v, ma.v, mb.v);   // truncating, as C#/BigInteger
+        CHECK(Same(a / b, e.v), Desc("div", a, b));
+        CHECK(Same(a % b, e2.v), Desc("mod", a, b));
+        FullInt64 r;
+        FullInt64 q = fullint::FullInt64Engine::div(a, b, r);
+        CHECK(Same(q, e.v) && Same(r, e2.v), Desc("divrem", a, b));
+    }
+
+    mpz_and(e.v, ma.v, mb.v);
+    CHECK(Same(a & b, e.v), Desc("and", a, b));
+    mpz_ior(e.v, ma.v, mb.v);
+    CHECK(Same(a | b, e.v), Desc("or", a, b));
+    mpz_xor(e.v, ma.v, mb.v);
+    CHECK(Same(a ^ b, e.v), Desc("xor", a, b));
+
+    int c = mpz_cmp(ma.v, mb.v);
+    c = c < 0 ? -1 : c > 0 ? 1 : 0;
+    CHECK(fullint::FullInt64Engine::Compare(a, b) == c, Desc("compare", a, b));
+    CHECK((a == b) == (c == 0) && (a < b) == (c < 0) && (a > b) == (c > 0), Desc("relational", a, b));
+}
+
+void CheckSingle(const FullInt64& a)
+{
+    Mpz ma, e;
+    ToMpz(a, ma.v);
+
+    std::string dec = MpzDec(ma.v);
+    CHECK(a.ToString() == dec, "ToString(10) " + dec.substr(0, 40));
+    CHECK(FullInt64::Parse(dec) == a, "Parse(dec) " + dec.substr(0, 40));
+
+    std::string hex = a.ToString(16);
+    std::vector<char> buf(mpz_sizeinbase(ma.v, 16) + 2);
+    mpz_abs(e.v, ma.v);
+    mpz_get_str(buf.data(), -16, e.v);   // upper case
+    CHECK(hex == std::string(a.IsNegative() ? "-0x" : "0x") + buf.data(), "ToString(16) " + hex.substr(0, 40));
+    CHECK(FullInt64::Parse(hex) == a, "Parse(hex) " + hex.substr(0, 40));
+
+    for (int base : { 2, 8 })
+    {
+        std::vector<char> b2(mpz_sizeinbase(ma.v, base) + 2);
+        mpz_get_str(b2.data(), base, ma.v);
+        CHECK(a.ToString(base) == b2.data(), "ToString(" + std::to_string(base) + ")");
+    }
+    std::vector<char> oct(mpz_sizeinbase(e.v, 8) + 2);
+    mpz_get_str(oct.data(), 8, e.v);
+    CHECK(FullInt64::Parse(std::string(a.IsNegative() ? "-0" : "0") + oct.data()) == a, "Parse(octal)");
+
+    mpz_neg(e.v, ma.v);
+    CHECK(Same(-a, e.v), "negate");
+    mpz_com(e.v, ma.v);
+    CHECK(Same(~a, e.v), "not");
+
+    for (int s : { 0, 1, 13, 63, 64, 65, 127, 128, 200, 1000 })
+    {
+        mpz_mul_2exp(e.v, ma.v, s);
+        CHECK(Same(a << s, e.v), "shl " + std::to_string(s));
+        mpz_fdiv_q_2exp(e.v, ma.v, s);   // arithmetic: rounds toward negative infinity
+        CHECK(Same(a >> s, e.v), "shr " + std::to_string(s));
+        CHECK(Same(a << -s, e.v), "shl negative " + std::to_string(s));
+    }
+}
+
+void EdgeCases()
+{
+    CHECK(FullInt64() == FullInt64(0) && !FullInt64().IsNegative(), "zero");
+    CHECK(FullInt64::Parse("-0") == FullInt64(0) && !FullInt64::Parse("-0").IsNegative(), "-0 is zero");
+    CHECK((FullInt64(5) - FullInt64(5)).IsNegative() == false, "5 - 5 not negative");
+    CHECK((FullInt64(-3) * FullInt64(0)).IsNegative() == false, "-3 * 0 not negative");
+    CHECK(FullInt64(INT64_MIN).ToString() == "-9223372036854775808", "INT64_MIN");
+    CHECK(FullInt64(UINT64_MAX).ToString() == "18446744073709551615", "UINT64_MAX");
+    CHECK(FullInt64::Parse("") == FullInt64(0), "empty parses as 0");
+    CHECK(FullInt64::Parse("0x1F") == FullInt64(31), "0x prefix");
+    CHECK(FullInt64::Parse("x1f") == FullInt64(31), "x prefix");
+    CHECK(FullInt64::Parse("017") == FullInt64(15), "octal prefix");
+
+    bool threw = false;
+    try { (void)(FullInt64(1) / FullInt64(0)); } catch (const std::domain_error&) { threw = true; }
+    CHECK(threw, "division by zero throws");
+    threw = false;
+    try { (void)FullInt64::Parse("12a"); } catch (const std::invalid_argument&) { threw = true; }
+    CHECK(threw, "bad digit throws");
+    threw = false;
+    try { (void)Pow(FullInt64(2), FullInt64(-1)); } catch (const std::out_of_range&) { threw = true; }
+    CHECK(threw, "negative exponent throws");
+
+    // copy / move / self-assignment, inline and heap
+    for (int words : { 1, 4, 5, 40 })
+    {
+        FullInt64 a = RandomValue(words);
+        FullInt64 b(a);
+        CHECK(a == b, "copy");
+        FullInt64 c(std::move(b));
+        CHECK(c == a && b == FullInt64(0), "move");
+        c = c;
+        CHECK(c == a, "self copy-assign");
+        FullInt64 d = RandomValue(70);
+        d = a;
+        CHECK(d == a, "copy-assign over heap");
+        d = std::move(c);
+        CHECK(d == a, "move-assign");
+        FullInt64 bytes = FullInt64::FromBytes(std::span<const uint8_t>((const uint8_t*)a.Words().data(), 0), false);
+        CHECK(bytes == FullInt64(0), "FromBytes empty");
+    }
+    {
+        uint8_t le[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09 };
+        CHECK(FullInt64::FromBytes(le, true).ToString(16) == "-0x90807060504030201", "FromBytes");
+    }
+
+    Mpz e;
+    for (int p : { 0, 1, 2, 7, 64, 100 })
+    {
+        mpz_ui_pow_ui(e.v, 3, p);
+        CHECK(Same(Pow(FullInt64(3), FullInt64(p)), e.v), "pow 3^" + std::to_string(p));
+        mpz_set_si(e.v, -7);
+        mpz_pow_ui(e.v, e.v, p);
+        CHECK(Same(Pow(FullInt64(-7), FullInt64(p)), e.v), "pow -7^" + std::to_string(p));
+    }
+}
+
+// the multiplication dispatcher with small thresholds, so every level runs on small sizes
+void MultiplyThresholds()
+{
+    for (int round = 0; round < 300; round++)
+    {
+        int la = 1 + (int)(rng() % 120), lb = 1 + (int)(rng() % 120);
+        FullInt64 a = RandomValue(la), b = RandomValue(lb);
+        std::vector<uint64_t> r(a.Length() + b.Length());
+        int threshold = 2 + (int)(rng() % 10), toom3 = 3 + (int)(rng() % 20);
+        fullint::Karatsuba::Multiply(a.Words(), b.Words(), r, threshold, toom3);
+        Mpz ma, mb, e, got;
+        ToMpz(Abs(a), ma.v);
+        ToMpz(Abs(b), mb.v);
+        mpz_mul(e.v, ma.v, mb.v);
+        mpz_import(got.v, r.size(), 1, sizeof(uint64_t), 0, 0, r.data());
+        CHECK(mpz_cmp(e.v, got.v) == 0, "Karatsuba thresholds " + std::to_string(threshold) + "/" + std::to_string(toom3) +
+                                            " " + std::to_string(la) + "x" + std::to_string(lb));
+    }
+}
+
+}  // namespace
+
+int main()
+{
+    const int sizes[] = { 1, 2, 3, 4, 5, 8, 17, 63, 64, 65, 100, 255, 256, 300, 700, 1500 };
+
+    EdgeCases();
+    MultiplyThresholds();
+
+    for (int sa : sizes)
+        for (int sb : sizes)
+            for (int rep = 0; rep < 3; rep++)
+                CheckPair(RandomValue(sa), RandomValue(sb));
+
+    for (int s : sizes)
+        for (int rep = 0; rep < 4; rep++)
+            CheckSingle(RandomValue(s));
+    CheckSingle(FullInt64(0));
+    CheckPair(FullInt64(0), RandomValue(3));
+    CheckPair(RandomValue(3), FullInt64(0));
+
+    std::printf("%s: %ld checks, %d failed\n", failures ? "FAILED" : "OK", checks, failures);
+    return failures ? 1 : 0;
+}

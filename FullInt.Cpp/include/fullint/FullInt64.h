@@ -1,0 +1,390 @@
+// Port of FullInt.Core/FullInt64.cs (the number) and FullInt64Engine.cs (the operations).
+//
+// The C# version is master: the same operations, the same paths (one word, quick compare,
+// two words by one, Karatsuba/Toom-3 above the thresholds, the asm kernels below them).
+// What C++ does its own way:
+//   - FullInt64 is a value type: copy / move, no GC;
+//   - up to InlineWords words live inside the object (no allocation);
+//   - the magnitude is always normalized (no leading zero words, zero is never negative);
+//     leading zeros of a result are dropped by moving the start offset, not by copying;
+//   - the one-word paths are inline here, so the compiler builds them into the caller.
+// Not ported: the decimal storage mode (C# IsDec) - this build is binary only.
+// Differences in the API, C++ conventions: ^ is XOR (C#: power, see Pow); ToString() is
+// decimal (C#: the storage base).
+//
+// Limbs: 64-bit words, index 0 = most significant word (as in C# and the asm kernels).
+#pragma once
+
+#include <fullint/FullHelper.h>
+#include <fullint/FullIntCore.h>
+
+#include <compare>
+#include <concepts>
+#include <cstdint>
+#include <cstring>
+#include <functional>
+#include <iosfwd>
+#include <span>
+#include <string>
+#include <string_view>
+
+namespace fullint {
+
+class FullInt64Engine;
+
+class FullInt64
+{
+public:
+    static constexpr uint32_t InlineWords = 4;
+
+    FullInt64() noexcept { inl_[0] = 0; }
+
+    template <std::integral T>
+        requires(!std::same_as<T, bool>)
+    FullInt64(T value) noexcept
+    {
+        if constexpr (std::is_signed_v<T>)
+        {
+            neg_ = value < 0;
+            inl_[0] = neg_ ? 0 - (uint64_t)(int64_t)value : (uint64_t)value;
+        }
+        else
+        {
+            inl_[0] = (uint64_t)value;
+        }
+    }
+
+    // sign + magnitude words (index 0 = most significant), as the C# (bool, ulong[]) constructor
+    FullInt64(bool negative, CSpan magnitude);
+
+    explicit FullInt64(std::string_view text);
+
+    // Magnitude from bytes, little-endian: magnitude[0] is the least significant byte.
+    static FullInt64 FromBytes(std::span<const uint8_t> magnitude, bool negative = false);
+
+    static FullInt64 Parse(std::string_view text);
+
+    // base 10 (default), 16 ("0x" + upper-case hex, as C#), 8 or 2
+    std::string ToString(int base = 10) const;
+
+    FullInt64(const FullInt64& other) { CopyFrom(other); }
+    FullInt64(FullInt64&& other) noexcept { MoveFrom(other); }
+    FullInt64& operator=(const FullInt64& other)
+    {
+        if (this != &other) CopyFrom(other);
+        return *this;
+    }
+    FullInt64& operator=(FullInt64&& other) noexcept
+    {
+        if (this != &other)
+        {
+            Release();
+            MoveFrom(other);
+        }
+        return *this;
+    }
+    ~FullInt64() { Release(); }
+
+    bool Sing() const noexcept { return neg_; }   // the C# name: true = negative
+    bool IsNegative() const noexcept { return neg_; }
+    bool IsZero() const noexcept { return size_ == 1 && Data()[0] == 0; }
+    uint32_t Length() const noexcept { return size_; }
+    CSpan Words() const noexcept { return CSpan(Data(), size_); }
+
+private:
+    friend class FullInt64Engine;
+    friend bool operator==(const FullInt64& a, const FullInt64& b) noexcept;
+    friend struct std::hash<FullInt64>;
+
+    bool IsHeap() const noexcept { return cap_ > InlineWords; }
+    uint64_t* Base() noexcept { return IsHeap() ? heap_ : inl_; }
+    const uint64_t* Data() const noexcept { return (IsHeap() ? heap_ : inl_) + off_; }
+    uint64_t Word0() const noexcept { return Data()[0]; }
+
+    // room for n words at offset 0 (the contents are not kept); returns the words
+    uint64_t* Prepare(uint32_t n)
+    {
+        if (n > cap_)
+        {
+            uint64_t* p = new uint64_t[n];
+            if (IsHeap()) delete[] heap_;
+            heap_ = p;
+            cap_ = n;
+        }
+        off_ = 0;
+        size_ = n;
+        return Base();
+    }
+
+    // drops leading zero words (by the offset) and sets the sign; zero is never negative
+    void Normalize(bool negative) noexcept
+    {
+        const uint64_t* p = Base() + off_;
+        while (size_ > 1 && *p == 0)
+        {
+            p++;
+            off_++;
+            size_--;
+        }
+        neg_ = negative && !(size_ == 1 && *p == 0);
+    }
+
+    void SetWords(bool negative, uint64_t hi, uint64_t lo) noexcept   // a one- or two-word result
+    {
+        Release();   // a fresh result is inline already; this keeps it safe for any object
+        off_ = 0;
+        size_ = 1;
+        if (hi != 0)
+        {
+            inl_[0] = hi;
+            inl_[1] = lo;
+            size_ = 2;
+        }
+        else
+        {
+            inl_[0] = lo;
+        }
+        neg_ = negative && (hi | lo) != 0;
+    }
+
+    void CopyFrom(const FullInt64& other)
+    {
+        uint64_t* p = Prepare(other.size_);
+        std::memcpy(p, other.Data(), other.size_ * sizeof(uint64_t));
+        neg_ = other.neg_;
+    }
+
+    // this holds no heap buffer (fresh, or Release()d); other is left as zero
+    void MoveFrom(FullInt64& other) noexcept
+    {
+        if (other.IsHeap())
+        {
+            heap_ = other.heap_;
+            cap_ = other.cap_;
+        }
+        else
+        {
+            std::memcpy(inl_, other.inl_, sizeof(inl_));
+            cap_ = InlineWords;
+        }
+        off_ = other.off_;
+        size_ = other.size_;
+        neg_ = other.neg_;
+        other.cap_ = InlineWords;
+        other.inl_[0] = 0;
+        other.off_ = 0;
+        other.size_ = 1;
+        other.neg_ = false;
+    }
+
+    void Release() noexcept
+    {
+        if (IsHeap()) delete[] heap_;
+        cap_ = InlineWords;
+    }
+
+    union
+    {
+        uint64_t inl_[InlineWords];
+        uint64_t* heap_;
+    };
+    uint32_t cap_ = InlineWords;   // > InlineWords: heap_ is in use
+    uint32_t off_ = 0;             // start of the number in the buffer (leading zeros dropped)
+    uint32_t size_ = 1;
+    bool neg_ = false;
+};
+
+// The operations (C# FullInt64Engine; static, no instance). The thin public entry points
+// hold the one-word paths inline; the general paths are out of line (FullInt64Engine.cpp).
+class FullInt64Engine
+{
+public:
+    static FullInt64 add(const FullInt64& value1, const FullInt64& value2)
+    {
+        if (value1.size_ == 1 && value2.size_ == 1)
+            return addOneWord(value1.Word0(), value1.neg_, value2.Word0(), value2.neg_);
+        return addOrSub(value1, value2, false);
+    }
+
+    static FullInt64 sub(const FullInt64& value1, const FullInt64& value2)
+    {
+        if (value1.size_ == 1 && value2.size_ == 1)
+            return addOneWord(value1.Word0(), value1.neg_, value2.Word0(), !value2.neg_);
+        return addOrSub(value1, value2, true);
+    }
+
+    // one word by one word: a single 64x64 -> 128 multiply, no kernel call
+    static FullInt64 mult(const FullInt64& value1, const FullInt64& value2)
+    {
+        if (value1.size_ == 1 && value2.size_ == 1)
+        {
+            uint64_t lo, hi = FullHelper::BigMul(value1.Word0(), value2.Word0(), &lo);
+            FullInt64 r;
+            r.SetWords(value1.neg_ != value2.neg_, hi, lo);
+            return r;
+        }
+        return multGeneral(value1, value2);
+    }
+
+    static FullInt64 div(const FullInt64& value1, const FullInt64& value2);
+    static FullInt64 mod(const FullInt64& value1, const FullInt64& value2);
+    static FullInt64 div(const FullInt64& value1, const FullInt64& value2, FullInt64& remainder);
+    static FullInt64 pow(const FullInt64& value1, const FullInt64& value2);
+    static FullInt64 abs(const FullInt64& value)
+    {
+        FullInt64 r(value);
+        r.neg_ = false;
+        return r;
+    }
+    static FullInt64 negate(const FullInt64& value)
+    {
+        FullInt64 r(value);
+        r.neg_ = !value.neg_ && !value.IsZero();
+        return r;
+    }
+
+    static int Compare(const FullInt64& value1, const FullInt64& value2) noexcept
+    {
+        bool neg1 = value1.neg_, neg2 = value2.neg_;
+        if (neg1 != neg2) return neg1 ? -1 : 1;
+        int abs = CompareAbsQuick(value1.Words(), value2.Words());
+        return neg1 ? -abs : abs;
+    }
+
+    // bitwise, BigInteger semantics: negative numbers behave as infinite two's complement
+    static FullInt64 And(const FullInt64& value1, const FullInt64& value2) { return bitwise(0, value1, value2); }
+    static FullInt64 Or(const FullInt64& value1, const FullInt64& value2) { return bitwise(1, value1, value2); }
+    static FullInt64 Xor(const FullInt64& value1, const FullInt64& value2) { return bitwise(2, value1, value2); }
+    static FullInt64 Not(const FullInt64& value) { return sub(negate(value), FullInt64(1)); }   // ~x = -x - 1
+
+    static FullInt64 shiftLeft(const FullInt64& value, int shift)
+    {
+        if (value.size_ == 1 && (unsigned)shift < 64)
+        {
+            uint64_t m = value.Word0(), lo = m << shift, hi = shift == 0 ? 0 : m >> (64 - shift);
+            FullInt64 r;
+            r.SetWords(value.neg_, hi, lo);
+            return r;
+        }
+        return shiftLeftGeneral(value, shift);
+    }
+
+    // arithmetic shift: rounds toward negative infinity, like BigInteger
+    static FullInt64 shiftRight(const FullInt64& value, int shift)
+    {
+        if (value.size_ == 1 && shift >= 0)
+        {
+            uint64_t m = value.Word0();   // negative: -m >> k = -(((m - 1) >> k) + 1)
+            FullInt64 r;
+            if (value.neg_)
+                r.SetWords(true, 0, (shift >= 64 ? 0 : (m - 1) >> shift) + 1);
+            else
+                r.SetWords(false, 0, shift >= 64 ? 0 : m >> shift);
+            return r;
+        }
+        return shiftRightGeneral(value, shift);
+    }
+
+    static std::string ToString(const FullInt64& value, int base);
+    static FullInt64 ToFullInt64(std::string_view text);
+
+    // |a| vs |b| on normalized magnitudes: the length or the top word almost always decides
+    static int CompareAbsQuick(CSpan value1, CSpan value2) noexcept
+    {
+        if (value1.size() != value2.size()) return value1.size() > value2.size() ? 1 : -1;
+        if (value1[0] != value2[0]) return value1[0] > value2[0] ? 1 : -1;
+        if (value1.size() == 1) return 0;
+        return FullIntCore::Compare(value1, value2);
+    }
+
+private:
+    // one word and one word: plain 64-bit arithmetic, no kernel call
+    static FullInt64 addOneWord(uint64_t a, bool aNegative, uint64_t b, bool bNegative) noexcept
+    {
+        FullInt64 r;
+        if (aNegative == bNegative)
+        {
+            uint64_t sum = a + b;
+            r.SetWords(aNegative, sum < a ? 1 : 0, sum);
+        }
+        else if (a >= b)   // opposite signs: the larger magnitude minus the smaller, with its sign
+        {
+            r.SetWords(aNegative, 0, a - b);
+        }
+        else
+        {
+            r.SetWords(bNegative, 0, b - a);
+        }
+        return r;
+    }
+
+    static FullInt64 addOrSub(const FullInt64& value1, const FullInt64& value2, bool negate2);
+    static FullInt64 addMagnitudes(CSpan a, CSpan b, bool negative);
+    static FullInt64 subMagnitudes(CSpan a, CSpan b, bool neg1, bool neg2);
+    static FullInt64 multGeneral(const FullInt64& value1, const FullInt64& value2);
+    static void divRem(const FullInt64& value1, const FullInt64& value2, FullInt64* quotient, FullInt64* remainder);
+    static FullInt64 bitwise(int op, const FullInt64& value1, const FullInt64& value2);
+    static FullInt64 shiftLeftGeneral(const FullInt64& value, int shift);
+    static FullInt64 shiftRightGeneral(const FullInt64& value, int shift);
+    static std::string ToDecString(const FullInt64& value);
+
+    friend class FullInt64;
+};
+
+inline FullInt64 operator+(const FullInt64& a, const FullInt64& b) { return FullInt64Engine::add(a, b); }
+inline FullInt64 operator-(const FullInt64& a, const FullInt64& b) { return FullInt64Engine::sub(a, b); }
+inline FullInt64 operator*(const FullInt64& a, const FullInt64& b) { return FullInt64Engine::mult(a, b); }
+inline FullInt64 operator/(const FullInt64& a, const FullInt64& b) { return FullInt64Engine::div(a, b); }
+inline FullInt64 operator%(const FullInt64& a, const FullInt64& b) { return FullInt64Engine::mod(a, b); }
+inline FullInt64 operator-(const FullInt64& a) { return FullInt64Engine::negate(a); }
+inline FullInt64 operator+(const FullInt64& a) { return a; }
+inline FullInt64 operator&(const FullInt64& a, const FullInt64& b) { return FullInt64Engine::And(a, b); }
+inline FullInt64 operator|(const FullInt64& a, const FullInt64& b) { return FullInt64Engine::Or(a, b); }
+inline FullInt64 operator^(const FullInt64& a, const FullInt64& b) { return FullInt64Engine::Xor(a, b); }
+inline FullInt64 operator~(const FullInt64& a) { return FullInt64Engine::Not(a); }
+inline FullInt64 operator<<(const FullInt64& a, int shift) { return FullInt64Engine::shiftLeft(a, shift); }
+inline FullInt64 operator>>(const FullInt64& a, int shift) { return FullInt64Engine::shiftRight(a, shift); }
+
+inline FullInt64& operator+=(FullInt64& a, const FullInt64& b) { return a = a + b; }
+inline FullInt64& operator-=(FullInt64& a, const FullInt64& b) { return a = a - b; }
+inline FullInt64& operator*=(FullInt64& a, const FullInt64& b) { return a = a * b; }
+inline FullInt64& operator/=(FullInt64& a, const FullInt64& b) { return a = a / b; }
+inline FullInt64& operator%=(FullInt64& a, const FullInt64& b) { return a = a % b; }
+inline FullInt64& operator&=(FullInt64& a, const FullInt64& b) { return a = a & b; }
+inline FullInt64& operator|=(FullInt64& a, const FullInt64& b) { return a = a | b; }
+inline FullInt64& operator^=(FullInt64& a, const FullInt64& b) { return a = a ^ b; }
+inline FullInt64& operator<<=(FullInt64& a, int shift) { return a = a << shift; }
+inline FullInt64& operator>>=(FullInt64& a, int shift) { return a = a >> shift; }
+inline FullInt64& operator++(FullInt64& a) { return a = a + FullInt64(1); }
+inline FullInt64& operator--(FullInt64& a) { return a = a - FullInt64(1); }
+inline FullInt64 operator++(FullInt64& a, int) { FullInt64 old(a); ++a; return old; }
+inline FullInt64 operator--(FullInt64& a, int) { FullInt64 old(a); --a; return old; }
+
+// normalized storage: equal numbers have equal words
+inline bool operator==(const FullInt64& a, const FullInt64& b) noexcept
+{
+    return a.neg_ == b.neg_ && a.size_ == b.size_ && std::memcmp(a.Data(), b.Data(), a.size_ * sizeof(uint64_t)) == 0;
+}
+inline std::strong_ordering operator<=>(const FullInt64& a, const FullInt64& b) noexcept
+{
+    return FullInt64Engine::Compare(a, b) <=> 0;
+}
+
+inline FullInt64 Pow(const FullInt64& value, const FullInt64& exponent) { return FullInt64Engine::pow(value, exponent); }
+inline FullInt64 Abs(const FullInt64& value) { return FullInt64Engine::abs(value); }
+
+std::ostream& operator<<(std::ostream& os, const FullInt64& value);
+
+}  // namespace fullint
+
+template <>
+struct std::hash<fullint::FullInt64>
+{
+    size_t operator()(const fullint::FullInt64& v) const noexcept
+    {
+        size_t h = v.neg_ ? 0x9E3779B97F4A7C15ull : 0;
+        const uint64_t* p = v.Data();
+        for (uint32_t i = 0; i < v.size_; i++) h = (h ^ (size_t)p[i]) * 0x100000001B3ull + (h >> 7);
+        return h;
+    }
+};
