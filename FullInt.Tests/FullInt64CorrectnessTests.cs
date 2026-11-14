@@ -422,6 +422,32 @@ namespace FullInt.Tests
         }
 
         /// <summary>
+        /// The operator path into Burnikel–Ziegler (divisor and quotient at or above
+        /// BurnikelZiegler.Threshold words): signs, '/' and '%', against BigInteger.
+        /// </summary>
+        [TestMethod]
+        public void DivMod_BurnikelZieglerSizes_MatchBigInteger()
+        {
+            var rnd = new Random(9292);
+            int t = 2 * BurnikelZiegler.Threshold;   // where the engine starts using it
+            for (int i = 0; i < 40; i++)
+            {
+                var bw = new ulong[rnd.Next(t, 500)];
+                var aw = new ulong[bw.Length + rnd.Next(t, 700)];
+                for (int k = 0; k < aw.Length; k++) aw[k] = (ulong)rnd.NextInt64() ^ ((ulong)rnd.Next(2) << 63);
+                for (int k = 0; k < bw.Length; k++) bw[k] = (ulong)rnd.NextInt64() ^ ((ulong)rnd.Next(2) << 63);
+                aw[0] |= 1; bw[0] |= 1;   // keep the lengths (no leading zero words)
+                var fa = new FullInt64(rnd.Next(2) == 0, aw);
+                var fb = new FullInt64(rnd.Next(2) == 0, bw);
+                var A = BigInteger.Parse(fa.ToString(10));
+                var B = BigInteger.Parse(fb.ToString(10));
+
+                Assert.AreEqual(BigInteger.Divide(A, B).ToString(), (fa / fb).ToString(10), $"{aw.Length}/{bw.Length} words /");
+                Assert.AreEqual(BigInteger.Remainder(A, B).ToString(), (fa % fb).ToString(10), $"{aw.Length}/{bw.Length} words %");
+            }
+        }
+
+        /// <summary>
         /// Division with work buffers above the stack limit, which come from ArrayPool: divisor
         /// over 1024 words (remainder buffer), '%' with a quotient over 1024 words (dropped
         /// quotient), '%' by one word with a dividend over 1024 words. Each case runs several

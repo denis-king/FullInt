@@ -13,6 +13,11 @@ if (args.Length > 0 && args[0] == "kara")
     return KaratsubaTune.Run(args.Skip(1).ToArray());
 }
 
+// bz [rounds]                                → Burnikel–Ziegler threshold tuning (see BzTune)
+if (args.Length > 0 && args[0] == "bz")
+{
+    return BzTune.Run(args.Skip(1).ToArray());
+}
 // cross [--max N] [--csv file]               → the .NET half of GMP / C++ / .NET / BigInteger (see CrossBench)
 if (args.Length > 0 && args[0] == "cross")
 {

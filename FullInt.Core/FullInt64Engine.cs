@@ -518,9 +518,15 @@ namespace FullInt.Core
 		
         public void div_internal(Span<ulong> dividend, Span<ulong> divisor, Span<ulong> result, Span<ulong> remainder, toBase Base)
         {
+            // long divisor and long quotient: Burnikel–Ziegler (recursion in C#, leaves in the core);
+            // the same contract as the core's Div, so the buffers above stay as they are
+            if (Base == toBase.hex && divisor.Length >= 2 * BurnikelZiegler.Threshold
+                && dividend.Length - divisor.Length >= 2 * BurnikelZiegler.Threshold)
+            {
+                BurnikelZiegler.DivRem(_core, dividend, divisor, result, remainder);
+                return;
+            }
             _core.Div(dividend, divisor, result, remainder);
-            
-
         }
 
         #endregion

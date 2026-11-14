@@ -204,6 +204,68 @@ namespace FullInt.Tests
             }
         }
 
+        /// <summary>
+        /// Burnikel–Ziegler over the core's Div, against BigInteger. Small thresholds make the
+        /// recursion go deep on small numbers; the shapes hit the Q̂ = β^k - 1 branch (all-ones
+        /// and B1-equal tops), the R̂ &lt; 0 corrections and divisors of any bit alignment.
+        /// </summary>
+        [DataTestMethod]
+        [DynamicData(nameof(Cores), DynamicDataSourceType.Method)]
+        public void BurnikelZiegler_MatchesBigInteger(string coreName)
+        {
+            var core = GetCore(coreName);
+            var rnd = new Random(9191);
+            int[] thresholds = { 2, 3, 4, 5, 8, 16, 33 };
+
+            ulong[] Shaped(int length)
+            {
+                var w = Next(rnd, length, nonZeroTop: true);
+                switch (rnd.Next(5))
+                {
+                    case 0:   // all ones
+                        w.AsSpan().Fill(ulong.MaxValue);
+                        break;
+                    case 1:   // a small top word: the divisor needs a large bit shift
+                        w[0] = (ulong)rnd.Next(1, 16);
+                        break;
+                }
+                return w;
+            }
+
+            void Check(ulong[] a, ulong[] b, int threshold, string ctx)
+            {
+                var q = new ulong[a.Length - b.Length + 1];
+                var r = new ulong[b.Length + 2];
+                q.AsSpan().Fill(0xDEAD_BEEF_DEAD_BEEFUL);   // must be fully overwritten
+                r.AsSpan().Fill(0xDEAD_BEEF_DEAD_BEEFUL);
+                BurnikelZiegler.DivRem(core, a, b, q, r, threshold);
+                var expectedQ = BigInteger.DivRem(ToBig(a), ToBig(b), out var expectedR);
+                Assert.AreEqual(expectedQ, ToBig(q), "quotient " + ctx);
+                Assert.AreEqual(expectedR, ToBig(r), "remainder " + ctx);
+            }
+
+            for (int it = 0; it < 2_000; it++)
+            {
+                int threshold = thresholds[rnd.Next(thresholds.Length)];
+                int lb = rnd.Next(1, 120);
+                int la = lb + rnd.Next(0, 160);
+                var b = Shaped(lb);
+                var a = Shaped(la);
+                if (rnd.Next(4) == 0 && la >= lb)   // top of a equal to b: the Q̂ = β^k - 1 branch
+                {
+                    b.CopyTo(a, 0);
+                }
+                Check(a, b, threshold, $"[{coreName}] {la}/{lb} threshold={threshold} (iteration {it})");
+            }
+
+            // larger sizes at the default threshold
+            for (int it = 0; it < 8; it++)
+            {
+                int lb = rnd.Next(100, 1200), la = lb + rnd.Next(100, 2000);
+                Check(Shaped(la), Shaped(lb), BurnikelZiegler.Threshold, $"[{coreName}] {la}/{lb} large");
+            }
+        }
+
         [DataTestMethod]
         [DynamicData(nameof(Cores), DynamicDataSourceType.Method)]
         public void Core_DivByWord_MatchesBigInteger(string coreName)

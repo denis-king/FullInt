@@ -11,7 +11,8 @@ namespace FullInt.Benchmarks
     /// come from the same splitmix64 sequence, so both sides work on identical values.
     /// Each cell: a batch of >= 3 ms, the minimum over rounds, the two sides interleaved.
     ///
-    ///   dotnet run -c Release --project FullInt.Benchmarks -- cross [--max N] [--csv file]
+    ///   dotnet run -c Release --project FullInt.Benchmarks -- cross [--ops add,mul,...] [--max N] [--quick] [--csv file]
+    ///   --quick: 1 ms batches and 3 rounds - a fast "did it help" check, noisier than the full run
     ///
     /// Then: fullint_bench_api --net file  prints the four columns side by side.
     /// </summary>
@@ -52,9 +53,12 @@ namespace FullInt.Benchmarks
             return sw.Elapsed.TotalMilliseconds * 1e6 / iters;
         }
 
+        private static double _batchTargetNs = 3e6;   // --quick: 1e6
+        private static int _quickRounds;               // --quick: 3
+
         private static long Calibrate(Action f)
         {
-            const double targetNs = 3e6;
+            double targetNs = _batchTargetNs;
             for (long iters = 1; ; iters *= 4)
             {
                 double per = Batch(f, iters);
@@ -62,12 +66,20 @@ namespace FullInt.Benchmarks
             }
         }
 
+        // up to 3000 calls, but at most ~50 ms (a large BigInteger division takes 0.3 s per call)
+        private static void Warm(Action f)
+        {
+            var sw = Stopwatch.StartNew();
+            for (int i = 0; i < 3000 && sw.ElapsedMilliseconds < 50; i++) f();
+        }
+
         private static (double ours, double big) Run(Action ours, Action big)
         {
-            for (int w = 0; w < 3; w++) { Batch(ours, 1000); Batch(big, 1000); }   // past tier-0 code
+            Warm(ours);   // past tier-0 code
+            Warm(big);
             long io = Calibrate(ours), ib = Calibrate(big);
             double perCall = Batch(ours, 1);
-            int rounds = perCall > 20e6 ? 3 : perCall > 2e6 ? 5 : 11;
+            int rounds = _quickRounds > 0 ? _quickRounds : perCall > 20e6 ? 3 : perCall > 2e6 ? 5 : 11;
             double bo = double.MaxValue, bb = double.MaxValue;
             for (int r = 0; r < rounds; r++)
             {
@@ -81,10 +93,13 @@ namespace FullInt.Benchmarks
         {
             int maxN = 4096;
             string? csvPath = null;
+            string? ops = null;   // ",add,mul," or null for all
             for (int i = 0; i < args.Length; i++)
             {
                 if (args[i] == "--max" && i + 1 < args.Length) maxN = int.Parse(args[++i]);
                 else if (args[i] == "--csv" && i + 1 < args.Length) csvPath = args[++i];
+                else if (args[i] == "--ops" && i + 1 < args.Length) ops = "," + args[++i] + ",";
+                else if (args[i] == "--quick") { _batchTargetNs = 1e6; _quickRounds = 3; }
             }
             try
             {
@@ -119,6 +134,7 @@ namespace FullInt.Benchmarks
 
                 void Row(string op, Action ours, Action big)
                 {
+                    if (ops != null && !ops.Contains("," + op + ",")) return;
                     var (o, g) = Run(ours, big);
                     Console.WriteLine($"{op,-8} {n,6}  {o,12:F1}  {g,12:F1}");
                     csv?.WriteLine(FormattableString.Invariant($"{op},{n},{o:F2},{g:F2}"));
