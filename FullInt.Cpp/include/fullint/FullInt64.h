@@ -32,6 +32,17 @@ namespace fullint {
 
 class FullInt64Engine;
 
+// Word buffers for the heap-stored numbers. Freed buffers are kept per thread by size class
+// (powers of two up to CachedWordsMax words) and handed to the next result: "r = a + b" in a
+// loop gives r's old buffer to the new value instead of a heap allocation and free per
+// operation (~20-25 ns each with the MSVC heap). Larger buffers are exact and not cached.
+struct WordBuffers
+{
+    static constexpr uint32_t CachedWordsMax = 1u << 14;   // 128 KB
+    static uint64_t* Allocate(uint32_t words, uint32_t* capacity);
+    static void Free(uint64_t* p, uint32_t capacity) noexcept;
+};
+
 class FullInt64
 {
 public:
@@ -106,10 +117,11 @@ private:
     {
         if (n > cap_)
         {
-            uint64_t* p = new uint64_t[n];
-            if (IsHeap()) delete[] heap_;
+            uint32_t capacity;
+            uint64_t* p = WordBuffers::Allocate(n, &capacity);
+            if (IsHeap()) WordBuffers::Free(heap_, cap_);
             heap_ = p;
-            cap_ = n;
+            cap_ = capacity;
         }
         off_ = 0;
         size_ = n;
@@ -179,7 +191,7 @@ private:
 
     void Release() noexcept
     {
-        if (IsHeap()) delete[] heap_;
+        if (IsHeap()) WordBuffers::Free(heap_, cap_);
         cap_ = InlineWords;
     }
 

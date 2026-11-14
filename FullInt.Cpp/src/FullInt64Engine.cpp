@@ -25,7 +25,53 @@ uint64_t* Scratch(size_t words)
     return buffer.get();
 }
 
+// freed word buffers per thread, by power-of-two size class (8 .. CachedWordsMax words)
+struct BufferCache
+{
+    static constexpr int Classes = 12;   // 8, 16, ..., 16384 words
+    static constexpr int PerClass = 4;
+    uint64_t* slots[Classes][PerClass];
+    int count[Classes] = {};
+    bool alive = true;   // false after this thread's cache is gone (static numbers freed at exit)
+
+    ~BufferCache()
+    {
+        alive = false;
+        for (int c = 0; c < Classes; c++)
+            for (int i = 0; i < count[c]; i++) delete[] slots[c][i];
+    }
+};
+thread_local BufferCache cache;
+
 }  // namespace
+
+uint64_t* WordBuffers::Allocate(uint32_t words, uint32_t* capacity)
+{
+    if (words > CachedWordsMax)
+    {
+        *capacity = words;
+        return new uint64_t[words];
+    }
+    uint32_t cap = std::bit_ceil(std::max(words, 8u));
+    *capacity = cap;
+    int cls = std::countr_zero(cap) - 3;
+    if (cache.alive && cache.count[cls] > 0) return cache.slots[cls][--cache.count[cls]];
+    return new uint64_t[cap];
+}
+
+void WordBuffers::Free(uint64_t* p, uint32_t capacity) noexcept
+{
+    if (capacity <= CachedWordsMax && std::has_single_bit(capacity) && cache.alive)
+    {
+        int cls = std::countr_zero(capacity) - 3;
+        if (cache.count[cls] < BufferCache::PerClass)
+        {
+            cache.slots[cls][cache.count[cls]++] = p;
+            return;
+        }
+    }
+    delete[] p;
+}
 
 #pragma region add
 
@@ -273,14 +319,23 @@ std::string FullInt64Engine::ToDecString(const FullInt64& value)
         return std::string(text, p);
     }
 
+    // small: stack buffers (as C# stackalloc), large: heap
     int resultBytes = (int)(w.size() * 1.014 + 1) * 19 + 1;
-    std::unique_ptr<uint8_t[]> resultBuf(new uint8_t[resultBytes]());
-    std::unique_ptr<uint64_t[]> valueBuf(new uint64_t[w.size()]);
+    uint8_t stackBytes[2048];
+    uint64_t stackWords[96];
+    std::unique_ptr<uint8_t[]> heapBytes;
+    std::unique_ptr<uint64_t[]> heapWords;
+    uint8_t* resultBuf = stackBytes;
+    uint64_t* valueBuf = stackWords;
+    if (resultBytes > (int)sizeof(stackBytes)) resultBuf = (heapBytes = std::make_unique<uint8_t[]>(resultBytes)).get();
+    else std::memset(resultBuf, 0, resultBytes);
+    if (w.size() > std::size(stackWords)) valueBuf = (heapWords = std::make_unique_for_overwrite<uint64_t[]>(w.size())).get();
+
     int start = resultBytes;
-    FullIntCore::ToDecString(w, valueBuf.get(), resultBuf.get(), &start);
+    FullIntCore::ToDecString(w, valueBuf, resultBuf, &start);
 
     if (value.neg_ && start > 0) resultBuf[--start] = '-';
-    return std::string((const char*)resultBuf.get() + start, (size_t)(resultBytes - start));
+    return std::string((const char*)resultBuf + start, (size_t)(resultBytes - start));
 }
 
 std::string FullInt64Engine::ToString(const FullInt64& value, int base)
@@ -360,20 +415,42 @@ FullInt64 FullInt64Engine::ToFullInt64(std::string_view value)
         if (c >= 'A' && c <= 'F') return c - 'A' + 10;
         return 99;
     };
-    for (char c : value)
-        if (digitValue(c) >= base) throw std::invalid_argument("not a digit of the base");
+    bool bad = false;
+    if (base == 10)   // one compare per character, no early exit: the compiler vectorizes it
+    {
+        for (char c : value) bad |= (unsigned char)(c - '0') > 9;
+    }
+    else
+    {
+        for (char c : value) bad |= digitValue(c) >= base;
+    }
+    if (bad) throw std::invalid_argument("not a digit of the base");
 
     FullInt64 result;
     if (base == 10)
     {
+        // small: stack buffers (as C# stackalloc), large: heap; both zeroed
         int resultWords = (int)(value.size() / 19 + 1);
-        std::unique_ptr<uint64_t[]> valueBuf(new uint64_t[resultWords]());
-        std::unique_ptr<uint64_t[]> resultBuf(new uint64_t[resultWords]());
+        uint64_t stackWords[2][96];
+        std::unique_ptr<uint64_t[]> heap;
+        uint64_t* valueBuf = stackWords[0];
+        uint64_t* resultBuf = stackWords[1];
+        if (resultWords > 96)
+        {
+            heap = std::make_unique<uint64_t[]>(2 * (size_t)resultWords);
+            valueBuf = heap.get();
+            resultBuf = heap.get() + resultWords;
+        }
+        else
+        {
+            std::memset(valueBuf, 0, resultWords * sizeof(uint64_t));
+            std::memset(resultBuf, 0, resultWords * sizeof(uint64_t));
+        }
         int start = resultWords;
-        FullIntCore::FromDecString((const uint8_t*)value.data(), (int)value.size(), valueBuf.get(), resultBuf.get(), &start);
+        FullIntCore::FromDecString((const uint8_t*)value.data(), (int)value.size(), valueBuf, resultBuf, &start);
         uint32_t n = (uint32_t)(resultWords - start);
         if (n == 0) return result;
-        std::memcpy(result.Prepare(n), resultBuf.get() + start, n * sizeof(uint64_t));
+        std::memcpy(result.Prepare(n), resultBuf + start, n * sizeof(uint64_t));
     }
     else   // 16 and 8: the digits are bit groups (C#: 16-digit chunks for hex, mult/add per digit for octal)
     {
