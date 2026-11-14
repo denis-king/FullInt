@@ -246,6 +246,8 @@ namespace FullInt.Tests
                 var limbs = new ulong[text.Length / 19 + 1];
                 core.FromDecString(text, limbs, out int lstart);
                 Assert.AreEqual(A, ToBig(limbs.AsSpan(lstart)), $"[{coreName}] FromDecString {expected}");
+                // the start is the top word: no leading zero words (only "0" is a single zero word)
+                Assert.IsTrue(lstart == limbs.Length - 1 || limbs[lstart] != 0, $"[{coreName}] FromDecString leading zero words, start={lstart} of {limbs.Length}: {expected}");
             }
         }
     }

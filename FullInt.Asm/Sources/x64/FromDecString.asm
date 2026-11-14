@@ -109,7 +109,7 @@ Fullint64FromDecString:
     jne .div2longDec
     dec rdi
     add r13, 8
-.div2longDec
+.div2longDec:
 	dec r9
     jmp .div2longLoop
 
@@ -121,7 +121,7 @@ Fullint64FromDecString:
     mov [rcx + r10*8], rax
     
     ;exit if the buffer is empty
-    test rdi, 1
+    cmp rdi, 1 ; compare by len, as in ToDecString (was test: it checked only the low bit)
     jb .done
     ja .mainLoop
     mov rax, [r13]
