@@ -43,6 +43,89 @@ namespace FullInt.Tests
             public void Dispose() => _h.Free();
         }
 
+        /// <summary>
+        /// The x86 division kernel directly: quotient and remainder against BigInteger, and the
+        /// whole quotient / remainder buffers word for word against the managed core (both follow
+        /// the same algorithm and buffer contract). Divisors with all-ones top words drive the
+        /// q_max overflow path; equal windows the digit-1 path.
+        /// </summary>
+        [TestMethod]
+        public void X86Kernels_Div_MatchesBigIntegerAndManaged()
+        {
+            if (!IsX86Windows)
+            {
+                Assert.Inconclusive("x86 kernels run only in a 32-bit Windows process");
+                return;
+            }
+
+            var rnd = new Random(9393);
+            var managed = new FullInt64CoreDefault();
+            for (int it = 0; it < 20_000; it++)
+            {
+                int n = rnd.Next(1, 7), m = rnd.Next(1, 11);
+                var d = Next(rnd, n);
+                if (d[0] == 0) d[0] = rnd.Next(2) == 0 ? 1UL : ulong.MaxValue;   // normalized divisor
+                var a = Next(rnd, m);
+                if (rnd.Next(6) == 0 && m >= n) Array.Copy(d, 0, a, 0, n);      // a window equal to D
+
+                var q = new ulong[Math.Max(m - n + 1, 1)];
+                var r = new ulong[n + 2];
+                var qm = new ulong[q.Length];
+                var rm = new ulong[n + 2];
+                using (Pinned pa = new Pinned(a), pd = new Pinned(d), pq = new Pinned(q), pr = new Pinned(r))
+                {
+                    FullIntCoreWindowsX86.Kernels.Div(pa.P, pd.P, pq.P, pr.P, m, n);
+                }
+                managed.Div(a, d, qm, rm);
+
+                BigInteger A = Big(a), D = Big(d);
+                string ctx = $"m={m} n={n} a={A:X} d={D:X}";
+                Assert.AreEqual(A / D, Big(q), "q " + ctx);
+                Assert.AreEqual(A % D, Big(r), "r " + ctx);
+                CollectionAssert.AreEqual(qm, q, "q buffer vs managed " + ctx);
+                CollectionAssert.AreEqual(rm, r, "r buffer vs managed " + ctx);
+            }
+        }
+
+        /// <summary>
+        /// The x86 decimal string kernels: ToDecString of random values, FromDecString of their
+        /// digits with and without leading zeros (chunk boundaries at multiples of 19 digits),
+        /// against BigInteger.
+        /// </summary>
+        [TestMethod]
+        public void X86Kernels_DecimalStrings_MatchBigInteger()
+        {
+            if (!IsX86Windows)
+            {
+                Assert.Inconclusive("x86 kernels run only in a 32-bit Windows process");
+                return;
+            }
+
+            IFullIntCore core = new FullIntCoreWindowsX86();
+            var rnd = new Random(1919);
+            for (int it = 0; it < 4_000; it++)
+            {
+                var a = Next(rnd, rnd.Next(1, 40));
+                var A = Big(a);
+                string expected = A.ToString();
+
+                var buf = new byte[a.Length * 20 + 1];
+                core.ToDecString(a, buf, out int start);
+                Assert.AreEqual(expected, System.Text.Encoding.ASCII.GetString(buf, start, buf.Length - start), "ToDecString");
+
+                string text = rnd.Next(3) switch
+                {
+                    0 => new string('0', rnd.Next(1, 40)) + expected,                    // leading zeros
+                    1 => expected.PadLeft((expected.Length + 18) / 19 * 19, '0'),          // a multiple of 19 digits
+                    _ => expected,
+                };
+                var bytes = System.Text.Encoding.ASCII.GetBytes(text);
+                var limbs = new ulong[bytes.Length / 19 + 1];
+                core.FromDecString(bytes, limbs, out int lstart);
+                Assert.AreEqual(A, Big(limbs.AsSpan(lstart).ToArray()), $"FromDecString {text}");
+            }
+        }
+
         [TestMethod]
         public void X86Kernels_AllLengths_MatchBigInteger()
         {
@@ -94,6 +177,30 @@ namespace FullInt.Tests
                     nx = FullIntCoreWindowsX86.Kernels.Xor(pa.P, pb.P, px.P, a.Length, b.Length, lr, signs);
                     nm = managed.Xor(a, (signs & 1) != 0, b, (signs & 2) != 0, rm);
                     Assert.AreEqual(Big(rm), Big(rx), "xor " + ctx); Assert.AreEqual(nm, nx, "xor sign " + ctx);
+                }
+
+                // division by one 64-bit word: below 2^32 (two div r32 per word), 2^32, full width (fi_div128)
+                ulong d = rnd.Next(5) switch
+                {
+                    0 => (ulong)rnd.Next(1, int.MaxValue),
+                    1 => 1UL << 32,
+                    2 => ulong.MaxValue - (ulong)rnd.Next(0, 3),
+                    3 => (1UL << 63) | 1,
+                    _ => Next(rnd, 1)[0] | 1,
+                };
+                var q = new ulong[a.Length];
+                using (Pinned pa = new Pinned(a), pq = new Pinned(q))
+                {
+                    FullIntCoreWindowsX86.Kernels.DivByWord(pa.P, d, pq.P, out ulong rem, a.Length);
+                    Assert.AreEqual(A / d, Big(q), $"div by word d={d:X} " + ctx);
+                    Assert.AreEqual(A % d, (BigInteger)rem, $"rem by word d={d:X} " + ctx);
+                }
+                var inPlace = (ulong[])a.Clone();
+                using (Pinned pi = new Pinned(inPlace))
+                {
+                    FullIntCoreWindowsX86.Kernels.DivByWord(pi.P, d, pi.P, out ulong rem2, a.Length);   // quotient over the dividend
+                    Assert.AreEqual(A / d, Big(inPlace), $"div by word in place d={d:X} " + ctx);
+                    Assert.AreEqual(A % d, (BigInteger)rem2, $"rem by word in place d={d:X} " + ctx);
                 }
 
                 // shifts, every shift amount class (0, < 32, 32, > 32, whole words)

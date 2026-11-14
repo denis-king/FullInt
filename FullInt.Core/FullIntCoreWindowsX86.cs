@@ -5,8 +5,8 @@ namespace FullInt.Core
 {
     /// <summary>
     /// The 32-bit Windows core: FullIntOperations_win_x86.dll (Sources/x86, a port of the x64
-    /// kernels to 32-bit registers), cdecl. Operations without an x86 kernel yet run on the
-    /// managed core, on the same pinned buffers.
+    /// kernels to 32-bit registers), cdecl. Every operation has an x86 kernel; small sizes and
+    /// Compare go to the managed core, where the native call would cost more than the work.
     /// </summary>
     public class FullIntCoreWindowsX86 : FullIntCoreBase, IFullIntCore   // re-implements a few members, see below
     {
@@ -22,6 +22,18 @@ namespace FullInt.Core
 
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern ulong Fullint64MultWIN(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR);
+
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern ulong Fullint64DivWin(IntPtr a, IntPtr b, IntPtr q, IntPtr r, int lenA, int lenB);
+
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern ulong Fullint64Div2longWin(IntPtr a, ulong b, IntPtr q, out ulong r, int lenA);
+
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern void Fullint64ToDecStringWin(IntPtr value, IntPtr valueBuf, IntPtr resultBuf, int lenValue, ref int lenResult);
+
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern void Fullint64FromDecStringWin(IntPtr value, IntPtr valueBuf, IntPtr resultBuf, int lenValue, ref int lenResult);
 
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern int Fullint64CompareWIN(IntPtr a, IntPtr b, int lenA, int lenB);
@@ -93,6 +105,12 @@ namespace FullInt.Core
         protected override int Compare(IntPtr a, IntPtr b, int lenA, int lenB)
             => Fullint64CompareWIN(a, b, lenA, lenB);
 
+        protected override void Div(IntPtr a, IntPtr b, IntPtr q, IntPtr r, int lenA, int lenB)
+            => Fullint64DivWin(a, b, q, r, lenA, lenB);
+
+        protected override void Div(IntPtr a, ulong b, IntPtr q, out ulong r, int lenA)
+            => Fullint64Div2longWin(a, b, q, out r, lenA);
+
         protected override int And(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs)
             => Fullint64AndWIN(a, b, r, lenA, lenB, lenR, signs);
 
@@ -108,38 +126,25 @@ namespace FullInt.Core
         protected override void ShiftRight(IntPtr a, IntPtr r, int lenA, int lenR, int shift)
             => Fullint64ShrWIN(a, r, lenA, lenR, shift);
 
+        protected override void ToDecString(IntPtr value, IntPtr valueBuf, IntPtr resultBuf, int lenValue, ref int lenResult)
+            => Fullint64ToDecStringWin(value, valueBuf, resultBuf, lenValue, ref lenResult);
+
+        protected override void FromDecString(IntPtr value, IntPtr valueBuf, IntPtr resultBuf, int lenValue, ref int lenResult)
+            => Fullint64FromDecStringWin(value, valueBuf, resultBuf, lenValue, ref lenResult);
+
         /// <summary>The asm kernels themselves, without the small-size routing (tests, benchmarks).</summary>
         public static class Kernels
         {
             public static ulong Add(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR) => Fullint64AddWIN(a, b, r, lenA, lenB, lenR);
             public static int Sub(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR) => Fullint64SubWIN(a, b, r, lenA, lenB, lenR);
             public static int Compare(IntPtr a, IntPtr b, int lenA, int lenB) => Fullint64CompareWIN(a, b, lenA, lenB);
+            public static void DivByWord(IntPtr a, ulong b, IntPtr q, out ulong r, int lenA) => Fullint64Div2longWin(a, b, q, out r, lenA);
+            public static void Div(IntPtr a, IntPtr b, IntPtr q, IntPtr r, int lenA, int lenB) => Fullint64DivWin(a, b, q, r, lenA, lenB);
             public static int And(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => Fullint64AndWIN(a, b, r, lenA, lenB, lenR, signs);
             public static int Or(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => Fullint64OrWIN(a, b, r, lenA, lenB, lenR, signs);
             public static int Xor(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => Fullint64XorWIN(a, b, r, lenA, lenB, lenR, signs);
             public static void ShiftLeft(IntPtr a, IntPtr r, int lenA, int lenR, int shift) => Fullint64ShlWIN(a, r, lenA, lenR, shift);
             public static void ShiftRight(IntPtr a, IntPtr r, int lenA, int lenR, int shift) => Fullint64ShrWIN(a, r, lenA, lenR, shift);
-        }
-
-        // ---- not ported to x86 yet: the managed core on the same (already pinned) buffers ----
-
-        protected override unsafe void Div(IntPtr a, IntPtr b, IntPtr q, IntPtr r, int lenA, int lenB)
-            => Managed.Div(new Span<ulong>((void*)a, lenA), new Span<ulong>((void*)b, lenB),
-                           new Span<ulong>((void*)q, Math.Max(lenA - lenB + 1, 1)), new Span<ulong>((void*)r, lenB + 2));
-
-        protected override unsafe void Div(IntPtr a, ulong b, IntPtr q, out ulong r, int lenA)
-            => Managed.Div(new Span<ulong>((void*)a, lenA), b, new Span<ulong>((void*)q, lenA), out r);
-
-        protected override unsafe void ToDecString(IntPtr value, IntPtr valueBuf, IntPtr resultBuf, int lenValue, ref int lenResult)
-        {
-            Managed.ToDecString(new Span<ulong>((void*)value, lenValue), new Span<byte>((void*)resultBuf, lenResult), out int start);
-            lenResult = start;
-        }
-
-        protected override unsafe void FromDecString(IntPtr value, IntPtr valueBuf, IntPtr resultBuf, int lenValue, ref int lenResult)
-        {
-            Managed.FromDecString(new Span<byte>((void*)value, lenValue), new Span<ulong>((void*)resultBuf, lenResult), out int start);
-            lenResult = start;
         }
     }
 }

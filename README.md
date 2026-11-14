@@ -52,9 +52,10 @@ The current public API is listed in [docs/OPERATIONS.md](docs/OPERATIONS.md).
 | RID | Backend | Status |
 |---|---|---|
 | `win-x64` | NASM x86-64 | working, has known bugs |
+| `win-x86` | NASM x86 (32-bit port of the x64 kernels) | ✅ working, built next to win-x64 |
 | `linux-x64`, `osx-x64` | NASM x86-64 (System V ABI) | sources exist, build scripts are not functional |
 | `win-arm64`, `linux-arm64`, `osx-arm64` | AArch64 assembly | planned |
-| anything else (incl. 32-bit) | managed C# | ✅ complete, slower than asm |
+| anything else (incl. ARM32) | managed C# | ✅ complete, slower than asm |
 
 Runtimes: one package with two builds, `netstandard2.0` (.NET Framework 4.6.1+, Xamarin, Mono, Unity) and `net8.0` (.NET 8 and later). If the native library cannot be loaded, the managed core is used automatically.
 
@@ -89,7 +90,7 @@ On platforms without a native backend yet (`linux-*`, `osx-*`, `win-arm64`), the
 
 ```
 FullInt.Core/        main library: FullInt64 type, engine, core abstraction, P/Invoke bindings
-FullInt.Asm/         native kernels (NASM, x86-64) and build scripts
+FullInt.Asm/         native kernels (NASM: Sources/x64, Sources/x86) and build scripts
 FullInt.AsmForNet/   MSBuild glue that builds the native DLL and copies it next to managed outputs
 FullInt.Tests/       MSTest suite; randomized differential tests against System.Numerics.BigInteger
 FullInt.Benchmarks/  asm regression check (ab.ps1) and BenchmarkDotNet suites, see its README

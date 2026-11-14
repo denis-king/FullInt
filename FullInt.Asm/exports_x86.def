@@ -8,3 +8,7 @@ Fullint64XorWIN
 Fullint64ShlWIN
 Fullint64ShrWIN
 Fullint64MultWIN
+Fullint64Div2longWin
+Fullint64DivWin
+Fullint64ToDecStringWin
+Fullint64FromDecStringWin

@@ -17,10 +17,10 @@ is the same source. A newer build (`net10.0`) is added only when it brings somet
 
 Core selection at run time (`FullIntCoreFactory`): by OS and process architecture, then one probe
 call into the native library; if it is missing or unusable, the managed core is used silently.
-A 32-bit process (x86, ARM32) always uses the managed core.
+A 32-bit Windows process uses the x86 asm core (`FullIntOperations_win_x86.dll`); other 32-bit processes (ARM32) use the managed core.
 
 Tested on Windows: .NET 8 x64 (asm and managed), .NET Framework 4.8 x64 (asm and managed),
-.NET Framework 4.8 x86 (managed): the whole suite passes on each.
+.NET Framework 4.8 x86 (x86 asm): the whole suite passes on each.
 
 ## Support matrix
 
@@ -32,9 +32,31 @@ Tested on Windows: .NET 8 x64 (asm and managed), .NET Framework 4.8 x64 (asm and
 | `linux-arm64` | AArch64 asm | GNU `as` / `clang` | ❌ not started |
 | `osx-arm64` (Apple Silicon) | AArch64 asm | `clang` | ❌ not started |
 | `win-arm64` | AArch64 asm | `clang --target=aarch64-pc-windows-msvc` or `armasm64` | ❌ not started |
-| `win-x86`, `linux-arm` (32-bit) | managed fallback | — | ✅ complete; no asm planned (few registers, little gain) |
+| `win-x86` | x86 (32-bit) asm, a port of the x64 kernels (`Sources/x86`) | NASM `-f win32 --prefix _` + MSVC `link.exe` (`Hostx64\x86`) | ✅ all kernels; built next to win-x64 |
+| `linux-arm` (32-bit) | managed fallback | — | ✅ complete; no asm planned |
 | `linux-musl-*`, `browser-wasm`, `ios-*`, `android-*`, others | managed fallback | — | ✅ complete (all tests pass on it) |
 | `ios-arm64` | AArch64 asm, later | static library + `DllImport("__Internal")` (iOS forbids loading dynamic libraries) | managed until then |
+
+## x86 (32-bit Windows)
+
+`Sources/x86` ports every x64 kernel to 32-bit registers, cdecl, keeping the algorithms: the same three runs
+in Add/Sub, the same columns and column bounds in Mult, the same window, digit estimate (q_min / q_max +
+interpolation) and corrections in Div, base 10^19 in the decimal conversions. What is 64-bit on x64 is built
+from 32-bit operations: a 64-bit word is two dwords (low first); `mul r64` is four `mul r32`; `div r64` is
+`fi_div128` (Div128.asm, Knuth with a two-digit divisor); `shld r64` is a small helper. Register maps are in
+the file headers; what does not fit the 7 registers lives on the stack.
+
+On .NET Framework x86 a native call costs ~40-45 ns, so `FullIntCoreWindowsX86` sends Compare and
+add/sub/logic/shifts up to 4 words to the managed core. Measured in a 32-bit process (.NET Framework 4.8),
+x86 asm vs the managed core:
+
+| Op | 16 limbs | 64 | 256 |
+|---|---|---|---|
+| Mult | 12.6x | 17.8x | 17.8x |
+| Div 2N/N | 4.9x | 7.8x | 10.6x |
+| Add / Sub | 3.1x / 3.4x | 8.4x / 7.6x | 12.4x / 13.9x |
+| Div by word | 3.2x | 3.8x | 3.7x |
+| ToDecString / FromDecString | 4.2x / 5.7x | 4.1x / 5.4x | |
 
 ## x86-64
 
