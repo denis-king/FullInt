@@ -25,9 +25,22 @@ namespace FullInt.Core
         {
             toBase Base = toEqualBase(ref value1, ref value2);
 
-            var result = new FullInt64(false, new ulong[Math.Max(value1.value.Length, value2.value.Length) + 1], Base);
-            add(value1, value2, result, Base);
-            result.value = FullHelper.DeleteZeros(result.value).ToArray();
+            // Exact size, no word reserved for the carry: one allocation and no copy in the
+            // common case. A carry out (rare) widens the result by one word.
+            var r = new ulong[Math.Max(value1.value.Length, value2.value.Length)];
+            var result = new FullInt64(false, r, Base);
+            ulong carry = addSigned(value1, value2, result, Base);
+            if (carry != 0)
+            {
+                var wider = new ulong[r.Length + 1];
+                wider[0] = carry;
+                r.CopyTo(wider, 1);
+                result.value = wider;
+            }
+            else
+            {
+                result.value = FullHelper.Trimmed(r);
+            }
             return result;
         }
         public void add(FullInt64 value1, FullInt64 value2, FullInt64 result, toBase Base, bool useCarry = true)
@@ -37,15 +50,21 @@ namespace FullInt.Core
                 throw new Exception("the result bufer size is not enought");
             }
 
+            var carry = addSigned(value1, value2, result, Base);
+            if (!useCarry && carry > 0)
+            {
+                throw new Exception("result buffer is oveflow");
+            }
+        }
+
+        // Signed add into result.value; returns the carry out of the top word (same signs only).
+        private ulong addSigned(FullInt64 value1, FullInt64 value2, FullInt64 result, toBase Base)
+        {
             if (value1.Sing == value2.Sing)
             {
                 var carry = addInternal(value1.value, value2.value, result.value, Base);
                 result.Sing = value1.Sing;
-
-                if (!useCarry && carry > 0)
-                {
-                    throw new Exception("result buffer is oveflow");
-                }
+                return carry;
             }
             else
             {
@@ -63,6 +82,7 @@ namespace FullInt.Core
                 {
                     result.Sing = false;
                 }
+                return 0;   // |a - b| always fits
             }
         }
 
@@ -94,10 +114,12 @@ namespace FullInt.Core
         {
             toBase Base = toEqualBase(ref value1, ref value2);
             var lenth = value1.value.Length + value2.value.Length;
-            var bytes = lenth <= 1024 ? stackalloc ulong[lenth] : new ulong[lenth];
+            // small: stack buffer, one exact-size copy out; large: the heap buffer becomes the result
+            var heap = lenth <= FullHelper.StackAllocLimitWords ? null : new ulong[lenth];
+            Span<ulong> bytes = heap ?? stackalloc ulong[lenth];
 
             multInternal(value1.value, value2.value, bytes, Base);
-            return new FullInt64(value1.Sing != value2.Sing, FullHelper.DeleteZeros(bytes).ToArray(), Base);
+            return new FullInt64(value1.Sing != value2.Sing, FullHelper.ResultArray(bytes, heap), Base);
         }
 
         private void multInternal(Span<ulong> value1, Span<ulong> value2, Span<ulong> result, toBase Base)
@@ -265,13 +287,13 @@ namespace FullInt.Core
             {
                 throw new System.DivideByZeroException();
             }
-            var bytes = value1.value.Length <= 1024 
-                ? stackalloc ulong[value1.value.Length] 
-                : new ulong[value1.value.Length];//todo use the pool for arrays
-            
+            // small: stack buffer, one exact-size copy out; large: the heap buffer becomes the result
+            var heap = value1.value.Length <= FullHelper.StackAllocLimitWords ? null : new ulong[value1.value.Length];
+            Span<ulong> bytes = heap ?? stackalloc ulong[value1.value.Length];
+
             div_internal(value1.value, value2, bytes, out remainder);
 
-            var result = new FullInt64(value1.Sing, FullHelper.DeleteZeros(bytes).ToArray(), Base);
+            var result = new FullInt64(value1.Sing, FullHelper.ResultArray(bytes, heap), Base);
             return result;
         }
 
@@ -313,9 +335,9 @@ namespace FullInt.Core
                 : new ulong[divisor.Length + 2];//use the buffer pool
 
             var resultLenght = Math.Max(dividend.Length - divisor.Length + 1, 1);
-            Span<ulong> resultBuf = resultLenght <= FullHelper.StackAllocLimitWords
-                ? stackalloc ulong[resultLenght]
-                : new ulong[resultLenght];
+            // small: stack buffer, one exact-size copy out; large: the heap buffer becomes the result
+            var resultHeap = resultLenght <= FullHelper.StackAllocLimitWords ? null : new ulong[resultLenght];
+            Span<ulong> resultBuf = resultHeap ?? stackalloc ulong[resultLenght];
 
             div_internal(dividend, divisor, resultBuf, remainderBuf, Base);
             var sign = value1.Sing != value2.Sing;
@@ -325,7 +347,7 @@ namespace FullInt.Core
             {
                 sign = false;
             }
-            var result = new FullInt64(sign, FullHelper.DeleteZeros(resultBuf).ToArray(), Base);
+            var result = new FullInt64(sign, FullHelper.ResultArray(resultBuf, resultHeap), Base);
             remainder = new FullInt64(value1.Sing, FullHelper.DeleteZeros(remainderBuf).ToArray(), Base);
 
             return result;
@@ -401,11 +423,12 @@ namespace FullInt.Core
 
         private static FullInt64 invertor(FullInt64 value) => FullInt64.invertor(value);
 
-        private static FullInt64 Normalized(bool negative, Span<ulong> magnitude)
+        // magnitude is a fresh array owned by the caller: kept as is unless it has leading zeros
+        private static FullInt64 Normalized(bool negative, ulong[] magnitude)
         {
-            var m = FullHelper.DeleteZeros(magnitude);
+            var m = FullHelper.Trimmed(magnitude);
             bool isZero = m.Length == 1 && m[0] == 0;
-            return new FullInt64(negative && !isZero, m.ToArray(), toBase.hex);
+            return new FullInt64(negative && !isZero, m, toBase.hex);
         }
 
         private static void RequireBinary(FullInt64 value1, FullInt64 value2)

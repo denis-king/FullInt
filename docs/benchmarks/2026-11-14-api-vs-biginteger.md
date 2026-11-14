@@ -48,7 +48,41 @@ Absolute medians:
   at 1024 limbs, and 2–5× in Div. Likely an intermediate buffer plus a trimmed copy of the result;
   worth removing.
 
-## Raw report
+## Update: one allocation per result (same day)
+
+`FullInt64Engine`: Add allocates the exact result size and widens by one word only on a carry
+out; results no longer go through an always-copying `DeleteZeros(...).ToArray()`. Small buffers
+(up to 1024 words) stay on the stack and are copied out once at the trimmed size; larger ones are
+heap arrays that become the result unless they have leading zero words. Same ShortRun setup.
+Raw data: [2026-11-14-api-vs-biginteger-after-alloc-fix.csv](2026-11-14-api-vs-biginteger-after-alloc-fix.csv).
+
+FullInt64 time / BigInteger time, before → after:
+
+| Op | N=1 | 4 | 16 | 64 | 256 | 1024 |
+|---|---|---|---|---|---|---|
+| Add | 1.43 → 1.36 | 1.95 → 1.24 | 1.33 → **0.84** | 0.92 → **0.65** | 0.91 → **0.67** | 0.91 → **0.63** |
+| Mult | 1.01 → 1.03 | 0.56 → 0.49 | 0.25 → 0.24 | 0.27 → 0.25 | 0.42 → 0.39 | 0.66 → 0.94 * |
+| Div | 1.57 → 1.32 | 1.16 → 1.31 | 0.63 → 0.69 | 0.30 → 0.21 | 0.10 → 0.08 | 0.10 → 0.09 |
+
+Allocated bytes, before → after (BigInteger in brackets):
+
+| Op | N=1 | 1024 |
+|---|---|---|
+| Add | 104 → 64 (32) | 16 472 → **8 248** (8 216) |
+| Mult | 72 → 72 (40) | 32 848 → **16 440** (16 409) |
+| Div | 200 → 200 (40) | 24 785 → 24 784 (8 239) |
+
+\* Mult at 1024 limbs did not change in the code path being measured (heap buffer in both
+versions; only the final copy is gone). Over three ShortRun runs that day the ratio was 0.66,
+0.80 and 0.94, mostly because the BigInteger side moved (1.24, 0.85, 0.93 ms): ShortRun on a
+laptop is not stable enough at this size. Either way BigInteger's Karatsuba is close here.
+
+What is left:
+- **Div** still allocates 3× BigInteger: `/` computes and allocates the remainder too and then
+  drops it.
+- **1–4 limbs**: the P/Invoke transition and the wrapper dominate (a managed fast path is planned).
+
+## Raw report (first run, before the allocation fix)
 
 ```
 

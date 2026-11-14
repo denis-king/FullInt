@@ -45,6 +45,24 @@ namespace FullInt.Core
             // return value;
         // }
 
+        /// <summary>
+        /// The array itself when it has no leading zero words (no allocation, no copy),
+        /// otherwise a trimmed copy. Only for arrays the caller owns: the result may share them.
+        /// </summary>
+        public static ulong[] Trimmed(ulong[] value)
+        {
+            int zeros = CountZeros(value);
+            return zeros == 0 ? value : value.AsSpan(zeros).ToArray();
+        }
+
+        /// <summary>
+        /// The result array from a work buffer that is either on the stack (heap == null) or the
+        /// heap array heap: a stack buffer is copied out once at its trimmed size, a heap buffer is
+        /// kept as is unless it has leading zero words.
+        /// </summary>
+        public static ulong[] ResultArray(Span<ulong> buffer, ulong[]? heap) =>
+            heap != null ? Trimmed(heap) : DeleteZeros(buffer).ToArray();
+
         public static Span<ulong> DeleteZeros(Span<ulong> value)
         {
             //пропуск старших нулей операнда

@@ -152,6 +152,52 @@ namespace FullInt.Tests
             }
         }
 
+        // ---------------------------------------------------------------- result sizing (one allocation)
+
+        /// <summary>
+        /// Results are allocated at their exact size: Add widens by one word only on a carry out,
+        /// leading zero words are trimmed. Operands are biased to all-ones words (long carries),
+        /// equal magnitudes (a + (-a) = 0) and leading zero words.
+        /// </summary>
+        [TestMethod]
+        public void Operators_ResultSizing_MatchesBigInteger_AndIsNormalized()
+        {
+            var rnd = new Random(4242);
+            ulong NextWord() => rnd.Next(3) switch { 0 => ulong.MaxValue, 1 => 0UL, _ => (ulong)rnd.NextInt64() };
+            ulong[] NextLimbs()
+            {
+                var w = new ulong[rnd.Next(1, 9)];
+                for (int k = 0; k < w.Length; k++) w[k] = NextWord();
+                return w;
+            }
+            static BigInteger Big(FullInt64 x) => BigInteger.Parse(x.ToString(10));
+            static void AssertNormalized(FullInt64 x, string what)
+            {
+                Assert.IsTrue(x.value.Length == 1 || x.value[0] != 0, what + ": leading zero word");
+                if (x.value.Length == 1 && x.value[0] == 0) Assert.IsFalse(x.Sing, what + ": negative zero");
+            }
+
+            for (int i = 0; i < 5_000; i++)
+            {
+                var aw = NextLimbs();
+                var bw = rnd.Next(4) == 0 ? (ulong[])aw.Clone() : NextLimbs();   // equal magnitudes
+                var fa = new FullInt64(rnd.Next(2) == 0, aw);
+                var fb = new FullInt64(rnd.Next(2) == 0, bw);
+                BigInteger A = Big(fa), B = Big(fb);
+                string ctx = $"a={A} b={B}";
+
+                var sum = fa + fb;  Assert.AreEqual(A + B, Big(sum), "add " + ctx);  AssertNormalized(sum, "add " + ctx);
+                var dif = fa - fb;  Assert.AreEqual(A - B, Big(dif), "sub " + ctx);  AssertNormalized(dif, "sub " + ctx);
+                var prd = fa * fb;  Assert.AreEqual(A * B, Big(prd), "mult " + ctx); AssertNormalized(prd, "mult " + ctx);
+                if (!B.IsZero)
+                {
+                    var quo = fa / fb; Assert.AreEqual(A / B, Big(quo), "div " + ctx); AssertNormalized(quo, "div " + ctx);
+                }
+                var and = fa & fb;  Assert.AreEqual(A & B, Big(and), "and " + ctx);  AssertNormalized(and, "and " + ctx);
+                var shl = fa << 37; Assert.AreEqual(A << 37, Big(shl), "shl " + ctx); AssertNormalized(shl, "shl " + ctx);
+            }
+        }
+
         // ---------------------------------------------------------------- unnormalized divisor (engine)
 
         [TestMethod]
