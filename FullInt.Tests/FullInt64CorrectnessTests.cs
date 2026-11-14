@@ -460,7 +460,7 @@ namespace FullInt.Tests
                     bool tiny = to != savedTo;
                     foreach (var big in cases)
                     {
-                        if (tiny && big.GetByteCount() > 2100) continue;   // deep recursion: up to ~5000 digits
+                        if (tiny && big.ToByteArray().Length > 2100) continue;   // deep recursion: up to ~5000 digits
                         foreach (var v in new[] { big, -big })
                         {
                             string text = v.ToString();
