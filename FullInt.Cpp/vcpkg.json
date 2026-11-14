@@ -1,0 +1,11 @@
+{
+  "name": "fullint-cpp",
+  "version-string": "0.1.0",
+  "description": "FullInt C++ library: arbitrary-length integers on the FullInt asm kernels",
+  "features": {
+    "gmp": {
+      "description": "GMP, the reference for the tests and benchmarks",
+      "dependencies": [ "gmp" ]
+    }
+  }
+}
