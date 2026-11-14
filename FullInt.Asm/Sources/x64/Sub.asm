@@ -101,46 +101,57 @@ Fullint64Sub:
 	
 	mov r15, -1
 .init:
-    ; Инициализация адресных счётчиков: ставим на "выход за конец"
-    lea r10, [rdi + rdx*8 - 8]    ; ptrA = baseA + lenA*8 (указатель на байт после последнего слова)
-    lea r11, [rsi + r8*8 - 8]     ; ptrB = baseB + lenB*8
-    lea r12, [rcx + r9*8 - 8]     ; ptrR = baseR + lenR*8
-	
-    xor rax, rax              ; AL = 0
+	; here |A| >= |B| and lenA >= lenB (leading zeros skipped). Lengths are resolved once,
+	; so the loops have no per-word range checks. R is walked from its lowest word up:
+	;   1) k1 = min(lenB, lenR) words of A - B - borrow   (borrow stays in CF: dec/lea/mov keep it)
+	;   2) k2 = min(lenA, lenR) - k1 words of A - borrow
+	;   3) k3 = lenR - min(lenA, lenR) words of zeros     (no borrow is left when |A| >= |B|)
+	lea r10, [rdi + rdx*8]        ; end of A (past its lowest word)
+	lea r11, [rsi + r8*8]         ; end of B
+	lea r12, [rcx + r9*8]         ; end of R
+	cmp r8, r9
+	cmova r8, r9                  ; k1 = min(lenB, lenR)
+	cmp rdx, r9
+	cmova rdx, r9                 ; min(lenA, lenR)
+	sub r9, rdx                   ; k3
+	sub rdx, r8                   ; k2
+	mov rcx, rdx                  ; rcx = k2 (tested by jrcxz, which keeps CF)
+	mov rax, rdx
+	neg rax                       ; rax = -k2, moves the bases to run 2 without touching flags
+	lea r13, [r8*8]
+	sub r10, r13                  ; bases = top word of run 1, index r8 runs k1-1 .. 0 (low word first)
+	sub r11, r13
+	sub r12, r13
+	dec r8
+	clc
 
-.iteration:
-   
-    ; Загрузить слово A или 0
-    xor r13, r13
-    cmp r10, rdi              ; ptrA > baseA ? есть слова
-    jl .skipA
-    mov r13, [r10]  ; взять A[lenA-1] по текущему адресу
-.skipA:
+.subPairs:                        ; 1) A - B
+	mov r13, [r10 + r8*8]
+	sbb r13, [r11 + r8*8]
+	mov [r12 + r8*8], r13
+	dec r8
+	jns .subPairs
 
-    ; Загрузить слово B или 0
-    xor r14, r14
-    cmp r11, rsi
-    jl .skipB
-    mov r14, [r11]
-.skipB:
-	
-	  ; Восстановить CF из AL (AL бит0 > CF)
-    shr al, 1
-    ; Сложить A + B и добавить перенос ровно одним adc
-    sbb r13, r14
-	; Сохранить CF в AL, прежде чем портить флаги
-    setc al
-    ; Записать в R[lenR-1] по адресу (ptrR)
-    mov [r12], r13 
+	jrcxz .tail
+	lea r10, [r10 + rax*8]        ; bases = top word of run 2
+	lea r12, [r12 + rax*8]
+	lea rcx, [rcx - 1]
+.subBorrow:                       ; 2) A - borrow
+	mov r13, [r10 + rcx*8]
+	sbb r13, 0
+	mov [r12 + rcx*8], r13
+	dec rcx
+	jns .subBorrow
 
-    ; Если результат исчерпан — выход
-    cmp r12, rcx ;todo сравнить адрес с базовим если равны то выход
-    je .done
-    sub r12, 8
-    sub r10, 8
-    sub r11, 8
-
-    jmp .iteration
+.tail:
+	test r9, r9
+	jz .done
+	xor eax, eax
+.zeros:                           ; 3) zeros
+	sub r12, 8
+	mov [r12], rax
+	dec r9
+	jnz .zeros
 
 .done:
 	mov rax, r15

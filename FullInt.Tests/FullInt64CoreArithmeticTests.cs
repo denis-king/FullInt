@@ -75,6 +75,45 @@ namespace FullInt.Tests
         }
 
         /// <summary>
+        /// Add / Sub with any result length: shorter than the operands (truncated; Add returns
+        /// only the carry out of the top word of R), longer (carry, then zeros), A shorter or
+        /// longer than B, all-ones words so carries and borrows run through whole tails.
+        /// </summary>
+        [DataTestMethod]
+        [DynamicData(nameof(Cores), DynamicDataSourceType.Method)]
+        public void Core_AddSub_AnyResultLength_MatchesBigInteger(string coreName)
+        {
+            var core = GetCore(coreName);
+            var rnd = new Random(4321);
+            ulong[] Shaped(int n)
+            {
+                var w = Next(rnd, n);
+                if (rnd.Next(3) == 0) for (int k = 0; k < n; k++) if (rnd.Next(4) != 0) w[k] = ulong.MaxValue;
+                return w;
+            }
+
+            for (int it = 0; it < 20_000; it++)
+            {
+                var a = Shaped(rnd.Next(1, 13));
+                var b = Shaped(rnd.Next(1, 13));
+                int lenR = rnd.Next(1, 16);
+                BigInteger A = ToBig(a), B = ToBig(b), mod = BigInteger.One << (64 * lenR);
+                string ctx = $"[{coreName}] lenA={a.Length} lenB={b.Length} lenR={lenR} a={A:X} b={B:X}";
+
+                var r = new ulong[lenR];
+                Array.Fill(r, 0xDEAD_BEEF_DEAD_BEEFUL);
+                ulong carry = core.Add(a, b, r);
+                Assert.AreEqual((A + B) % mod, ToBig(r), "add " + ctx);
+                Assert.AreEqual((ulong)((A % mod + B % mod) / mod), carry, "add carry " + ctx);
+
+                Array.Fill(r, 0xDEAD_BEEF_DEAD_BEEFUL);
+                int sign = core.Sub(a, b, r);
+                Assert.AreEqual(A.CompareTo(B), sign, "sub sign " + ctx);
+                Assert.AreEqual(BigInteger.Abs(A - B) % mod, ToBig(r), "sub " + ctx);
+            }
+        }
+
+        /// <summary>
         /// Mult on longer and very unequal operands, and with a result buffer longer than
         /// lenA + lenB (the extra high words must come out zero).
         /// </summary>
