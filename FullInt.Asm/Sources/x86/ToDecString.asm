@@ -8,25 +8,68 @@
 ;  Same algorithm: copy the value; each pass divides it in place by 10^19 word by word
 ;  (dropping the top word once it becomes zero), the remainder gives up to 19 chars from the
 ;  end of the buffer (zero-padded between chunks); stop when the value is zero.
-;    div r64 by 10^19 -> fi_div128 (Div128.asm)
-;    div r64 by 10    -> two div r32 (high dword, then low dword)
+;    div r64 by 10^19 -> DIGIT10E19 twice, inline: Knuth D with 32-bit digits, the divisor
+;                        10^19 = 8AC72304_89E80000h is already normalized (top bit set), so no
+;                        shifts; the same math as fi_div128 (Div128.asm) without the call
+;    x / 10           -> two div r32 (high dword, then low dword). x64 multiplies by the
+;                        reciprocal here; on x86 that is four mul r32 and measured no faster
+;                        (+-5%), so the divisions stay.
 ;
 ;  Register map (x64 -> x86)
-;    rsi temp value item -> esi     rcx result buffer -> edi     rdi value length -> ebp
+;    rsi temp value item -> esi     rcx result buffer -> edi (char phase)
+;    r11 10^19 -> D_HI immediate + edi = D_LO (pass)     rdi value length -> LEN
 ;    r9 words left -> LEFT          r10 result index -> RIDX     rbx chars left -> DCNT
-;    rdx:rax remainder -> WIN[2..3] in the pass, ebx (high) + TLO (low) in the char phase
+;    rdx remainder / rax chunk -> ebp:ecx (high:low)     r12 -> TEN (div r32 operand)
 ; =============================================================================
 
 section .text
 
-extern fi_div128
+%define RIDX   esp
+%define LEFT   esp+4
+%define DCNT   esp+8
+%define LEN    esp+12
+%define TEN    esp+16
+%define FRAME  20
 
-%define WIN    esp            ; 4 dwords for fi_div128
-%define RIDX   esp+16
-%define LEFT   esp+20
-%define DCNT   esp+24
-%define TLO    esp+28
-%define FRAME  32
+%define D_HI   8AC72304h          ; 10^19 = 8AC72304_89E80000h
+%define D_LO   89E80000h
+
+; one 32-bit quotient digit of (top:mid:low) / 10^19
+;  in : edx top, eax mid (top:mid < 10^19), ecx low, edi = D_LO
+;  out: ebx the digit, ebp:ecx the remainder (< 10^19); eax, edx clobbered
+;  The test qhat*D_LO > rhat:low uses the whole divisor, so the loop leaves the exact digit
+;  and the remainder rhat:low - qhat*D_LO is exact mod 2^64 (no add-back step).
+%macro DIGIT10E19 0
+	cmp edx, D_HI
+	jb %%div
+	mov ebx, 0FFFFFFFFh           ; top == D_HI: the estimate would not fit a digit
+	mov ebp, eax
+	add ebp, D_HI                 ; rhat = mid + D_HI
+	jc %%rem                      ; rhat >= 2^32: the test below cannot fail
+	jmp %%refine
+%%div:
+	mov ebx, D_HI
+	div ebx                       ; eax = qhat, edx = rhat
+	mov ebx, eax
+	mov ebp, edx
+%%refine:                         ; while qhat * D_LO > rhat:low: qhat--, rhat += D_HI
+	mov eax, ebx
+	mul edi
+	cmp edx, ebp
+	jb %%rem
+	ja %%dec
+	cmp eax, ecx
+	jbe %%rem
+%%dec:
+	dec ebx
+	add ebp, D_HI
+	jnc %%refine                  ; rhat still < 2^32: test again
+%%rem:                            ; remainder = rhat:low - qhat * D_LO
+	mov eax, ebx
+	mul edi
+	sub ecx, eax
+	sbb ebp, edx
+%endmacro
 
 global Fullint64ToDecStringWin
 Fullint64ToDecStringWin:
@@ -50,84 +93,78 @@ Fullint64ToDecStringWin:
 	jne .copyLoop
 
 	mov esi, edi                  ; the temp value
-	mov ebp, ecx                  ; value len
-	mov edi, [esp+FRAME+28]       ; result buffer
+	mov [LEN], ecx                ; value len
 	mov eax, [esp+FRAME+36]
 	mov eax, [eax]
 	mov [RIDX], eax               ; result len value (ref int)
+	mov dword [TEN], 10
 
 .mainLoop:
-	xor eax, eax
-	mov [WIN + 8], eax            ; remainder = 0
-	mov [WIN + 12], eax
-	mov [LEFT], ebp
+	mov edi, D_LO
+	xor ebp, ebp                  ; remainder = 0
+	xor ecx, ecx
+	mov eax, [LEN]
+	mov [LEFT], eax
 .div2longLoop:
 	;exif if it's the end of dividend
 	cmp dword [LEFT], 0
 	je .div2longDone
 
-	;read next word, (remainder:word) / 10^19
-	mov eax, [esi]
-	mov [WIN], eax
-	mov eax, [esi + 4]
-	mov [WIN + 4], eax
-	push 8AC72304h                ; 10^19 = 8AC72304_89E80000h
-	push 89E80000h
-	lea eax, [esp + 8]
-	push eax
-	call fi_div128
-	add esp, 12
-	mov [esi], eax                ; quotient word
-	mov [esi + 4], edx
-	mov ecx, [WIN]                ; the remainder moves up for the next word
-	mov [WIN + 8], ecx
-	mov ecx, [WIN + 4]
-	mov [WIN + 12], ecx
+	;read next word, (remainder:word) / 10^19: two 32-bit digits, the high one first
+	mov edx, ebp
+	mov eax, ecx
+	mov ecx, [esi + 4]
+	DIGIT10E19
+	mov [esi + 4], ebx            ; quotient high dword
+	mov edx, ebp
+	mov eax, ecx
+	mov ecx, [esi]
+	DIGIT10E19
+	mov [esi], ebx                ; quotient low dword
 	add esi, 8
 
-	or eax, edx
+	or ebx, [esi - 4]
 	jnz .storeDiv
-	cmp ebp, [LEFT]
+	mov eax, [LEN]
+	cmp eax, [LEFT]
 	jne .storeDiv
-	dec ebp                       ; decrement the result len for the next iterations
+	dec dword [LEN]               ; decrement the result len for the next iterations
 .storeDiv:
 	dec dword [LEFT]
 	jmp .div2longLoop
 
 .div2longDone:
 	;restore addres to the normal start of the rezult buff
-	lea eax, [ebp*8]
+	mov eax, [LEN]
+	shl eax, 3
 	sub esi, eax
 
-	mov eax, [WIN + 8]            ; the chunk (< 10^19)
-	mov [TLO], eax
-	mov ebx, [WIN + 12]
+	; the chunk (< 10^19) is ebp:ecx
+	mov edi, [esp+FRAME+28]       ; result buffer
 	mov dword [DCNT], 19
-	mov ecx, 10
 .charLoop:
 	dec dword [DCNT]
 	dec dword [RIDX]
 	js .done
 
-	xor edx, edx                  ; chunk / 10
-	mov eax, ebx
-	div ecx
-	mov ebx, eax
-	mov eax, [TLO]
-	div ecx
-	mov [TLO], eax
+	xor edx, edx                  ; chunk / 10: high dword, then low dword
+	mov eax, ebp
+	div dword [TEN]
+	mov ebp, eax
+	mov eax, ecx
+	div dword [TEN]
+	mov ecx, eax
 
 	;convert value 0 - 9 to char and store to the rez buff
 	add dl, 30h
-	mov eax, [RIDX]
-	mov [edi + eax], dl
+	mov ebx, [RIDX]
+	mov [edi + ebx], dl
 
-	mov eax, [TLO]
-	or eax, ebx
+	or eax, ebp
 	jnz .charLoop
 
 	;compare the temp value with zero and break if zero
-	cmp ebp, 1                    ; compare by len (normilazed value)
+	cmp dword [LEN], 1            ; compare by len (normilazed value)
 	ja .continue                  ;len more then 1
 	jb .done                      ; len zero
 	mov eax, [esi]

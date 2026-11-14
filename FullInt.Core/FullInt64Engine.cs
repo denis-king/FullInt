@@ -668,6 +668,12 @@ namespace FullInt.Core
         }
 		private string ToDecString(FullInt64 value)
         {
+            if (value.value.Length == 1)   // one word: the BCL formats a ulong without the buffers and the native call
+            {
+                var text1 = value.value[0].ToString(System.Globalization.CultureInfo.InvariantCulture);
+                return value.Sing ? "-" + text1 : text1;   // the sign exactly as the general path writes it
+            }
+
             int resultBytes = (int)(value.value.Length * 1.014 + 1) * 19 + 1;
             byte[]? rented = null;
             Span<byte> resultBuf = resultBytes <= FullHelper.StackAllocLimitBytes

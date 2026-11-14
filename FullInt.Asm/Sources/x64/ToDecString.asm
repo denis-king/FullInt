@@ -27,8 +27,8 @@ global Fullint64ToDecString
 Fullint64ToDecString:
     xor rbx, rbx
     mov r11, 10000000000000000000 ;max ulong dec capacity
-    mov r12, 10
-    
+    mov r12, 0CCCCCCCCCCCCCCCDh ; ceil(2^67 / 10): x / 10 = (x * r12) >> 67 for any 64-bit x
+
 .copyLoop:
     mov rax, [rdi + rbx * 8]
     mov [rsi + rbx * 8], rax
@@ -80,16 +80,22 @@ Fullint64ToDecString:
     mov rax, rdx
     mov rbx, 19
 .charLoop:
-    xor rdx, rdx
     dec rbx
     dec r10
     js .done
-    
-    div r12; 10
-     
-    ;convert value 0 - 0 to char and stor to the rez buff
-    add dl, 0x30
-    mov [rcx + r10], dl
+
+    ;rax / 10 by the reciprocal (was div r12 with r12 = 10); r9 is free here
+    mov r9, rax
+    mul r12
+    shr rdx, 3 ;q = rax / 10
+    mov rax, rdx
+    lea rdx, [rdx + rdx*4]
+    add rdx, rdx ;q * 10
+    sub r9, rdx ;the digit
+
+    ;convert value 0 - 9 to char and stor to the rez buff
+    add r9b, 0x30
+    mov [rcx + r10], r9b
     
     test rax, rax
     jnz .charLoop
