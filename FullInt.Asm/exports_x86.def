@@ -7,3 +7,4 @@ Fullint64OrWIN
 Fullint64XorWIN
 Fullint64ShlWIN
 Fullint64ShrWIN
+Fullint64MultWIN
