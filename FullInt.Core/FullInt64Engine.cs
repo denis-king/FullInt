@@ -147,7 +147,116 @@ namespace FullInt.Core
             }
             return addOrSub(value1, value2, negate2: true);
         }
-        private ulong addInternal(Span<ulong> value1, Span<ulong> value2, Span<ulong> result, toBase Base) 
+        #region into an existing result (FullInt64.Add(result, a, b) etc.)
+        // Sizes come from the operands without their leading zero words, so a result reused in a
+        // loop (result = result + b) keeps its length instead of growing by a word per call.
+        // Decimal operands, negative right shifts and negative shift counts take the ordinary
+        // operation and the result object just takes its value.
+
+        public void addInto(FullInt64 result, FullInt64 value1, FullInt64 value2, bool negate2)
+        {
+            if (value1.IsDec || value2.IsDec)
+            {
+                result.Assign(negate2 ? sub(value1, value2) : add(value1, value2));
+                return;
+            }
+            bool neg1 = value1.Sing, neg2 = value2.Sing != negate2;
+            Span<ulong> a = FullHelper.DeleteZeros(value1.value), b = FullHelper.DeleteZeros(value2.value);
+            if (a.Length == 1 && b.Length == 1)   // one word: plain 64-bit arithmetic, no core call
+            {
+                ulong x = a[0], y = b[0], hi = 0, lo;
+                bool negative;
+                if (neg1 == neg2) { lo = x + y; hi = lo < x ? 1UL : 0UL; negative = neg1; }
+                else if (x >= y) { lo = x - y; negative = neg1; }
+                else { lo = y - x; negative = neg2; }
+                WriteTwoWords(result, hi, lo, negative);
+                return;
+            }
+            int n = Math.Max(a.Length, b.Length);
+            if (neg1 == neg2)
+            {
+                // r may be a's or b's array: the add reads both words before writing, from the
+                // low end, and a trimmed operand ends where the array ends
+                ulong[] r = result.WritableBuffer(n + 1, mustBeNew: false);
+                _core.Add(a, b, r);
+                result.SetResult(neg1);
+            }
+            else
+            {
+                ulong[] r = result.WritableBuffer(n, mustBeNew: false);
+                int compareResult = _core.Sub(a, b, r);
+                result.SetResult(compareResult > 0 ? neg1 : compareResult < 0 ? neg2 : false);
+            }
+        }
+
+        public void multInto(FullInt64 result, FullInt64 value1, FullInt64 value2)
+        {
+            if (value1.IsDec || value2.IsDec)
+            {
+                result.Assign(mult(value1, value2));
+                return;
+            }
+            bool negative = value1.Sing != value2.Sing;
+            Span<ulong> a = FullHelper.DeleteZeros(value1.value), b = FullHelper.DeleteZeros(value2.value);
+            if (a.Length == 1 && b.Length == 1)   // one word by one word: FullHelper.BigMul, no core call
+            {
+                ulong hi = FullHelper.BigMul(a[0], b[0], out ulong lo);
+                WriteTwoWords(result, hi, lo, negative);
+                return;
+            }
+            int len = a.Length + b.Length;
+            // the multiply reads the operands throughout: never into one of them
+            bool aliased = ReferenceEquals(result.value, value1.value) || ReferenceEquals(result.value, value2.value);
+            ulong[] r = result.WritableBuffer(len, mustBeNew: aliased);
+            Span<ulong> low = r.AsSpan(r.Length - len);
+            r.AsSpan(0, r.Length - len).Clear();
+            if (Math.Min(a.Length, b.Length) >= Karatsuba.Threshold)
+                Karatsuba.Multiply(_core, a, b, low);
+            else
+                _core.Mult(a, b, low);
+            result.SetResult(negative);
+        }
+
+        // a one- or two-word value into result's buffer (the operands were read before)
+        private static void WriteTwoWords(FullInt64 result, ulong hi, ulong lo, bool negative)
+        {
+            ulong[] r = result.WritableBuffer(2, mustBeNew: false);
+            int top = r.Length - 2;
+            if (top > 0) r.AsSpan(0, top).Clear();
+            r[top] = hi;
+            r[top + 1] = lo;
+            result.SetResult(negative);
+        }
+
+        public void shiftLeftInto(FullInt64 result, FullInt64 value, int shift)
+        {
+            if (value.IsDec || shift < 0)
+            {
+                result.Assign(shiftLeft(value, shift));
+                return;
+            }
+            bool negative = value.Sing;
+            Span<ulong> a = FullHelper.DeleteZeros(value.value);
+            ulong[] r = result.WritableBuffer(a.Length + shift / 64 + 1, mustBeNew: ReferenceEquals(result.value, value.value));
+            _core.ShiftLeft(a, shift, r);   // writes the lead zeros of a longer r
+            result.SetResult(negative);
+        }
+
+        public void shiftRightInto(FullInt64 result, FullInt64 value, int shift)
+        {
+            if (value.IsDec || shift < 0 || value.Sing)   // negative: floor rounding, the ordinary path
+            {
+                result.Assign(shiftRight(value, shift));
+                return;
+            }
+            Span<ulong> a = FullHelper.DeleteZeros(value.value);
+            ulong[] r = result.WritableBuffer(Math.Max(a.Length - shift / 64, 1), mustBeNew: ReferenceEquals(result.value, value.value));
+            _core.ShiftRight(a, shift, r);   // writes the lead zeros of a longer r
+            result.SetResult(false);
+        }
+        #endregion
+
+        private ulong addInternal(Span<ulong> value1, Span<ulong> value2, Span<ulong> result, toBase Base)
         {
             return _core.Add(value1, value2, result);
         }

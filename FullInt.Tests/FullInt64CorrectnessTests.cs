@@ -422,6 +422,104 @@ namespace FullInt.Tests
         }
 
         /// <summary>
+        /// The in-place API (FullInt64.Add(result, a, b) etc.) against BigInteger: result fresh,
+        /// reused, and the same object as a or b; signs; sizes across the Karatsuba threshold.
+        /// </summary>
+        [TestMethod]
+        public void InPlaceApi_MatchesBigInteger()
+        {
+            var rnd = new Random(3131);
+            FullInt64 Make(int words)
+            {
+                var w = new ulong[words];
+                for (int k = 0; k < words; k++) w[k] = (ulong)rnd.NextInt64() ^ ((ulong)rnd.Next(2) << 63);
+                if (rnd.Next(4) == 0) w[0] = 0;   // a leading zero word
+                return new FullInt64(rnd.Next(2) == 0, w);
+            }
+            BigInteger Big(FullInt64 x) => BigInteger.Parse(x.ToString(10));
+
+            var result = new FullInt64(0);
+            for (int i = 0; i < 600; i++)
+            {
+                var a = Make(rnd.Next(1, i % 3 == 0 ? 90 : 12));
+                var b = Make(rnd.Next(1, i % 3 == 0 ? 90 : 12));
+                BigInteger A = Big(a), B = Big(b);
+                int shift = rnd.Next(0, 200);
+                string ctx = $"{a.value.Length}/{b.value.Length} words, iteration {i}";
+
+                switch (rnd.Next(3))   // into the shared result, into a, into b
+                {
+                    case 0:
+                        FullInt64.Add(result, a, b); Assert.AreEqual(A + B, Big(result), "add " + ctx);
+                        FullInt64.Subtract(result, a, b); Assert.AreEqual(A - B, Big(result), "sub " + ctx);
+                        FullInt64.Multiply(result, a, b); Assert.AreEqual(A * B, Big(result), "mul " + ctx);
+                        FullInt64.ShiftLeft(result, a, shift); Assert.AreEqual(A << shift, Big(result), "shl " + ctx);
+                        FullInt64.ShiftRight(result, a, shift); Assert.AreEqual(BigCompat.ShiftRightFloor(A, shift), Big(result), "shr " + ctx);
+                        break;
+                    case 1:
+                        var x = new FullInt64(a.Sing, (ulong[])a.value.Clone());
+                        FullInt64.Add(x, x, b); Assert.AreEqual(A + B, Big(x), "add into a " + ctx);
+                        FullInt64.Subtract(x, x, b); Assert.AreEqual(A, Big(x), "sub into a " + ctx);
+                        FullInt64.Multiply(x, x, b); Assert.AreEqual(A * B, Big(x), "mul into a " + ctx);
+                        FullInt64.ShiftLeft(x, x, shift); Assert.AreEqual((A * B) << shift, Big(x), "shl into a " + ctx);
+                        FullInt64.ShiftRight(x, x, shift); Assert.AreEqual(BigCompat.ShiftRightFloor((A * B) << shift, shift), Big(x), "shr into a " + ctx);
+                        break;
+                    default:
+                        var y = new FullInt64(b.Sing, (ulong[])b.value.Clone());
+                        FullInt64.Add(y, a, y); Assert.AreEqual(A + B, Big(y), "add into b " + ctx);
+                        FullInt64.Subtract(y, a, y); Assert.AreEqual(-B, Big(y), "sub into b " + ctx);
+                        FullInt64.Multiply(y, a, y); Assert.AreEqual(-A * B, Big(y), "mul into b " + ctx);
+                        break;
+                }
+            }
+        }
+
+        /// <summary>
+        /// The in-place API never writes into an array another object can see, and a result
+        /// reused in a loop does not grow.
+        /// </summary>
+        [TestMethod]
+        public void InPlaceApi_SharedArraysAndLoops()
+        {
+            var a = FullInt64.Parse("123456789012345678901234567890");
+            var b = FullInt64.Parse("987654321098765432109876543210");
+
+            // an owned result handed to a copy: the next in-place call must not change the copy
+            var r = new FullInt64(0);
+            FullInt64.Add(r, a, b);
+            var copy = new FullInt64(r);
+            string before = copy.ToString(10);
+            FullInt64.Add(r, r, b);
+            Assert.AreEqual(before, copy.ToString(10), "copy constructor shares the array");
+
+            var r2 = new FullInt64(0);
+            FullInt64.Multiply(r2, a, b);
+            var words = (ulong[])r2;
+            var snapshot = (ulong[])words.Clone();
+            FullInt64.Add(r2, r2, a);
+            CollectionAssert.AreEqual(snapshot, words, "(ulong[]) hands the array out");
+
+            // an operand made by the engine (shares nothing): the result gets its own array
+            var sum = a + b;
+            var keep = sum.ToString(10);
+            var target = new FullInt64(sum);   // shares sum's array: written in place it would change sum
+            FullInt64.Add(target, target, b);
+            Assert.AreEqual(keep, sum.ToString(10), "an operand's array shared by the result");
+
+            // r = r + 1 a thousand times: the array keeps its size
+            var acc = new FullInt64(0);
+            FullInt64.Add(acc, a, a);
+            int length = 0;
+            for (int i = 0; i < 1000; i++)
+            {
+                FullInt64.Add(acc, acc, 1);
+                if (i == 10) length = acc.value.Length;
+            }
+            Assert.AreEqual(length, acc.value.Length, "the reused array grows");
+            Assert.AreEqual((BigInteger.Parse("123456789012345678901234567890") * 2 + 1000).ToString(), acc.ToString(10));
+        }
+
+        /// <summary>
         /// The operator path into Burnikel–Ziegler (divisor and quotient at or above
         /// BurnikelZiegler.Threshold words): signs, '/' and '%', against BigInteger.
         /// </summary>

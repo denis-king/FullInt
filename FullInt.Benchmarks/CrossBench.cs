@@ -142,6 +142,9 @@ namespace FullInt.Benchmarks
 
                 Row("add", () => r = a + b, () => br = ba + bb);
                 Row("sub", () => r = a - b, () => br = ba - bb);
+                var ri = new FullInt64(0);   // into an existing result (FullInt64.Add(result, a, b))
+                Row("addto", () => FullInt64.Add(ri, a, b), () => br = ba + bb);
+                Row("multo", () => FullInt64.Multiply(ri, a, b), () => br = ba * bb);
                 Row("mul", () => r = a * b, () => br = ba * bb);
                 Row("div", () => r = c / b, () => br = bc / bb);
                 Row("mod", () => r = c % b, () => br = bc % bb);

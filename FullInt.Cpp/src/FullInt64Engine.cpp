@@ -109,6 +109,112 @@ FullInt64 FullInt64Engine::subMagnitudes(CSpan a, CSpan b, bool neg1, bool neg2)
 
 #pragma endregion
 
+#pragma region into an existing result
+
+// result = a ± b in result's buffer. When result is one of the operands and there are enough
+// words in front of its number (a carry word left by a previous add), the kernel writes in
+// place: it reads both words before writing, from the low end, and the operand ends where the
+// result ends. A result that is not an operand just reuses its capacity. Otherwise (aliased,
+// no room) a new number is made and moved in.
+void FullInt64Engine::addInto(FullInt64& result, const FullInt64& value1, const FullInt64& value2, bool negate2)
+{
+    bool neg1 = value1.neg_, neg2 = value2.neg_ != negate2;
+    CSpan a = value1.Words(), b = value2.Words();
+    bool same = neg1 == neg2;
+
+    if (a.size() == 1 && b.size() == 1)   // one word: plain 64-bit arithmetic (both read first)
+    {
+        uint64_t x = a[0], y = b[0], hi = 0, lo;
+        bool negative;
+        if (same) { lo = x + y; hi = lo < x ? 1 : 0; negative = neg1; }
+        else if (x >= y) { lo = x - y; negative = neg1; }
+        else { lo = y - x; negative = neg2; }
+        uint64_t* q = result.Prepare(2);
+        q[0] = hi;
+        q[1] = lo;
+        result.Normalize(negative);
+        return;
+    }
+
+    uint32_t n = (uint32_t)std::max(a.size(), b.size()) + (same ? 1 : 0);
+    uint64_t* p;
+    if (&result == &value1 || &result == &value2)
+    {
+        uint32_t end = result.off_ + result.size_;   // the aliased operand's words end here
+        if (end < n)
+        {
+            result = same ? addMagnitudes(a, b, neg1) : subMagnitudes(a, b, neg1, neg2);
+            return;
+        }
+        p = result.Base() + (end - n);
+        result.off_ = end - n;
+        result.size_ = n;
+    }
+    else
+    {
+        p = result.Prepare(n);
+    }
+
+    if (same)
+    {
+        FullIntCore::Add(a, b, Span(p, n));
+        result.Normalize(neg1);
+    }
+    else
+    {
+        int compareResult = FullIntCore::Sub(a, b, Span(p, n));
+        result.Normalize(compareResult > 0 ? neg1 : compareResult < 0 ? neg2 : false);
+    }
+}
+
+void FullInt64Engine::multInto(FullInt64& result, const FullInt64& value1, const FullInt64& value2)
+{
+    if (&result == &value1 || &result == &value2)   // the multiply reads the operands throughout
+    {
+        result = mult(value1, value2);
+        return;
+    }
+    CSpan a = value1.Words(), b = value2.Words();
+    uint32_t length = (uint32_t)(a.size() + b.size());
+    Span r(result.Prepare(length), length);
+    if (length == 2)
+        r[0] = FullHelper::BigMul(a[0], b[0], &r[1]);
+    else if (std::min(a.size(), b.size()) >= (size_t)Karatsuba::Threshold)
+        Karatsuba::Multiply(a, b, r);
+    else
+        FullIntCore::Mult(a, b, r);
+    result.Normalize(value1.neg_ != value2.neg_);
+}
+
+void FullInt64Engine::shiftLeftInto(FullInt64& result, const FullInt64& value, int shift)
+{
+    if (&result == &value || shift < 0)
+    {
+        result = shiftLeft(value, shift);
+        return;
+    }
+    CSpan a = value.Words();
+    uint32_t n = (uint32_t)a.size() + (uint32_t)shift / 64 + 1;
+    bool negative = value.neg_;
+    FullIntCore::ShiftLeft(a, shift, Span(result.Prepare(n), n));
+    result.Normalize(negative);
+}
+
+void FullInt64Engine::shiftRightInto(FullInt64& result, const FullInt64& value, int shift)
+{
+    if (&result == &value || shift < 0 || value.neg_)   // negative: floor rounding, the ordinary path
+    {
+        result = shiftRight(value, shift);
+        return;
+    }
+    CSpan a = value.Words();
+    uint32_t n = (uint32_t)std::max<int64_t>((int64_t)a.size() - shift / 64, 1);
+    FullIntCore::ShiftRight(a, shift, Span(result.Prepare(n), n));
+    result.Normalize(false);
+}
+
+#pragma endregion
+
 #pragma region mult
 
 FullInt64 FullInt64Engine::multGeneral(const FullInt64& value1, const FullInt64& value2)

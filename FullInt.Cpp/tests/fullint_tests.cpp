@@ -268,6 +268,56 @@ void DivideThresholds()
     }
 }
 
+// the in-place API (Add(result, a, b) etc.) and the compound operators against the plain
+// operators: result fresh, reused across sizes, and the same object as a or b
+void InPlaceApi()
+{
+    FullInt64 shared;
+    for (int round = 0; round < 3000; round++)
+    {
+        int la = 1 + (int)(rng() % (round % 3 == 0 ? 90 : 9)), lb = 1 + (int)(rng() % (round % 3 == 0 ? 90 : 9));
+        FullInt64 a = RandomValue(la), b = RandomValue(lb);
+        int shift = (int)(rng() % 200);
+        std::string ctx = std::to_string(la) + "/" + std::to_string(lb) + " round " + std::to_string(round);
+
+        fullint::Add(shared, a, b);
+        CHECK(shared == a + b, "Add " + ctx);
+        fullint::Subtract(shared, a, b);
+        CHECK(shared == a - b, "Subtract " + ctx);
+        fullint::Multiply(shared, a, b);
+        CHECK(shared == a * b, "Multiply " + ctx);
+        fullint::ShiftLeft(shared, a, shift);
+        CHECK(shared == (a << shift), "ShiftLeft " + ctx);
+        fullint::ShiftRight(shared, a, shift);
+        CHECK(shared == (a >> shift), "ShiftRight " + ctx);
+
+        FullInt64 x(a);   // into a
+        fullint::Add(x, x, b);
+        CHECK(x == a + b, "Add into a " + ctx);
+        fullint::Subtract(x, x, b);
+        CHECK(x == a, "Subtract into a " + ctx);
+        fullint::Multiply(x, x, b);
+        CHECK(x == a * b, "Multiply into a " + ctx);
+        FullInt64 y(b);   // into b
+        fullint::Add(y, a, y);
+        CHECK(y == a + b, "Add into b " + ctx);
+        fullint::Subtract(y, a, y);
+        CHECK(y == -b, "Subtract into b " + ctx);
+        FullInt64 z(a);   // both operands are the result
+        fullint::Add(z, z, z);
+        CHECK(z == a + a, "Add z = z + z " + ctx);
+
+        FullInt64 c(a);   // compound operators, a few steps in a row (the carry room is reused)
+        c += b; c += b; c -= a; c *= b; c -= b;
+        CHECK(c == (a + b + b - a) * b - b, "compound " + ctx);
+    }
+
+    FullInt64 acc = FullInt64(UINT64_MAX) * FullInt64(UINT64_MAX);   // a long run of += 1
+    FullInt64 expect = acc;
+    for (int i = 0; i < 1000; i++) ++acc;
+    CHECK(acc == expect + FullInt64(1000), "++ x1000");
+}
+
 }  // namespace
 
 int main()
@@ -277,6 +327,7 @@ int main()
     EdgeCases();
     MultiplyThresholds();
     DivideThresholds();
+    InPlaceApi();
 
     for (int sa : sizes)
         for (int sb : sizes)

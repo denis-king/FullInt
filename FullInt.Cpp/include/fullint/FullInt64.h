@@ -300,6 +300,13 @@ public:
     static std::string ToString(const FullInt64& value, int base);
     static FullInt64 ToFullInt64(std::string_view text);
 
+    // GMP style, into an existing result (C#: FullInt64.Add(result, a, b) etc.): result's
+    // buffer is reused; result may be value1 or value2 (see FullInt64Engine.cpp)
+    static void addInto(FullInt64& result, const FullInt64& value1, const FullInt64& value2, bool negate2);
+    static void multInto(FullInt64& result, const FullInt64& value1, const FullInt64& value2);
+    static void shiftLeftInto(FullInt64& result, const FullInt64& value, int shift);
+    static void shiftRightInto(FullInt64& result, const FullInt64& value, int shift);
+
     // |a| vs |b| on normalized magnitudes: the length or the top word almost always decides
     static int CompareAbsQuick(CSpan value1, CSpan value2) noexcept
     {
@@ -357,9 +364,18 @@ inline FullInt64 operator~(const FullInt64& a) { return FullInt64Engine::Not(a);
 inline FullInt64 operator<<(const FullInt64& a, int shift) { return FullInt64Engine::shiftLeft(a, shift); }
 inline FullInt64 operator>>(const FullInt64& a, int shift) { return FullInt64Engine::shiftRight(a, shift); }
 
-inline FullInt64& operator+=(FullInt64& a, const FullInt64& b) { return a = a + b; }
-inline FullInt64& operator-=(FullInt64& a, const FullInt64& b) { return a = a - b; }
-inline FullInt64& operator*=(FullInt64& a, const FullInt64& b) { return a = a * b; }
+// GMP style: result = a op b into result's buffer (no new number per call in a loop);
+// result may be a or b
+inline void Add(FullInt64& result, const FullInt64& a, const FullInt64& b) { FullInt64Engine::addInto(result, a, b, false); }
+inline void Subtract(FullInt64& result, const FullInt64& a, const FullInt64& b) { FullInt64Engine::addInto(result, a, b, true); }
+inline void Multiply(FullInt64& result, const FullInt64& a, const FullInt64& b) { FullInt64Engine::multInto(result, a, b); }
+inline void ShiftLeft(FullInt64& result, const FullInt64& a, int shift) { FullInt64Engine::shiftLeftInto(result, a, shift); }
+inline void ShiftRight(FullInt64& result, const FullInt64& a, int shift) { FullInt64Engine::shiftRightInto(result, a, shift); }
+
+// compound assignment: in place where the operation allows it (+, - in a's own buffer)
+inline FullInt64& operator+=(FullInt64& a, const FullInt64& b) { FullInt64Engine::addInto(a, a, b, false); return a; }
+inline FullInt64& operator-=(FullInt64& a, const FullInt64& b) { FullInt64Engine::addInto(a, a, b, true); return a; }
+inline FullInt64& operator*=(FullInt64& a, const FullInt64& b) { FullInt64Engine::multInto(a, a, b); return a; }
 inline FullInt64& operator/=(FullInt64& a, const FullInt64& b) { return a = a / b; }
 inline FullInt64& operator%=(FullInt64& a, const FullInt64& b) { return a = a % b; }
 inline FullInt64& operator&=(FullInt64& a, const FullInt64& b) { return a = a & b; }
@@ -367,8 +383,8 @@ inline FullInt64& operator|=(FullInt64& a, const FullInt64& b) { return a = a | 
 inline FullInt64& operator^=(FullInt64& a, const FullInt64& b) { return a = a ^ b; }
 inline FullInt64& operator<<=(FullInt64& a, int shift) { return a = a << shift; }
 inline FullInt64& operator>>=(FullInt64& a, int shift) { return a = a >> shift; }
-inline FullInt64& operator++(FullInt64& a) { return a = a + FullInt64(1); }
-inline FullInt64& operator--(FullInt64& a) { return a = a - FullInt64(1); }
+inline FullInt64& operator++(FullInt64& a) { return a += FullInt64(1); }
+inline FullInt64& operator--(FullInt64& a) { return a -= FullInt64(1); }
 inline FullInt64 operator++(FullInt64& a, int) { FullInt64 old(a); ++a; return old; }
 inline FullInt64 operator--(FullInt64& a, int) { FullInt64 old(a); --a; return old; }
 

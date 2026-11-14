@@ -13,7 +13,44 @@ namespace FullInt.Core
         public const ulong maxDecCapasity = 10_000_000_000_000_000_000;
         public const ulong maxDecValue = maxDecCapasity - 1;
 
-        public ulong[] value { get; set; }
+        private ulong[] _value = null!;
+        public ulong[] value
+        {
+            get => _value;
+            set { _value = value; _owned = false; }   // an outside array: never written in place
+        }
+
+        // true while _value was made by the in-place API (Add(result, ...) etc.) for this object
+        // and has not been handed out since: only then the API writes into it. Arrays are shared
+        // between objects elsewhere (copy constructor, operators), so this is the guard.
+        private bool _owned;
+
+        // the word array to write a result of at least minLength words into: the own one when it
+        // is long enough, otherwise a new one (owned from now on)
+        internal ulong[] WritableBuffer(int minLength, bool mustBeNew)
+        {
+            if (_owned && !mustBeNew && _value.Length >= minLength) return _value;
+            var fresh = new ulong[minLength];
+            _value = fresh;
+            _owned = true;
+            return fresh;
+        }
+
+        // after a binary-mode result was written into WritableBuffer
+        internal void SetResult(bool negative)
+        {
+            _sing = negative;
+            IsDec = false;
+        }
+
+        // result = other, sharing other's array (the in-place API's fallback paths)
+        internal void Assign(FullInt64 other)
+        {
+            value = other.value;
+            _sing = other.Sing;
+            IsDec = other.IsDec;
+            other._owned = false;
+        }
 
         // Zero is never negative: the sign is normalized on read, so "-0" cannot leak
         // out of any operation (or be constructed by hand).
@@ -27,25 +64,26 @@ namespace FullInt.Core
 		
         public FullInt64()
         {
-            value = new ulong[1] { 0 };
+            _value = new ulong[1] { 0 };
             Sing = false;
         }
 
         public FullInt64(bool s, ulong[] value, toBase Base = toBase.hex)
         {
-            this.value = value;
+            _value = value;   // the field: a new object owns nothing yet (no setter work)
             this.Sing = s;
             this.IsDec = Base == toBase.dec;
         }
         public FullInt64(FullInt64 value) : this(value.Sing, value.value)
         {
             this.IsDec = value.IsDec;
+            value._owned = false;   // the array is shared now
         }
 
         public FullInt64(ulong value, toBase Base = toBase.hex)
         {
             this.IsDec = Base == toBase.dec;
-            this.value = new ulong[] { (ulong)value };
+            _value = new ulong[] { (ulong)value };
         }
         public FullInt64(long value, toBase Base = toBase.hex)
         {
@@ -56,7 +94,7 @@ namespace FullInt.Core
                 this.Sing = true;
                 value = value * -1;
             }
-            this.value = new ulong[] { (ulong)value };
+            _value = new ulong[] { (ulong)value };
         }
         public FullInt64(byte value, toBase Base = toBase.hex) : this((long)value, Base)
         {
@@ -78,7 +116,7 @@ namespace FullInt.Core
             {
                 limbs[words - 1 - i / 8] |= (ulong)magnitude[i] << ((i % 8) * 8);
             }
-            this.value = limbs;
+            _value = limbs;
             this.Sing = negative;
         }
 
@@ -256,8 +294,21 @@ namespace FullInt.Core
         }
         public static explicit operator ulong[](FullInt64 value)
         {
+            value._owned = false;   // handed out
             return value.value;
         }
+
+        // ---- GMP style: into an existing result ----
+        // result = a op b. The result object's word array is reused when this API made it and it
+        // is long enough (no allocation in a loop); it may then carry leading zero words, which
+        // every operation accepts. result may be a or b. A word array taken from result.value
+        // is overwritten by the next such call on result: copy it to keep it.
+
+        public static void Add(FullInt64 result, FullInt64 a, FullInt64 b) => _engine.addInto(result, a, b, negate2: false);
+        public static void Subtract(FullInt64 result, FullInt64 a, FullInt64 b) => _engine.addInto(result, a, b, negate2: true);
+        public static void Multiply(FullInt64 result, FullInt64 a, FullInt64 b) => _engine.multInto(result, a, b);
+        public static void ShiftLeft(FullInt64 result, FullInt64 a, int shift) => _engine.shiftLeftInto(result, a, shift);
+        public static void ShiftRight(FullInt64 result, FullInt64 a, int shift) => _engine.shiftRightInto(result, a, shift);
         // explicit: use ToString()/ToString(base); an implicit conversion silently allocated a string
         public static explicit operator string(FullInt64 value)
         {

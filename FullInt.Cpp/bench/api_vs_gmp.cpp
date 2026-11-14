@@ -1,5 +1,5 @@
 // API against API: FullInt64 (C++) against GMP's mpz, the way each is normally used:
-//   FullInt64: r = a op b   (a new value, moved into r)
+//   FullInt64: r = a op b   (a new value, moved into r); addto / multo: Add(r, a, b) into r
 //   GMP:       mpz_op(r, a, b)  (into r's existing buffer)
 // The same operations, sizes and numbers as the .NET half (FullInt.Benchmarks "cross"):
 // the inputs come from the same splitmix64 sequence. With --net <csv> from that run, the
@@ -196,6 +196,9 @@ int main(int argc, char** argv)
 
         row("add", [&] { r = a + b; }, [&] { mpz_add(gr, ga, gb); });
         row("sub", [&] { r = a - b; }, [&] { mpz_sub(gr, ga, gb); });
+        FullInt64 ri;   // into an existing result: the same call shape as GMP's
+        row("addto", [&] { fullint::Add(ri, a, b); }, [&] { mpz_add(gr, ga, gb); });
+        row("multo", [&] { fullint::Multiply(ri, a, b); }, [&] { mpz_mul(gr, ga, gb); });
         row("mul", [&] { r = a * b; }, [&] { mpz_mul(gr, ga, gb); });
         row("div", [&] { r = c / b; }, [&] { mpz_tdiv_q(gr, gc, gb); });
         row("mod", [&] { r = c % b; }, [&] { mpz_tdiv_r(gr, gc, gb); });
