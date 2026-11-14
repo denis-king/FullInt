@@ -499,8 +499,11 @@ namespace FullInt.Core
                 else
                 {
                     //находим частичный результат
-                    byte b = 128;
-                    byte bMax = 255;
+                    // a byte holds one digit of base Base² (hex: 0..255, dec: 0..99). Searching
+                    // 0..255 in dec mode let b reach 100+, value2·b then overflowed divMult and the
+                    // truncated product passed the check (quotient off by ~125).
+                    byte bMax = (byte)((int)Base * (int)Base - 1);
+                    byte b = (byte)((bMax + 1) / 2);
                     byte bMin = 0;
                     
                     while (true)

@@ -247,7 +247,7 @@ namespace FullInt.Tests
             Stopwatch fullStopwatch = new Stopwatch();
 
             const int iterations = 10;
-            using (var rng = RandomNumberGenerator.Create())
+            using (var rng = TestRng.Create())
             {
                 for (int i = 0; i < iterations; i++)
                 {
@@ -289,7 +289,7 @@ namespace FullInt.Tests
             Stopwatch fullStopwatch = new Stopwatch();
             
             const int iterations = 10;
-            using (var rng = RandomNumberGenerator.Create())
+            using (var rng = TestRng.Create())
             {
                 for (int i = 0; i < iterations; i++)
                 {
@@ -324,6 +324,22 @@ namespace FullInt.Tests
             }
         }
 
+        /// <summary>
+        /// Pairs found by seed hunting (TestRng): in dec mode the quotient digit search went up to
+        /// 255 although a dec byte holds 0..99, and the quotient came out ~125 too large.
+        /// </summary>
+        [DataTestMethod]
+        [DataRow(4030553113403824132L, 807052835055555094L)]
+        [DataRow(-6275603860169603924L, -793916774202531311L)]
+        [DataRow(-5460619719781787971L, 803857440678275430L)]
+        public void DivMod_Dec_QuotientDigitStaysBelowBase(long a, long b)
+        {
+            var fa = new FullIntCore(a, toBase.dec);
+            var fb = new FullIntCore(b, toBase.dec);
+            Assert.AreEqual((FullIntCore)((BigInteger)a / b).ToString(), FullIntMath.div(fa, fb), $"div a={a}, b={b}");
+            Assert.AreEqual((FullIntCore)((BigInteger)a % b).ToString(), FullIntMath.mod(fa, fb), $"mod a={a}, b={b}");
+        }
+
         [TestMethod]
         public void Test_Div_with_random_Longs()
         {
@@ -331,7 +347,7 @@ namespace FullInt.Tests
             Stopwatch fullStopwatch = new Stopwatch();
             
             const int iterations = 10;
-            using (var rng = RandomNumberGenerator.Create())
+            using (var rng = TestRng.Create())
             {
                 for (int i = 0; i < iterations; i++)
                 {
@@ -374,7 +390,7 @@ namespace FullInt.Tests
             Stopwatch fullStopwatch = new Stopwatch();
 
             const int iterations = 10;
-            using (var rng = RandomNumberGenerator.Create())
+            using (var rng = TestRng.Create())
             {
                 for (int i = 0; i < iterations; i++)
                 {

@@ -121,7 +121,7 @@ namespace FullInt.Tests
             Stopwatch fullStopwatch = new Stopwatch();
 
             const int iterations = 10;
-            using (var rng = RandomNumberGenerator.Create())
+            using (var rng = TestRng.Create())
             {
                 for (int i = 0; i < iterations; i++)
                 {
@@ -229,7 +229,7 @@ namespace FullInt.Tests
             Stopwatch fullStopwatch = new Stopwatch();
 
             const int iterations = 100;
-            using (var rng = RandomNumberGenerator.Create())
+            using (var rng = TestRng.Create())
             {
                 for (int i = 0; i < iterations; i++)
                 {
@@ -345,7 +345,7 @@ namespace FullInt.Tests
             var bigingB = new BigInteger[iterations];
             var bigingC = new BigInteger[iterations];
 
-            using (var rng = RandomNumberGenerator.Create())
+            using (var rng = TestRng.Create())
             {
                 for (int i = 0; i < iterations; i++)
                 {
@@ -494,7 +494,7 @@ namespace FullInt.Tests
             Stopwatch fullStopwatch = new Stopwatch();
 
             const int iterations = 10;
-            using (var rng = RandomNumberGenerator.Create())
+            using (var rng = TestRng.Create())
             {
                 for (int i = 0; i < iterations; i++)
                 {
