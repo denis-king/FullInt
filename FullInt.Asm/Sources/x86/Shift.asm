@@ -19,6 +19,10 @@
 ;    s <  32:  outHi = shld(prevHi, prevLo)   outLo = shld(prevLo, curHi)
 ;    s >= 32:  outHi = shld(prevLo, curHi)    outLo = shld(curHi, curLo)
 ;
+;  The main loops (.fastLow / .fastHigh) compute the same with shl/shr/or, as x64 does:
+;  after neg ecx, cl acts as 32 - (s mod 32). That needs s mod 32 > 0, so s = 0 and
+;  s = 32 keep the shld loops (.shiftLow / .shiftHigh).
+;
 ;  Register map: esi A (walks up), edi R (walks up), ecx shift (cl), ebx prevHi,
 ;  ebp prevLo, edx curHi, eax curLo; the limb counter and ws are on the stack.
 ; =============================================================================
@@ -61,6 +65,59 @@ Fullint64ShlWIN:
 .shift:
 	xor ebx, ebx                  ; prev = 0 at the top
 	xor ebp, ebp
+	test ecx, 31
+	jz .shiftWhole                ; s = 0 or 32: the shld loops below
+	cmp ecx, 32
+	jae .fastHigh
+
+	; as in x64: shl/shr/or instead of shld r, r, cl (several uops, slow on recent cores).
+	; The shift unit takes a 32-bit count mod 32, so after neg ecx cl acts as 32 - (s mod 32);
+	; s mod 32 > 0 here.
+.fastLow:                         ; s < 32
+	mov edx, [esi + 4]            ; curHi
+	shl ebx, cl                   ; prevHi << s
+	mov eax, ebp
+	shl eax, cl                   ; prevLo << s
+	neg ecx                       ; cl = 32 - s
+	shr ebp, cl                   ; prevLo >> (32 - s)
+	or ebx, ebp                   ; outHi
+	mov ebp, edx
+	shr ebp, cl                   ; curHi >> (32 - s)
+	or eax, ebp                   ; outLo
+	neg ecx                       ; cl = s
+	mov [edi + 4], ebx
+	mov [edi], eax
+	mov ebx, edx                  ; prev = cur
+	mov ebp, [esi]
+	add esi, 8
+	add edi, 8
+	dec dword [esp]
+	jnz .fastLow
+	jmp .lowestLow
+
+.fastHigh:                        ; s >= 32 (cl acts as t = s - 32)
+	mov eax, [esi + 4]            ; curHi
+	mov edx, [esi]                ; curLo
+	shl ebp, cl                   ; prevLo << t
+	mov ebx, eax
+	shl ebx, cl                   ; curHi << t
+	neg ecx                       ; cl = 32 - t
+	shr eax, cl                   ; curHi >> (32 - t)
+	or ebp, eax                   ; outHi
+	mov eax, edx
+	shr eax, cl                   ; curLo >> (32 - t)
+	or ebx, eax                   ; outLo
+	neg ecx                       ; cl = t
+	mov [edi + 4], ebp
+	mov [edi], ebx
+	mov ebp, edx                  ; prevLo = curLo
+	add esi, 8
+	add edi, 8
+	dec dword [esp]
+	jnz .fastHigh
+	jmp .lowestHigh
+
+.shiftWhole:
 	cmp ecx, 32
 	jae .shiftHigh
 
@@ -77,6 +134,7 @@ Fullint64ShlWIN:
 	add edi, 8
 	dec dword [esp]
 	jnz .shiftLow
+.lowestLow:
 	shld ebx, ebp, cl             ; lowest word: prev << s
 	mov [edi + 4], ebx
 	shl ebp, cl
@@ -96,6 +154,7 @@ Fullint64ShlWIN:
 	add edi, 8
 	dec dword [esp]
 	jnz .shiftHigh
+.lowestHigh:
 	shl ebp, cl                   ; lowest word: prev << s
 	mov [edi + 4], ebp
 	mov dword [edi], 0
@@ -161,13 +220,64 @@ Fullint64ShrWIN:
 .shift:
 	xor ebx, ebx                  ; prev = 0 at the top
 	xor ebp, ebp
+	test ecx, 31
+	jz .shiftWhole                ; s = 0 or 32: the shrd loops below
+	cmp ecx, 32
+	jae .fastHigh
+
+	; shl/shr/or as in Shl; both dwords of a limb are read before the limb is written,
+	; so R may still alias A.
+.fastLow:                         ; s < 32
+	mov eax, [esi]                ; curLo
+	mov edx, [esi + 4]            ; curHi
+	neg ecx                       ; cl = 32 - s
+	shl ebp, cl                   ; prevLo << (32 - s)
+	mov ebx, edx
+	shl ebx, cl                   ; curHi << (32 - s)
+	neg ecx                       ; cl = s
+	shr edx, cl                   ; curHi >> s
+	or edx, ebp                   ; outHi
+	mov ebp, eax                  ; prevLo = curLo
+	shr eax, cl                   ; curLo >> s
+	or eax, ebx                   ; outLo
+	mov [edi], eax
+	mov [edi + 4], edx
+	add esi, 8
+	add edi, 8
+	dec dword [esp]
+	jnz .fastLow
+	jmp .done
+
+.fastHigh:                        ; s >= 32 (cl acts as t = s - 32)
+	mov edx, [esi + 4]            ; curHi
+	neg ecx                       ; cl = 32 - t
+	shl ebx, cl                   ; prevHi << (32 - t)
+	mov eax, ebp
+	shl eax, cl                   ; prevLo << (32 - t)
+	neg ecx                       ; cl = t
+	shr ebp, cl                   ; prevLo >> t
+	or ebx, ebp                   ; outHi
+	mov ebp, edx
+	shr ebp, cl                   ; curHi >> t
+	or eax, ebp                   ; outLo
+	mov ebp, [esi]                ; prevLo = curLo, read before the limb is written
+	mov [edi], eax
+	mov [edi + 4], ebx
+	mov ebx, edx                  ; prevHi = curHi
+	add esi, 8
+	add edi, 8
+	dec dword [esp]
+	jnz .fastHigh
+	jmp .done
+
+.shiftWhole:
 	cmp ecx, 32
 	jae .shiftHigh
 
 .shiftLow:                        ; s < 32
 	mov eax, [esi]                ; curLo
 	mov edx, [esi + 4]            ; curHi
-	mov ebx, eax                  ; keep curLo for prev (prevHi is not used here)
+	mov ebx, eax                 ; keep curLo for prev (prevHi is not used here)
 	shrd eax, edx, cl             ; outLo
 	mov [edi], eax
 	shrd edx, ebp, cl             ; outHi
