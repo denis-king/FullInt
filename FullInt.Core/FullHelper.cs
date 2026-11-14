@@ -128,6 +128,67 @@ namespace FullInt.Core
             return x1 * y1 + (mid1 >> 32) + (mid2 >> 32);
         }
 
+        /// <summary>
+        /// (hi:lo) / d with hi &lt; d (the quotient fits 64 bits), the contract of x64 `div r64`.
+        /// Hacker's Delight divlu, as FullInt64CoreDefault.Div128: two 64/32 steps on the normalized
+        /// divisor. ~7 ns on x64 (.NET 8 and .NET Framework); UInt128 division measured 36 ns.
+        /// </summary>
+        public static ulong Div128(ulong hi, ulong lo, ulong d, out ulong remainder)
+        {
+            const ulong b = 1UL << 32;
+            int s = LeadingZeroCount(d);
+            ulong v = d << s, vn1 = v >> 32, vn0 = v & 0xFFFFFFFF;
+            ulong un32 = s == 0 ? hi : (hi << s) | (lo >> (64 - s));
+            ulong un10 = lo << s, un1 = un10 >> 32, un0 = un10 & 0xFFFFFFFF;
+
+            ulong q1 = un32 / vn1, rhat = un32 - q1 * vn1;
+            while (q1 >= b || q1 * vn0 > b * rhat + un1)
+            {
+                q1--;
+                rhat += vn1;
+                if (rhat >= b) break;
+            }
+
+            ulong un21 = un32 * b + un1 - q1 * v;
+            ulong q0 = un21 / vn1;
+            rhat = un21 - q0 * vn1;
+            while (q0 >= b || q0 * vn0 > b * rhat + un0)
+            {
+                q0--;
+                rhat += vn1;
+                if (rhat >= b) break;
+            }
+
+            remainder = (un21 * b + un0 - q0 * v) >> s;
+            return q1 * b + q0;
+        }
+
+        public static int LeadingZeroCount(ulong x)
+        {
+#if NET5_0_OR_GREATER
+            return System.Numerics.BitOperations.LeadingZeroCount(x);
+#else
+            if (x == 0) return 64;
+            int n = 0;
+            if (x <= 0x0000_0000_FFFF_FFFFUL) { n += 32; x <<= 32; }
+            if (x <= 0x0000_FFFF_FFFF_FFFFUL) { n += 16; x <<= 16; }
+            if (x <= 0x00FF_FFFF_FFFF_FFFFUL) { n += 8; x <<= 8; }
+            if (x <= 0x0FFF_FFFF_FFFF_FFFFUL) { n += 4; x <<= 4; }
+            if (x <= 0x3FFF_FFFF_FFFF_FFFFUL) { n += 2; x <<= 2; }
+            if (x <= 0x7FFF_FFFF_FFFF_FFFFUL) { n += 1; }
+            return n;
+#endif
+        }
+
+        public static bool IsZeroSpan(Span<ulong> value)
+        {
+            for (int i = 0; i < value.Length; i++)
+            {
+                if (value[i] != 0) return false;
+            }
+            return true;
+        }
+
         public static Span<ulong> DeleteZeros(Span<ulong> value)
         {
             //пропуск старших нулей операнда

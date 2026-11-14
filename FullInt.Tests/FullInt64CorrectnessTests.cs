@@ -266,6 +266,48 @@ namespace FullInt.Tests
         }
 
         /// <summary>
+        /// Two words by one word in C# (the high word by 64/64, then FullHelper.Div128): boundary
+        /// divisors, high word below and above the divisor, every sign, "/" and "%", against
+        /// BigInteger. Also FullHelper.Div128 itself on random and boundary words.
+        /// </summary>
+        [TestMethod]
+        public void TwoWordsByOneWord_MatchesBigInteger()
+        {
+            ulong[] special = { 1, 2, 3, 10, (1UL << 32) - 1, 1UL << 32, (1UL << 32) + 1, (1UL << 63) - 1, 1UL << 63, ulong.MaxValue - 1, ulong.MaxValue };
+            var rnd = new Random(1618);
+            var divisors = new List<ulong>(special);
+            for (int i = 0; i < 30; i++) divisors.Add(((ulong)rnd.NextInt64() >> rnd.Next(64)) | 1);
+            var highs = new List<ulong>(special);
+            for (int i = 0; i < 20; i++) highs.Add((ulong)rnd.NextInt64() ^ ((ulong)rnd.Next(2) << 63));
+
+            foreach (var d in divisors)
+            foreach (var hi in highs)
+            {
+                ulong lo = (ulong)rnd.NextInt64() ^ ((ulong)rnd.Next(2) << 63);
+                BigInteger A = ((BigInteger)hi << 64) + lo, D = d;
+
+                ulong h = hi % d;   // Div128 needs hi < d
+                ulong q = FullHelper.Div128(h, lo, d, out ulong r);
+                BigInteger Ah = ((BigInteger)h << 64) + lo;
+                Assert.AreEqual(Ah / D, (BigInteger)q, $"Div128 q h={h} lo={lo} d={d}");
+                Assert.AreEqual(Ah % D, (BigInteger)r, $"Div128 r h={h} lo={lo} d={d}");
+
+                foreach (bool an in new[] { false, true })
+                foreach (bool dn in new[] { false, true })
+                {
+                    var fa = new FullInt64(an, new[] { hi, lo });
+                    var fd = new FullInt64(dn, new[] { d });
+                    BigInteger SA = an ? -A : A, SD = dn ? -D : D;
+                    string ctx = $"a={SA} d={SD}";
+                    Assert.AreEqual(SA / SD, BigInteger.Parse((fa / fd).ToString(10)), "div " + ctx);
+                    Assert.AreEqual(SA % SD, BigInteger.Parse((fa % fd).ToString(10)), "mod " + ctx);
+                    var quo = fa / fd;
+                    Assert.IsTrue(quo.value.Length == 1 || quo.value[0] != 0, "div leading zero " + ctx);
+                }
+            }
+        }
+
+        /// <summary>
         /// The C# fast paths of compare (sign, length, top word; the core only for equal top words
         /// or leading zero words), of one-word shifts and of one-word ToString: every sign, shifts
         /// across 0..130 bits, operands with and without leading zero words, against BigInteger.

@@ -389,6 +389,18 @@ namespace FullInt.Core
             return result;
         }
 
+        // Two words by one word in C#: the high word by 64/64, then (r:low) / d by Div128, the way
+        // Div2long walks the words. No buffers, no native call. Separate (not inlined) so that
+        // divRem's general path is compiled as before.
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static FullInt64? divTwoByOne(ulong hi, ulong lo, ulong d, bool negA, bool negB, bool wantQuotient, bool wantRemainder, out FullInt64? remainder)
+        {
+            ulong qh = hi / d;
+            ulong ql = FullHelper.Div128(hi - qh * d, lo, d, out ulong r);
+            remainder = wantRemainder ? new FullInt64(negA, new ulong[] { r }) : null;   // a zero remainder is normalized on read
+            return wantQuotient ? new FullInt64(negA != negB, qh == 0 ? new ulong[] { ql } : new ulong[] { qh, ql }) : null;
+        }
+
         public void div_internal(Span<ulong> value1, ulong value2, Span<ulong> result, out ulong remainder)
         {
             _core.Div(value1, value2, result, out remainder);
@@ -428,6 +440,13 @@ namespace FullInt.Core
             {
                 remainder = wantRemainder ? new FullInt64(value1) : null;
                 return wantQuotient ? new FullInt64(false, new ulong[] { 0UL }, Base) : null;
+            }
+
+            // in a 32-bit process 64-bit division is a helper call: there "%" (no quotient to copy
+            // out) is faster through the asm kernel (measured 124 vs 140 ns), "/" still gains (172 -> 139)
+            if (divisor.Length == 1 && dividend.Length == 2 && Base == toBase.hex && (wantQuotient || IntPtr.Size == 8))
+            {
+                return divTwoByOne(dividend[0], dividend[1], divisor[0], value1.Sing, value2.Sing, wantQuotient, wantRemainder, out remainder);
             }
 
             if (divisor.Length == 1)
@@ -482,7 +501,7 @@ namespace FullInt.Core
             var sign = value1.Sing != value2.Sing;
 
             //propably ussless if value1 >= value2. remove when uncommented the optimalization above
-            if (CompareAbsInternal(resultBuf, stackalloc ulong[] { 0 }) == 0)
+            if (FullHelper.IsZeroSpan(resultBuf))   // in C#: this was a core (native) call comparing with a zero word
             {
                 sign = false;
             }
