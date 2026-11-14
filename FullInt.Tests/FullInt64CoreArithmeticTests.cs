@@ -137,9 +137,10 @@ namespace FullInt.Tests
         }
 
         /// <summary>
-        /// Karatsuba over the core's basecase, against BigInteger. Small thresholds make the
-        /// recursion go deep on small numbers. Covers unbalanced lengths (chunked path), all-ones
-        /// words (long carries), equal halves (|a1 - a0| = 0) and zero words.
+        /// Karatsuba and Toom-3 over the core's basecase, against BigInteger. Small thresholds make
+        /// the recursion go deep (and mix the three methods) on small numbers. Covers unbalanced
+        /// lengths (chunked path), all-ones words (long carries), equal halves (|a1 - a0| = 0,
+        /// p(-1) = 0) and zero words.
         /// </summary>
         [DataTestMethod]
         [DynamicData(nameof(Cores), DynamicDataSourceType.Method)]
@@ -148,6 +149,7 @@ namespace FullInt.Tests
             var core = GetCore(coreName);
             var rnd = new Random(8181);
             int[] thresholds = { 2, 3, 4, 5, 8, 16, 32 };
+            int[] toom3Thresholds = { 3, 4, 6, 9, 16, 40, int.MaxValue };
 
             ulong[] Shaped(int length)
             {
@@ -168,9 +170,10 @@ namespace FullInt.Tests
                 }
             }
 
-            for (int it = 0; it < 1_500; it++)
+            for (int it = 0; it < 3_000; it++)
             {
                 int threshold = thresholds[rnd.Next(thresholds.Length)];
+                int toom3 = toom3Thresholds[rnd.Next(toom3Thresholds.Length)];
                 int la = rnd.Next(1, 200);
                 int lb = rnd.Next(4) == 0 ? rnd.Next(1, 20) : rnd.Next(1, 200);   // often very unbalanced
                 var a = Shaped(la);
@@ -178,19 +181,26 @@ namespace FullInt.Tests
                 var r = new ulong[la + lb];
                 Array.Fill(r, 0xDEAD_BEEF_DEAD_BEEFUL);   // must be fully overwritten
 
-                Karatsuba.Multiply(core, a, b, r, threshold);
-                Assert.AreEqual(ToBig(a) * ToBig(b), ToBig(r), $"[{coreName}] {la}x{lb} threshold={threshold} (iteration {it})");
+                Karatsuba.Multiply(core, a, b, r, threshold, toom3);
+                Assert.AreEqual(ToBig(a) * ToBig(b), ToBig(r), $"[{coreName}] {la}x{lb} threshold={threshold} toom3={toom3} (iteration {it})");
             }
 
-            // larger sizes, a few, at the default threshold and at a small one
-            for (int it = 0; it < 12; it++)
+            // larger sizes, a few, at the default thresholds and at small ones
+            for (int it = 0; it < 16; it++)
             {
                 int la = rnd.Next(300, 1500), lb = rnd.Next(300, 1500);
-                var a = Next(rnd, la);
-                var b = Next(rnd, lb);
+                var a = Shaped(la);
+                var b = Shaped(lb);
                 var r = new ulong[la + lb];
-                Karatsuba.Multiply(core, a, b, r, it % 2 == 0 ? Karatsuba.Threshold : 4);
-                Assert.AreEqual(ToBig(a) * ToBig(b), ToBig(r), $"[{coreName}] {la}x{lb} large");
+                (int t2, int t3) = (it % 4) switch
+                {
+                    0 => (Karatsuba.Threshold, Karatsuba.Toom3Threshold),
+                    1 => (4, int.MaxValue),
+                    2 => (4, 12),
+                    _ => (Karatsuba.Threshold, 100),
+                };
+                Karatsuba.Multiply(core, a, b, r, t2, t3);
+                Assert.AreEqual(ToBig(a) * ToBig(b), ToBig(r), $"[{coreName}] {la}x{lb} large, threshold={t2} toom3={t3}");
             }
         }
 

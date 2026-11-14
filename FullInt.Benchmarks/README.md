@@ -38,10 +38,12 @@ Code placement matters on Zen 3: moving a loop across a 32/64-byte boundary has 
 `Add` by 10–30% with no instruction changed. So a change in an unrelated function can move
 another one — check the whole table, not just the op you edited.
 
-Karatsuba threshold tuning (basecase vs Karatsuba with several thresholds, N = 48…4096):
+Multiplication threshold tuning: basecase vs Karatsuba with several thresholds (N = 24…4096), and
+Karatsuba alone vs Karatsuba + Toom-3 with several Toom-3 thresholds (N = 128…8192):
 
 ```
 dotnet run -c Release --project FullInt.Benchmarks -- kara [rounds]
+dotnet run -c Release --project FullInt.Benchmarks -- kara toom [rounds]
 ```
 
 Direct use, with any two DLLs:

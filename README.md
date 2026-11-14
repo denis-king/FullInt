@@ -8,7 +8,7 @@ Arbitrary-precision integer arithmetic for .NET, built on 64-bit limbs with hand
 
 `System.Numerics.BigInteger` stores numbers as 32-bit words. FullInt uses **64-bit limbs** and runs the hot loops in native assembly (`mul`, `adc`, `div` on x86-64), so each multiply step handles four times as many bits per word product. The goals:
 
-- **Speed on large numbers.** Native kernels plus sub-quadratic algorithms (Karatsuba is in; Toom-Cook is planned).
+- **Speed on large numbers.** Native kernels plus sub-quadratic algorithms (Karatsuba and Toom-3 are in; FFT/NTT is planned).
 - **Allocation-free low-level API.** Operations on `Span<ulong>` that write into caller-provided buffers.
 - **A foundation for big decimals and floats.** `BigDecimal` and `BigFloat` are planned on top of the same integer core.
 
@@ -38,7 +38,7 @@ The current public API is listed in [docs/OPERATIONS.md](docs/OPERATIONS.md).
 | Operation | Windows x64 (asm) | Managed fallback |
 |---|---|---|
 | `+`, `-`, unary `-` | ✅ | ✅ |
-| `*` (schoolbook, Karatsuba from 64 limbs) | ✅ | ✅ |
+| `*` (schoolbook, Karatsuba from 64 limbs, Toom-3 from 256) | ✅ | ✅ |
 | `/`, `%` | ✅ | ✅ |
 | `&`, `\|`, `Xor`, `~`, `<<`, `>>` (BigInteger semantics) | ✅ | ✅ |
 | Compare, `==`, `<`, … | ✅ | ✅ |
@@ -113,7 +113,7 @@ docs/                documentation
 1. **Stabilize:** fix the division and ABI bugs, make the build portable, make tests deterministic.
 2. **Core 2.0:** binary-only little-endian limbs, small native primitive layer (GMP `mpn`-style), complete managed fallback, immutable public type with generic math.
 3. **NuGet preview:** `win-x64`, `linux-x64`, `osx-x64` native assets plus the managed fallback.
-4. **ARM64 and speed:** AArch64 kernels, Toom-3 multiplication, divide-and-conquer base conversion.
+4. **ARM64 and speed:** AArch64 kernels, FFT/NTT multiplication, divide-and-conquer base conversion.
 5. **Extensions:** GCD, ModPow, roots, primality tests, `BigDecimal`, `BigFloat`.
 
 ## License

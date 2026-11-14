@@ -14,8 +14,12 @@ namespace FullInt.Core
     ///   a·b = z2·B^2m + (z0 + z2 ∓ zm)·B^m + z0    (∓: minus when (a1-a0) and (b1-b0) have the same sign)
     ///
     /// The subtractive form keeps every intermediate at m or 2m(+1) words, without carry words.
+    ///
+    /// This class is the multiplication dispatcher: below <see cref="Threshold"/> the basecase,
+    /// from <see cref="Toom3Threshold"/> a Toom-3 level (Toom3.cs), in between a Karatsuba level;
+    /// every subproduct chooses again by its own size.
     /// </summary>
-    public static class Karatsuba
+    public static partial class Karatsuba
     {
         /// <summary>
         /// Below this many words in the shorter operand, the basecase (column) multiply is used.
@@ -27,22 +31,27 @@ namespace FullInt.Core
         public static int Threshold { get; set; } = 64;
 
         /// <summary>Scratch words needed by <see cref="Multiply(IFullIntCore, Span{ulong}, Span{ulong}, Span{ulong}, int)"/>.</summary>
-        public static int ScratchLength(int lenA, int lenB) => 8 * Math.Max(lenA, lenB) + 256;
+        public static int ScratchLength(int lenA, int lenB) => 16 * Math.Max(lenA, lenB) + 1024;
 
         /// <summary>r = a · b with r.Length == a.Length + b.Length.</summary>
         public static void Multiply(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> r) =>
             Multiply(core, a, b, r, Threshold);
 
-        /// <summary>Same, with an explicit threshold (tests and tuning; at least 2).</summary>
-        public static void Multiply(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> r, int threshold)
+        /// <summary>Same, with an explicit Karatsuba threshold (tests and tuning; at least 2).</summary>
+        public static void Multiply(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> r, int threshold) =>
+            Multiply(core, a, b, r, threshold, Toom3Threshold);
+
+        /// <summary>Same, with explicit Karatsuba (at least 2) and Toom-3 (at least 3) thresholds.</summary>
+        public static void Multiply(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> r, int threshold, int toom3Threshold)
         {
             if (threshold < 2) throw new ArgumentOutOfRangeException(nameof(threshold));
+            if (toom3Threshold < 3) throw new ArgumentOutOfRangeException(nameof(toom3Threshold));
             if (r.Length != a.Length + b.Length) throw new ArgumentException("r.Length must be a.Length + b.Length", nameof(r));
 
             ulong[] scratch = ArrayPool<ulong>.Shared.Rent(ScratchLength(a.Length, b.Length));
             try
             {
-                Mul(core, a, b, r, scratch, threshold);
+                Mul(core, a, b, r, scratch, threshold, toom3Threshold);
             }
             finally
             {
@@ -52,7 +61,7 @@ namespace FullInt.Core
 
         // r = a · b, r.Length == a.Length + b.Length. The scratch is dirty on entry: everything
         // taken from it is fully written before it is read.
-        private static void Mul(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> r, Span<ulong> scratch, int threshold)
+        private static void Mul(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> r, Span<ulong> scratch, int threshold, int toom3Threshold)
         {
             if (a.Length < b.Length)
             {
@@ -69,7 +78,13 @@ namespace FullInt.Core
             int m = (la + 1) / 2;
             if (lb <= m)
             {
-                MulUnbalanced(core, a, b, r, scratch, threshold);
+                MulUnbalanced(core, a, b, r, scratch, threshold, toom3Threshold);
+                return;
+            }
+
+            if (lb >= toom3Threshold && lb > 2 * ((la + 2) / 3))   // b reaches its top third
+            {
+                Toom3(core, a, b, r, scratch, threshold, toom3Threshold);
                 return;
             }
 
@@ -87,8 +102,8 @@ namespace FullInt.Core
             Span<ulong> mid = scratch.Slice(4 * m, 2 * m + 1);
             Span<ulong> rest = scratch.Slice(6 * m + 1);  // for the recursive calls, one at a time
 
-            Mul(core, a0, b0, z0, rest, threshold);
-            Mul(core, a1, b1, z2, rest, threshold);
+            Mul(core, a0, b0, z0, rest, threshold, toom3Threshold);
+            Mul(core, a1, b1, z2, rest, threshold, toom3Threshold);
 
             int sa = core.Sub(a1, a0, da);   // da = |a1 - a0|, sa = sign of (a1 - a0)
             int sb = core.Sub(b1, b0, db);
@@ -97,7 +112,7 @@ namespace FullInt.Core
             core.Add(z0, z2, mid);
             if (sa != 0 && sb != 0)
             {
-                Mul(core, da, db, zm, rest, threshold);
+                Mul(core, da, db, zm, rest, threshold, toom3Threshold);
                 if (sa == sb)
                     core.Sub(mid, zm, mid);
                 else
@@ -112,7 +127,7 @@ namespace FullInt.Core
 
         // a much longer than b (b.Length <= half of a): a is cut into chunks of b.Length words
         // from the low end, each chunk·b (balanced, so Karatsuba again) is added in at its place.
-        private static void MulUnbalanced(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> r, Span<ulong> scratch, int threshold)
+        private static void MulUnbalanced(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> r, Span<ulong> scratch, int threshold, int toom3Threshold)
         {
             int la = a.Length, lb = b.Length, len = la + lb;
             r.Clear();
@@ -125,7 +140,7 @@ namespace FullInt.Core
                 int c = Math.Min(lb, la - done);
                 Span<ulong> chunk = a.Slice(la - done - c, c);
                 Span<ulong> t = tmp.Slice(0, c + lb);
-                Mul(core, chunk, b, t, rest, threshold);
+                Mul(core, chunk, b, t, rest, threshold, toom3Threshold);
 
                 // only the c + lb words at this offset change: everything below fits there, no carry out
                 Span<ulong> target = r.Slice(len - done - c - lb, c + lb);

@@ -80,6 +80,23 @@ alternating, a C# → asm call costs about **12–16 ns** (one-word `Add`), of w
 is 3–7 ns. The "40–50 ns" above came from a run on a loaded machine. So the high first threshold
 was mostly due to the old add/sub loops, not to the call itself.
 
+## Toom-3 (same day): threshold 256
+
+Toom-3 levels (`FullInt.Core/Toom3.cs`) on top of Karatsuba at T=64. `kara toom 11`, ratio = with
+Toom-3 from T words / Karatsuba alone:
+
+| N | Karatsuba alone | T=128 | T=192 | **T=256** | T=384 | T=512 |
+|---|---|---|---|---|---|---|
+| 512 | 80.2 µs | 0.98 | 0.90 | **0.91** | 0.90 | 0.93 |
+| 768 | 164 µs | 0.95 | 0.92 | **0.92** | 0.97 | 0.97 |
+| 1024 | 279 µs | 0.87 | 0.87 | **0.87** | 0.90 | 0.85 |
+| 2048 | 794 µs | 0.81 | 0.88 | **0.83** | 0.83 | 0.85 |
+| 4096 | 2.40 ms | 0.84 | 0.77 | **0.75** | 0.75 | 0.77 |
+| 8192 | 7.34 ms | 0.72 | 0.69 | **0.70** | 0.69 | 0.72 |
+
+Below the threshold the variants run the same code as the base; their spread there (±5–9%)
+is the noise of this run.
+
 ## Raw report
 
 ```

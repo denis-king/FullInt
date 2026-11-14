@@ -32,7 +32,7 @@ Notation: `n`, `m` are operand sizes in 64-bit limbs; `M(n)` is the cost of mult
 | 1 | `mul` / `Math.BigMul` | O(1) | Stay in managed code, no P/Invoke |
 | 2 – ~32 | **Schoolbook, operand scanning**: `mul_1` for the first row, then `addmul_1` for each remaining row | O(n·m) | Inner loop has no branches. On x64, the BMI2+ADX variant uses `mulx` + `adcx`/`adox` (two independent carry chains), about 1.5–2× faster. Unroll 4×. |
 | ~32 – ~200 | **Karatsuba** ✅ | O(n^1.585) | Three half-size products: `z0 = a0·b0`, `z2 = a1·b1`, `z1 = (a0+a1)(b0+b1) − z0 − z2`. Recurse until the threshold. Uses a scratch buffer of about 2n limbs from `ArrayPool`. |
-| ~200 – ~3000 | **Toom-Cook 3** (Toom-3) | O(n^1.465) | Five products at evaluation points {0, 1, −1, 2, ∞}, Bodrato's interpolation sequence. |
+| ~200 – ~3000 | **Toom-Cook 3** (Toom-3) ✅ | O(n^1.465) | Five products at evaluation points {0, 1, −1, 2, ∞}, Bodrato's interpolation sequence. |
 | > ~3000 (≈ 200k bits) | **NTT** (three-prime number-theoretic transform + CRT) or **Schönhage–Strassen** | O(n log n log log n) | Needs 64-bit modular multiplication with primes p < 2⁶³, Montgomery or Shoup reduction. |
 | unbalanced (m ≪ n) | Split the longer operand into m-sized chunks and add the shifted partial products | | Avoids wasting Karatsuba on zero padding |
 | `a·a` | **Dedicated squaring** | ~0.6–0.7 × M(n) | Compute only the off-diagonal products, double them, add the diagonal |
@@ -41,6 +41,7 @@ Notation: `n`, `m` are operand sizes in 64-bit limbs; `M(n)` is the cost of mult
 - 1 × 1 limb: managed `FullHelper.BigMul`, no P/Invoke.
 - Basecase: the author's column (product-scanning) asm `Mult`, with per-column bounds and a 2× unrolled inner loop.
 - Karatsuba from **64 limbs** in the shorter operand, in C# over the asm basecase, add and sub. It uses the subtractive form `z1 = z0 + z2 − (a1−a0)(b1−b0)`, so every intermediate stays at m or 2m+1 limbs. Scratch is about 8n limbs from `ArrayPool`. Unbalanced operands are cut into chunks, as in the table.
+- Toom-3 from **256 limbs** (when the shorter operand reaches the top third of the longer one), in C# like Karatsuba: points 0, 1, −1, −2, ∞, Bodrato's interpolation with sign-magnitude temporaries; the exact divisions by 3 and 2 are the asm divide-by-word and shift. 10–30% faster than Karatsuba alone from 512 limbs (`kara toom`).
 - The threshold was 80 with the old add/sub loops; after the add/sub asm rewrite (2–3× faster) it is 64. A C# → asm call costs about 12–16 ns; on .NET 8 the short calls skip the GC transition (`SuppressGCTransition`), which saves 3–7 ns of it. A further step would be the per-level add/sub fused into one asm kernel. Tuning: `dotnet run -c Release --project FullInt.Benchmarks -- kara`. Numbers: [benchmarks/2026-11-14-karatsuba.md](benchmarks/2026-11-14-karatsuba.md).
 
 Above roughly 100k bits, the three top-level Karatsuba or Toom subproducts can run in parallel with `Parallel.Invoke`, at the cost of a separate scratch buffer per branch.
