@@ -2,7 +2,7 @@
 
 Karatsuba multiplication in C# (`FullInt.Core/Karatsuba.cs`) over the author's column asm `Mult`,
 add and sub. Subtractive form, scratch from `ArrayPool`, unbalanced operands in chunks.
-Threshold: **80 limbs** in the shorter operand.
+Threshold: **80 limbs** in the shorter operand at first; **64** after the add/sub rewrite (see the update below).
 
 | | |
 |---|---|
@@ -56,6 +56,29 @@ Allocated bytes match BigInteger at every size (the Karatsuba scratch comes from
 BigInteger's own Karatsuba no longer closes the gap at 1024 limbs. At 4096 the ratio grows
 again (0.31 → 0.40): both are O(n^1.585) there, and ours pays the call overhead per level.
 Toom-3 is the next step for that range.
+
+## Update: retuned after the add/sub asm rewrite → threshold 64 (same day)
+
+`Add`/`Sub` asm got 2.3–3.2× faster (`bc289d7`), and on .NET 8 the short core calls skip the
+GC transition. `kara 15` again (machine under background load, so single cells are noisy):
+
+| N | basecase | T=24 | T=32 | T=40 | T=48 | **T=64** | T=80 | T=96 |
+|---|---|---|---|---|---|---|---|---|
+| 96 | 7.5 µs | 0.91 | 0.92 | 0.88 | 0.93 | **0.88** | 0.82 | 0.83 |
+| 128 | 13.9 µs | 0.69 | 0.72 | 0.72 | 0.75 | **0.68** | 0.88 | 0.84 |
+| 256 | 50.3 µs | 0.53 | 0.57 | 0.55 | 0.52 | **0.52** | 0.60 | 0.68 |
+| 512 | 167 µs | 0.45 | 0.46 | 0.45 | 0.44 | **0.45** | 0.49 | 0.49 |
+| 1024 | 636 µs | 0.35 | 0.35 | 0.34 | 0.34 | **0.34** | 0.37 | 0.37 |
+| 2048 | 2.45 ms | 0.27 | 0.27 | 0.26 | 0.26 | **0.26** | 0.29 | 0.29 |
+| 4096 | 9.84 ms | 0.21 | 0.20 | 0.19 | 0.19 | **0.20** | 0.25 | 0.23 |
+
+40–64 are equal on large sizes. 64 keeps everything below it on the basecase. A careful
+in-process profile of one level at N=64 (leaves 32) gives 0.91 of the basecase.
+
+**Correction of the call cost given above.** Measured in one process with both variants
+alternating, a C# → asm call costs about **12–16 ns** (one-word `Add`), of which the GC transition
+is 3–7 ns. The "40–50 ns" above came from a run on a loaded machine. So the high first threshold
+was mostly due to the old add/sub loops, not to the call itself.
 
 ## Raw report
 

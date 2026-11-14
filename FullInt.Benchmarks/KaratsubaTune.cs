@@ -12,8 +12,8 @@ namespace FullInt.Benchmarks
     /// </summary>
     internal static class KaratsubaTune
     {
-        private static readonly int[] Sizes = { 48, 64, 96, 128, 160, 192, 256, 384, 512, 1024, 2048, 4096 };
-        private static readonly int[] Thresholds = { 32, 48, 64, 80, 96, 128, 160 };
+        private static readonly int[] Sizes = { 24, 32, 48, 64, 96, 128, 192, 256, 512, 1024, 2048, 4096 };
+        private static readonly int[] Thresholds = { 16, 24, 32, 40, 48, 64, 80, 96 };
 
         public static int Run(string[] args)
         {

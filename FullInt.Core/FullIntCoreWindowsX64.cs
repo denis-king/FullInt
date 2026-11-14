@@ -33,18 +33,68 @@ namespace FullInt.Core
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern void Fullint64FromDecStringWin(IntPtr value, IntPtr valueBuf, IntPtr resultBuf, int lenValue, ref int lenResult);
         
+#if NET5_0_OR_GREATER
+        // The same entry points without the GC transition: ~10 ns less per call, which is most
+        // of the cost of a small call. Only for calls that finish within a few microseconds:
+        // while one runs, the GC cannot suspend this thread. Larger calls take the normal path.
+        private const int FastWords = 2048;        // add / sub / compare / logic / shifts: ~1 us at the limit
+        private const long FastProducts = 4096;    // mult: lenA * lenB word products, ~3 us at the limit
+
+        [DllImport(dll, EntryPoint = "Fullint64AddWIN"), SuppressGCTransition]
+        private static extern ulong Fullint64AddWIN_Fast(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR);
+
+        [DllImport(dll, EntryPoint = "Fullint64SubWIN"), SuppressGCTransition]
+        private static extern int Fullint64SubWIN_Fast(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR);
+
+        [DllImport(dll, EntryPoint = "Fullint64MultWIN"), SuppressGCTransition]
+        private static extern ulong Fullint64MultWIN_Fast(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR);
+
+        [DllImport(dll, EntryPoint = "Fullint64CompareWIN"), SuppressGCTransition]
+        private static extern int Fullint64CompareWIN_Fast(IntPtr a, IntPtr b, int lenA, int lenB);
+
+        [DllImport(dll, EntryPoint = "Fullint64AndWIN"), SuppressGCTransition]
+        private static extern int Fullint64AndWIN_Fast(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs);
+
+        [DllImport(dll, EntryPoint = "Fullint64OrWIN"), SuppressGCTransition]
+        private static extern int Fullint64OrWIN_Fast(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs);
+
+        [DllImport(dll, EntryPoint = "Fullint64XorWIN"), SuppressGCTransition]
+        private static extern int Fullint64XorWIN_Fast(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs);
+
+        [DllImport(dll, EntryPoint = "Fullint64ShlWIN"), SuppressGCTransition]
+        private static extern void Fullint64ShlWIN_Fast(IntPtr a, IntPtr r, int lenA, int lenR, int shift);
+
+        [DllImport(dll, EntryPoint = "Fullint64ShrWIN"), SuppressGCTransition]
+        private static extern void Fullint64ShrWIN_Fast(IntPtr a, IntPtr r, int lenA, int lenR, int shift);
+
+        private static bool Short(int lenA, int lenB, int lenR) => lenA <= FastWords && lenB <= FastWords && lenR <= FastWords;
+#endif
+
         protected override ulong Add(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR)
         {
+#if NET5_0_OR_GREATER
+            if (Short(lenA, lenB, lenR)) return Fullint64AddWIN_Fast(a, b, r, lenA, lenB, lenR);
+#endif
             return Fullint64AddWIN(a, b, r, lenA, lenB, lenR);
         }
 		
 		protected override int Sub(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR)
         {
+#if NET5_0_OR_GREATER
+            if (Short(lenA, lenB, lenR)) return Fullint64SubWIN_Fast(a, b, r, lenA, lenB, lenR);
+#endif
             return Fullint64SubWIN(a, b, r, lenA, lenB, lenR);
         }
         
         protected override void Mult(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR)
         {
+#if NET5_0_OR_GREATER
+            if ((long)lenA * lenB <= FastProducts && lenR <= FastWords)
+            {
+                Fullint64MultWIN_Fast(a, b, r, lenA, lenB, lenR);
+                return;
+            }
+#endif
             Fullint64MultWIN(a, b, r, lenA, lenB, lenR);
         }
 
@@ -60,6 +110,9 @@ namespace FullInt.Core
 
         protected override int Compare(IntPtr a, IntPtr b, int lenA, int lenB)
 		{
+#if NET5_0_OR_GREATER
+			if (Short(lenA, lenB, 0)) return Fullint64CompareWIN_Fast(a, b, lenA, lenB);
+#endif
 			return Fullint64CompareWIN(a, b, lenA, lenB);
 		}
         
@@ -89,18 +142,43 @@ namespace FullInt.Core
         private static extern void Fullint64ShrWIN(IntPtr a, IntPtr r, int lenA, int lenR, int shift);
 
         protected override int And(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs)
-            => Fullint64AndWIN(a, b, r, lenA, lenB, lenR, signs);
+        {
+#if NET5_0_OR_GREATER
+            if (Short(lenA, lenB, lenR)) return Fullint64AndWIN_Fast(a, b, r, lenA, lenB, lenR, signs);
+#endif
+            return Fullint64AndWIN(a, b, r, lenA, lenB, lenR, signs);
+        }
 
         protected override int Or(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs)
-            => Fullint64OrWIN(a, b, r, lenA, lenB, lenR, signs);
+        {
+#if NET5_0_OR_GREATER
+            if (Short(lenA, lenB, lenR)) return Fullint64OrWIN_Fast(a, b, r, lenA, lenB, lenR, signs);
+#endif
+            return Fullint64OrWIN(a, b, r, lenA, lenB, lenR, signs);
+        }
 
         protected override int Xor(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs)
-            => Fullint64XorWIN(a, b, r, lenA, lenB, lenR, signs);
+        {
+#if NET5_0_OR_GREATER
+            if (Short(lenA, lenB, lenR)) return Fullint64XorWIN_Fast(a, b, r, lenA, lenB, lenR, signs);
+#endif
+            return Fullint64XorWIN(a, b, r, lenA, lenB, lenR, signs);
+        }
 
         protected override void ShiftLeft(IntPtr a, IntPtr r, int lenA, int lenR, int shift)
-            => Fullint64ShlWIN(a, r, lenA, lenR, shift);
+        {
+#if NET5_0_OR_GREATER
+            if (Short(lenA, 0, lenR)) { Fullint64ShlWIN_Fast(a, r, lenA, lenR, shift); return; }
+#endif
+            Fullint64ShlWIN(a, r, lenA, lenR, shift);
+        }
 
         protected override void ShiftRight(IntPtr a, IntPtr r, int lenA, int lenR, int shift)
-            => Fullint64ShrWIN(a, r, lenA, lenR, shift);
+        {
+#if NET5_0_OR_GREATER
+            if (Short(lenA, 0, lenR)) { Fullint64ShrWIN_Fast(a, r, lenA, lenR, shift); return; }
+#endif
+            Fullint64ShrWIN(a, r, lenA, lenR, shift);
+        }
     }
 }

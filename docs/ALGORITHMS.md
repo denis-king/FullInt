@@ -40,8 +40,8 @@ Notation: `n`, `m` are operand sizes in 64-bit limbs; `M(n)` is the cost of mult
 **Implemented now** (`FullInt.Core/Karatsuba.cs`):
 - 1 × 1 limb: managed `FullHelper.BigMul`, no P/Invoke.
 - Basecase: the author's column (product-scanning) asm `Mult`, with per-column bounds and a 2× unrolled inner loop.
-- Karatsuba from **80 limbs** in the shorter operand, in C# over the asm basecase, add and sub. It uses the subtractive form `z1 = z0 + z2 − (a1−a0)(b1−b0)`, so every intermediate stays at m or 2m+1 limbs. Scratch is about 8n limbs from `ArrayPool`. Unbalanced operands are cut into chunks, as in the table.
-- The threshold is high because each C# → asm call costs about 40–50 ns and one Karatsuba level makes five add/sub calls. To bring it down to about 30: a cheaper P/Invoke transition, or the per-level add/sub fused into one asm kernel. Tuning: `dotnet run -c Release --project FullInt.Benchmarks -- kara`. Numbers: [benchmarks/2026-11-14-karatsuba.md](benchmarks/2026-11-14-karatsuba.md).
+- Karatsuba from **64 limbs** in the shorter operand, in C# over the asm basecase, add and sub. It uses the subtractive form `z1 = z0 + z2 − (a1−a0)(b1−b0)`, so every intermediate stays at m or 2m+1 limbs. Scratch is about 8n limbs from `ArrayPool`. Unbalanced operands are cut into chunks, as in the table.
+- The threshold was 80 with the old add/sub loops; after the add/sub asm rewrite (2–3× faster) it is 64. A C# → asm call costs about 12–16 ns; on .NET 8 the short calls skip the GC transition (`SuppressGCTransition`), which saves 3–7 ns of it. A further step would be the per-level add/sub fused into one asm kernel. Tuning: `dotnet run -c Release --project FullInt.Benchmarks -- kara`. Numbers: [benchmarks/2026-11-14-karatsuba.md](benchmarks/2026-11-14-karatsuba.md).
 
 Above roughly 100k bits, the three top-level Karatsuba or Toom subproducts can run in parallel with `Parallel.Invoke`, at the cost of a separate scratch buffer per branch.
 

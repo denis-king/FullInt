@@ -19,11 +19,12 @@ namespace FullInt.Core
     {
         /// <summary>
         /// Below this many words in the shorter operand, the basecase (column) multiply is used.
-        /// Tuned with `FullInt.Benchmarks kara` on win-x64 (Zen 3): the optimum is a flat band at
-        /// 64..96 words. It is this high (GMP uses ~30) because each core call from C# costs
-        /// ~40-50 ns, and one Karatsuba level makes five add/sub calls besides the products.
+        /// Tuned with `FullInt.Benchmarks kara` on win-x64 (Zen 3), after the add/sub asm rewrite:
+        /// the large sizes are equally fast for 40..64, and 64 keeps everything below it on the
+        /// basecase. GMP uses ~30; ours is higher because the column asm is fast for its size
+        /// and each core call from C# still costs ~10-15 ns.
         /// </summary>
-        public static int Threshold { get; set; } = 80;
+        public static int Threshold { get; set; } = 64;
 
         /// <summary>Scratch words needed by <see cref="Multiply(IFullIntCore, Span{ulong}, Span{ulong}, Span{ulong}, int)"/>.</summary>
         public static int ScratchLength(int lenA, int lenB) => 8 * Math.Max(lenA, lenB) + 256;

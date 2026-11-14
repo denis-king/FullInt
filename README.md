@@ -38,7 +38,7 @@ The current public API is listed in [docs/OPERATIONS.md](docs/OPERATIONS.md).
 | Operation | Windows x64 (asm) | Managed fallback |
 |---|---|---|
 | `+`, `-`, unary `-` | ✅ | ✅ |
-| `*` (schoolbook, Karatsuba from 80 limbs) | ✅ | ✅ |
+| `*` (schoolbook, Karatsuba from 64 limbs) | ✅ | ✅ |
 | `/`, `%` | ✅ | ✅ |
 | `&`, `\|`, `Xor`, `~`, `<<`, `>>` (BigInteger semantics) | ✅ | ✅ |
 | Compare, `==`, `<`, … | ✅ | ✅ |
