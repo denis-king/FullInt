@@ -1,6 +1,7 @@
 // FullInt C++ against GMP (mpz) as the reference: every operation on random and edge values,
 // sizes from one word to Toom-3 range, all sign combinations; plus the C# semantics that GMP
 // does not define the same way (parse prefixes, hex format).
+#include <fullint/BurnikelZiegler.h>
 #include <fullint/FullInt64.h>
 #include <fullint/Karatsuba.h>
 #include <gmp.h>
@@ -234,6 +235,39 @@ void MultiplyThresholds()
     }
 }
 
+// Burnikel–Ziegler with small thresholds (deep recursion on small numbers), against GMP;
+// the shapes hit the Q̂ = β^k - 1 branch (b copied into the top of a, all ones) and divisors
+// with small top words (large normalization shifts)
+void DivideThresholds()
+{
+    for (int round = 0; round < 1500; round++)
+    {
+        int threshold = 2 + (int)(rng() % 32);
+        int lb = 1 + (int)(rng() % 120), la = lb + (int)(rng() % 160);
+        std::vector<uint64_t> a(la), b(lb);
+        for (auto& x : a) x = rng();
+        for (auto& x : b) x = rng();
+        int shape = (int)(rng() % 5);
+        if (shape == 0) { std::fill(a.begin(), a.end(), ~0ull); std::fill(b.begin(), b.end(), ~0ull); }
+        if (shape == 1) b[0] = 1 + rng() % 15;
+        if (shape == 2) std::copy(b.begin(), b.end(), a.begin());
+        if (a[0] == 0) a[0] = 1;
+        if (b[0] == 0) b[0] = 1;
+
+        std::vector<uint64_t> q(la - lb + 1, 0xDEADBEEFDEADBEEFull), r(lb + 2, 0xDEADBEEFDEADBEEFull);
+        fullint::BurnikelZiegler::DivRem(a, b, q, r, threshold);
+
+        Mpz ma, mb, eq, er, gq, gr;
+        mpz_import(ma.v, a.size(), 1, 8, 0, 0, a.data());
+        mpz_import(mb.v, b.size(), 1, 8, 0, 0, b.data());
+        mpz_tdiv_qr(eq.v, er.v, ma.v, mb.v);
+        mpz_import(gq.v, q.size(), 1, 8, 0, 0, q.data());
+        mpz_import(gr.v, r.size(), 1, 8, 0, 0, r.data());
+        CHECK(mpz_cmp(eq.v, gq.v) == 0 && mpz_cmp(er.v, gr.v) == 0,
+              "Burnikel–Ziegler threshold " + std::to_string(threshold) + " " + std::to_string(la) + "/" + std::to_string(lb));
+    }
+}
+
 }  // namespace
 
 int main()
@@ -242,6 +276,7 @@ int main()
 
     EdgeCases();
     MultiplyThresholds();
+    DivideThresholds();
 
     for (int sa : sizes)
         for (int sb : sizes)

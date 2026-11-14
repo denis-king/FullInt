@@ -56,6 +56,7 @@ add_library(FullInt::kernels ALIAS fullint_kernels)
 # ----------------------------------------------------------------------------
 add_library(fullint STATIC
     src/FullInt64Engine.cpp
+    src/BurnikelZiegler.cpp
     src/Karatsuba.cpp
     src/Toom3.cpp)
 target_link_libraries(fullint PUBLIC FullInt::kernels)

@@ -1,5 +1,6 @@
 // Port of FullInt.Core/FullInt64Engine.cs: the general (out-of-line) paths.
 #include <fullint/FullInt64.h>
+#include <fullint/BurnikelZiegler.h>
 #include <fullint/Karatsuba.h>
 
 #include <algorithm>
@@ -237,7 +238,11 @@ void FullInt64Engine::divRem(const FullInt64& value1, const FullInt64& value2, F
     std::memset(pr, 0, (lb + 2) * sizeof(uint64_t));
     std::memset(pq, 0, lq * sizeof(uint64_t));
 
-    FullIntCore::Div(dividend, divisor, Span(pq, lq), Span(pr, lb + 2));
+    // long divisor and long quotient: Burnikel–Ziegler (C#: in div_internal), the same contract
+    if (lb >= 2 * (uint32_t)BurnikelZiegler::Threshold && la - lb >= 2 * (uint32_t)BurnikelZiegler::Threshold)
+        BurnikelZiegler::DivRem(dividend, divisor, Span(pq, lq), Span(pr, lb + 2));
+    else
+        FullIntCore::Div(dividend, divisor, Span(pq, lq), Span(pr, lb + 2));
 
     if (remainder)
     {
