@@ -38,6 +38,12 @@ Code placement matters on Zen 3: moving a loop across a 32/64-byte boundary has 
 `Add` by 10–30% with no instruction changed. So a change in an unrelated function can move
 another one — check the whole table, not just the op you edited.
 
+Karatsuba threshold tuning (basecase vs Karatsuba with several thresholds, N = 48…4096):
+
+```
+dotnet run -c Release --project FullInt.Benchmarks -- kara [rounds]
+```
+
 Direct use, with any two DLLs:
 
 ```
@@ -60,6 +66,8 @@ Results (markdown/html/csv) go to `BenchmarkDotNet.Artifacts/` (git-ignored).
 | `CoreBenchmarks` | `IFullIntCore` on preallocated buffers: no allocation, no sign handling | native asm core vs managed fallback, N = 1…1024 limbs |
 | `ApiBenchmarks` | `FullInt64` operators (allocation, signs, normalization included) | FullInt64 vs `System.Numerics.BigInteger` (baseline) |
 
+`ApiBenchmarks` sizes: N = 1…4096 limbs.
+
 Ops: Add, Sub, Mult (N×N), Compare (differs in the last limb), division by one word,
 Div (2N / N limbs), And (one negative operand), Shl, decimal ToString / Parse.
 
@@ -76,3 +84,4 @@ Full runs worth keeping go to [docs/benchmarks/](../docs/benchmarks/) (summary +
 
 - [2026-11-13-core-baseline.md](../docs/benchmarks/2026-11-13-core-baseline.md) — the original algorithms and asm before any optimization
 - [2026-11-14-api-vs-biginteger.md](../docs/benchmarks/2026-11-14-api-vs-biginteger.md) — FullInt64 vs `BigInteger` (Add, Mult, Div), after the Mult inner-loop fix
+- [2026-11-14-karatsuba.md](../docs/benchmarks/2026-11-14-karatsuba.md) — Karatsuba threshold tuning and Mult vs `BigInteger` up to 4096 limbs

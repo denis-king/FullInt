@@ -14,7 +14,7 @@ namespace FullInt.Benchmarks
     [CategoriesColumn]
     public class ApiBenchmarks
     {
-        [Params(1, 4, 16, 64, 256, 1024)]
+        [Params(1, 4, 16, 64, 256, 1024, 4096)]
         public int N { get; set; }
 
         private FullInt64 _a = null!, _b = null!, _a2 = null!;

@@ -7,6 +7,11 @@ if (args.Length > 0 && args[0] == "ab")
 {
     return AbCompare.Run(args.Skip(1).ToArray());
 }
+// kara [rounds]                              → Karatsuba threshold tuning (see KaratsubaTune)
+if (args.Length > 0 && args[0] == "kara")
+{
+    return KaratsubaTune.Run(args.Skip(1).ToArray());
+}
 
 BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
 return 0;

@@ -189,7 +189,8 @@ Managed fallback готов и проверен только на Windows x64 ч
 
 ### Фаза 3 — ARM64 + скорость
 13. AArch64-примитивы (`linux-arm64`, `osx-arm64`, `win-arm64`), CI на ARM-раннерах.
-14. Karatsuba → Toom-3 → `sqr`; D&C-конвертация строк; Burnikel–Ziegler.
+14. ✅ Karatsuba (C# поверх asm столбиком, порог 80 слов) → Toom-3 → `sqr`; D&C-конвертация строк; Burnikel–Ziegler.
+   - Порог высокий (в GMP около 30), потому что каждый вызов asm из C# стоит 40–50 нс. Чтобы его снизить: дешёвый переход (`SuppressGCTransition` или указатели на функции, которых нет в `netstandard2.1`, то есть отдельная сборка под net8) или одно asm-ядро вместо пяти сложений и вычитаний на каждом уровне. Цифры: [benchmarks/2026-11-14-karatsuba.md](benchmarks/2026-11-14-karatsuba.md).
 15. x64 BMI2/ADX-вариант `mul_basecase`/`addmul_1` с выбором во время выполнения (CPUID).
 
 ### Фаза 4 — расширения

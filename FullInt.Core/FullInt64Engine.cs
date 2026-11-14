@@ -146,7 +146,14 @@ namespace FullInt.Core
             var heap = lenth <= FullHelper.StackAllocLimitWords ? null : new ulong[lenth];
             Span<ulong> bytes = heap ?? stackalloc ulong[lenth];
 
-            multInternal(value1.value, value2.value, bytes, Base);
+            if (Base == toBase.hex && Math.Min(value1.value.Length, value2.value.Length) >= Karatsuba.Threshold)
+            {
+                Karatsuba.Multiply(_core, value1.value, value2.value, bytes);   // recursion in C#, leaves in the core
+            }
+            else
+            {
+                multInternal(value1.value, value2.value, bytes, Base);
+            }
             return new FullInt64(value1.Sing != value2.Sing, FullHelper.ResultArray(bytes, heap), Base);
         }
 

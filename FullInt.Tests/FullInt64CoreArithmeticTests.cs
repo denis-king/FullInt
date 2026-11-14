@@ -97,6 +97,64 @@ namespace FullInt.Tests
             }
         }
 
+        /// <summary>
+        /// Karatsuba over the core's basecase, against BigInteger. Small thresholds make the
+        /// recursion go deep on small numbers. Covers unbalanced lengths (chunked path), all-ones
+        /// words (long carries), equal halves (|a1 - a0| = 0) and zero words.
+        /// </summary>
+        [DataTestMethod]
+        [DynamicData(nameof(Cores), DynamicDataSourceType.Method)]
+        public void Karatsuba_MatchesBigInteger(string coreName)
+        {
+            var core = GetCore(coreName);
+            var rnd = new Random(8181);
+            int[] thresholds = { 2, 3, 4, 5, 8, 16, 32 };
+
+            ulong[] Shaped(int length)
+            {
+                switch (rnd.Next(5))
+                {
+                    case 0:   // all ones: carries run through whole halves
+                        var ones = new ulong[length];
+                        Array.Fill(ones, ulong.MaxValue);
+                        return ones;
+                    case 1:   // equal halves: a1 - a0 = 0 at the top level
+                        var h = Next(rnd, (length + 1) / 2);
+                        var eq = new ulong[length];
+                        h.AsSpan(h.Length - length / 2).CopyTo(eq);
+                        h.CopyTo(eq.AsSpan(length / 2));
+                        return eq;
+                    default:
+                        return Next(rnd, length);
+                }
+            }
+
+            for (int it = 0; it < 1_500; it++)
+            {
+                int threshold = thresholds[rnd.Next(thresholds.Length)];
+                int la = rnd.Next(1, 200);
+                int lb = rnd.Next(4) == 0 ? rnd.Next(1, 20) : rnd.Next(1, 200);   // often very unbalanced
+                var a = Shaped(la);
+                var b = Shaped(lb);
+                var r = new ulong[la + lb];
+                Array.Fill(r, 0xDEAD_BEEF_DEAD_BEEFUL);   // must be fully overwritten
+
+                Karatsuba.Multiply(core, a, b, r, threshold);
+                Assert.AreEqual(ToBig(a) * ToBig(b), ToBig(r), $"[{coreName}] {la}x{lb} threshold={threshold} (iteration {it})");
+            }
+
+            // larger sizes, a few, at the default threshold and at a small one
+            for (int it = 0; it < 12; it++)
+            {
+                int la = rnd.Next(300, 1500), lb = rnd.Next(300, 1500);
+                var a = Next(rnd, la);
+                var b = Next(rnd, lb);
+                var r = new ulong[la + lb];
+                Karatsuba.Multiply(core, a, b, r, it % 2 == 0 ? Karatsuba.Threshold : 4);
+                Assert.AreEqual(ToBig(a) * ToBig(b), ToBig(r), $"[{coreName}] {la}x{lb} large");
+            }
+        }
+
         [DataTestMethod]
         [DynamicData(nameof(Cores), DynamicDataSourceType.Method)]
         public void Core_DivByWord_MatchesBigInteger(string coreName)

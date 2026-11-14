@@ -272,6 +272,33 @@ namespace FullInt.Tests
             }
         }
 
+        /// <summary>
+        /// The operator path into Karatsuba (operands at or above Karatsuba.Threshold words):
+        /// signs, unequal lengths, against BigInteger.
+        /// </summary>
+        [TestMethod]
+        public void Mult_KaratsubaSizes_MatchesBigInteger()
+        {
+            var rnd = new Random(9090);
+            int t = Karatsuba.Threshold;
+            for (int i = 0; i < 60; i++)
+            {
+                var aw = new ulong[rnd.Next(t, 600)];
+                var bw = new ulong[rnd.Next(2) == 0 ? rnd.Next(t, 600) : rnd.Next(t, t + 20)];
+                for (int k = 0; k < aw.Length; k++) aw[k] = (ulong)rnd.NextInt64() ^ ((ulong)rnd.Next(2) << 63);
+                for (int k = 0; k < bw.Length; k++) bw[k] = (ulong)rnd.NextInt64() ^ ((ulong)rnd.Next(2) << 63);
+                aw[0] |= 1; bw[0] |= 1;   // keep the lengths (no leading zero words)
+                var fa = new FullInt64(rnd.Next(2) == 0, aw);
+                var fb = new FullInt64(rnd.Next(2) == 0, bw);
+                var A = BigInteger.Parse(fa.ToString(10));
+                var B = BigInteger.Parse(fb.ToString(10));
+
+                var p = fa * fb;
+                Assert.AreEqual((A * B).ToString(), p.ToString(10), $"{aw.Length}x{bw.Length} words");
+                Assert.IsTrue(p.value[0] != 0, "leading zero word");
+            }
+        }
+
         // ---------------------------------------------------------------- unnormalized divisor (engine)
 
         [TestMethod]
