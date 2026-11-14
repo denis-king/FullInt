@@ -61,6 +61,9 @@ add_library(fullint STATIC
 target_link_libraries(fullint PUBLIC FullInt::kernels)
 add_library(FullInt::fullint ALIAS fullint)
 
+add_executable(fullint_kara_tune EXCLUDE_FROM_ALL bench/kara_tune.cpp)
+target_link_libraries(fullint_kara_tune PRIVATE FullInt::fullint)
+
 # ----------------------------------------------------------------------------
 # tests and benchmarks (GMP is the reference)
 # ----------------------------------------------------------------------------

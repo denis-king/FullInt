@@ -10,11 +10,14 @@ namespace fullint {
 struct Karatsuba
 {
     // Shorter operand below this many words: the basecase (column) multiply.
-    // C#: 64 (each core call from C# costs ~10-15 ns there); the same value here until the
-    // C++ build is tuned on its own (no interop: the best value is likely lower).
-    static inline int Threshold = 64;
+    // C# uses 64: there each core call costs ~10-15 ns more (interop). Here a kernel call is
+    // a direct call; tuned with fullint_kara_tune (Zen 3): 28..48 are equal within noise and
+    // 7-22% faster than 64 at 48..96 words, below 24 it loses. 32 is the middle.
+    static inline int Threshold = 32;
 
     // From this many words in the shorter operand (operands not too unbalanced): Toom-3.
+    // Tuned with fullint_kara_tune toom: Toom-3 gains from ~384 words, 96..256 equal within
+    // noise; the C# value is kept.
     static inline int Toom3Threshold = 256;
 
     // Scratch words needed by Multiply.
