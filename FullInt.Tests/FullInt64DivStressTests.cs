@@ -39,7 +39,7 @@ namespace FullInt.Tests
             var bytes = new byte[limbs.Length * 8];
             for (int i = 0; i < limbs.Length; i++)
                 BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan((limbs.Length - 1 - i) * 8), limbs[i]);
-            return new BigInteger(bytes, isUnsigned: true);
+            return BigCompat.FromUnsignedLittleEndian(bytes);
         }
 
         private static ulong NextWord(Random rnd)
@@ -72,7 +72,7 @@ namespace FullInt.Tests
             var r = D - 1 - new BigInteger((ulong)rnd.Next(1000));
             if (r.Sign < 0) r = 0;
             var a = D * q + r;
-            var bytes = a.ToByteArray(isUnsigned: true, isBigEndian: true);
+            var bytes = BigCompat.ToUnsignedBigEndian(a);
             int words = (bytes.Length + 7) / 8;
             var padded = new byte[words * 8];
             bytes.CopyTo(padded, padded.Length - bytes.Length);

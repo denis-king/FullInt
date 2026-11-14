@@ -1,5 +1,27 @@
 # Platforms
 
+The goal is the widest reach: every .NET runtime and every CPU runs the library; native kernels
+speed it up where they exist. The managed core (C#) is the guarantee, asm is the accelerator.
+
+## Target frameworks
+
+One code base, two builds of `FullInt.Core`. NuGet gives each app the closest one:
+
+| Build | Runs on | Differences |
+|---|---|---|
+| `netstandard2.0` | .NET Framework 4.6.1+, Xamarin.iOS / Xamarin.Android, Mono, Unity, UWP, .NET Core 2.0–7 | `System.Memory` and `Microsoft.Bcl.HashCode` packages; native calls always with the GC transition |
+| `net8.0` | .NET 8, 9, 10 and later (Windows, Linux, macOS, Android, iOS) | short native calls skip the GC transition (`SuppressGCTransition`, ~3–7 ns per call) |
+
+The differences are a few `#if NET5_0_OR_GREATER` / `#if NETSTANDARD2_0` spots; everything else
+is the same source. A newer build (`net10.0`) is added only when it brings something .NET 8 lacks.
+
+Core selection at run time (`FullIntCoreFactory`): by OS and process architecture, then one probe
+call into the native library; if it is missing or unusable, the managed core is used silently.
+A 32-bit process (x86, ARM32) always uses the managed core.
+
+Tested on Windows: .NET 8 x64 (asm and managed), .NET Framework 4.8 x64 (asm and managed),
+.NET Framework 4.8 x86 (managed): the whole suite passes on each.
+
 ## Support matrix
 
 | RID | Native backend | Toolchain | Status |
@@ -10,7 +32,9 @@
 | `linux-arm64` | AArch64 asm | GNU `as` / `clang` | ❌ not started |
 | `osx-arm64` (Apple Silicon) | AArch64 asm | `clang` | ❌ not started |
 | `win-arm64` | AArch64 asm | `clang --target=aarch64-pc-windows-msvc` or `armasm64` | ❌ not started |
+| `win-x86`, `linux-arm` (32-bit) | managed fallback | — | ✅ complete; no asm planned (few registers, little gain) |
 | `linux-musl-*`, `browser-wasm`, `ios-*`, `android-*`, others | managed fallback | — | ✅ complete (all tests pass on it) |
+| `ios-arm64` | AArch64 asm, later | static library + `DllImport("__Internal")` (iOS forbids loading dynamic libraries) | managed until then |
 
 ## x86-64
 
@@ -112,7 +136,7 @@ The fallback must be **complete and correct on every platform**. It is both the 
 
 On .NET 8+ the managed kernels typically reach 30–60% of the speed of good asm for multiplication. The gap is mostly carry propagation.
 
-**Current implementation** (`FullInt64CoreDefault`, `netstandard2.1`): 64×64 → 128 via four 32-bit products, 128/64 via Hacker's Delight `divlu`, multi-word division is a 1:1 port of `Div.asm` (same digit estimate and buffer contract, so both cores give identical results). Speed was not a goal yet.
+**Current implementation** (`FullInt64CoreDefault`, same code in both builds): 64×64 → 128 via four 32-bit products, 128/64 via Hacker's Delight `divlu`, multi-word division is a 1:1 port of `Div.asm` (same digit estimate and buffer contract, so both cores give identical results). Speed was not a goal yet.
 
 ## Testing on other platforms
 
@@ -145,7 +169,7 @@ Mounting the Windows working tree shares `bin/` and `obj/` between Windows and L
 ```
 FullInt.nupkg
 ├── lib/net8.0/FullInt.dll
-├── lib/netstandard2.1/FullInt.dll            (optional, without generic math)
+├── lib/netstandard2.0/FullInt.dll            (.NET Framework, Xamarin, Mono, Unity)
 └── runtimes/
     ├── win-x64/native/fullint_native.dll
     ├── win-arm64/native/fullint_native.dll
@@ -157,6 +181,7 @@ FullInt.nupkg
 
 - Use **one logical library name** (`fullint_native`) on every platform, with `[LibraryImport("fullint_native")]`. The runtime resolves the `lib` prefix and the extension, and NuGet picks the folder that matches the app's RID. No per-platform `DllImport` classes or a `FullIntCoreFactory` OS switch are needed.
 - On load failure (`DllNotFoundException`, `EntryPointNotFoundException`), switch silently to the managed kernels. Let users opt out with an `AppContext` switch, for example `FullInt.DisableNative`.
+- .NET Framework does not read `runtimes/<rid>/native` by itself: the package needs a small `build/FullInt.targets` that copies the native library next to the app (for x64 processes).
 - macOS: build a universal binary (`lipo`) or separate `osx-x64` and `osx-arm64` files. Sign it if it is distributed outside NuGet.
 
 ### CI (GitHub Actions sketch)

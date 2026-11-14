@@ -32,7 +32,7 @@ namespace FullInt.Tests
             var bytes = new byte[limbs.Length * 8];
             for (int i = 0; i < limbs.Length; i++)
                 BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan((limbs.Length - 1 - i) * 8), limbs[i]);
-            return new BigInteger(bytes, isUnsigned: true);
+            return BigCompat.FromUnsignedLittleEndian(bytes);
         }
 
         private static ulong[] Next(Random rnd, int length, bool nonZeroTop = false)
@@ -101,12 +101,12 @@ namespace FullInt.Tests
                 string ctx = $"[{coreName}] lenA={a.Length} lenB={b.Length} lenR={lenR} a={A:X} b={B:X}";
 
                 var r = new ulong[lenR];
-                Array.Fill(r, 0xDEAD_BEEF_DEAD_BEEFUL);
+                r.AsSpan().Fill(0xDEAD_BEEF_DEAD_BEEFUL);
                 ulong carry = core.Add(a, b, r);
                 Assert.AreEqual((A + B) % mod, ToBig(r), "add " + ctx);
                 Assert.AreEqual((ulong)((A % mod + B % mod) / mod), carry, "add carry " + ctx);
 
-                Array.Fill(r, 0xDEAD_BEEF_DEAD_BEEFUL);
+                r.AsSpan().Fill(0xDEAD_BEEF_DEAD_BEEFUL);
                 int sign = core.Sub(a, b, r);
                 Assert.AreEqual(A.CompareTo(B), sign, "sub sign " + ctx);
                 Assert.AreEqual(BigInteger.Abs(A - B) % mod, ToBig(r), "sub " + ctx);
@@ -157,7 +157,7 @@ namespace FullInt.Tests
                 {
                     case 0:   // all ones: carries run through whole halves
                         var ones = new ulong[length];
-                        Array.Fill(ones, ulong.MaxValue);
+                        ones.AsSpan().Fill(ulong.MaxValue);
                         return ones;
                     case 1:   // equal halves: a1 - a0 = 0 at the top level
                         var h = Next(rnd, (length + 1) / 2);
@@ -179,7 +179,7 @@ namespace FullInt.Tests
                 var a = Shaped(la);
                 var b = Shaped(lb);
                 var r = new ulong[la + lb];
-                Array.Fill(r, 0xDEAD_BEEF_DEAD_BEEFUL);   // must be fully overwritten
+                r.AsSpan().Fill(0xDEAD_BEEF_DEAD_BEEFUL);   // must be fully overwritten
 
                 Karatsuba.Multiply(core, a, b, r, threshold, toom3);
                 Assert.AreEqual(ToBig(a) * ToBig(b), ToBig(r), $"[{coreName}] {la}x{lb} threshold={threshold} toom3={toom3} (iteration {it})");

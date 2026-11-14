@@ -626,7 +626,7 @@ namespace FullInt.Core
                 FullHelper.Return(rented);
                 return parsed;
             }
-            value = Encoding.ASCII.GetString(valueSpan);
+            value = FullHelper.AsciiString(valueSpan);
             FullInt64 result = new FullInt64(s, new ulong[0], (toBase)Base);
             int chunkSize = Base == 10 ? 19 : 16;
             if (Base == (byte)(result.IsDec ? 10 :16))
@@ -681,7 +681,7 @@ namespace FullInt.Core
                 startPosition--;
                 resultBuf[startPosition] = (byte)'-';
             }
-            var text = Encoding.ASCII.GetString(resultBuf.Slice(startPosition));
+            var text = FullHelper.AsciiString(resultBuf.Slice(startPosition));
             FullHelper.Return(rented);
             return text;
         }

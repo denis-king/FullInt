@@ -46,6 +46,23 @@ namespace FullInt.Core
             if (rented != null) ArrayPool<byte>.Shared.Return(rented);
         }
 
+        /// <summary>ASCII bytes to a string (netstandard2.0 has no Span overload of GetString).</summary>
+        public static string AsciiString(ReadOnlySpan<byte> bytes)
+        {
+#if NETSTANDARD2_0
+            if (bytes.IsEmpty) return string.Empty;
+            unsafe
+            {
+                fixed (byte* p = bytes)
+                {
+                    return Encoding.ASCII.GetString(p, bytes.Length);
+                }
+            }
+#else
+            return Encoding.ASCII.GetString(bytes);
+#endif
+        }
+
         public static bool IsZero(ulong[]? value)
         {
             if (value == null) return true;

@@ -1,13 +1,21 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <!-- net8.0: SuppressGCTransition on short native calls; netstandard2.1 for older runtimes -->
-    <TargetFrameworks>netstandard2.1;net8.0</TargetFrameworks>
+    <!-- netstandard2.0: the widest reach (.NET Framework 4.6.1+, Xamarin, Mono, Unity, .NET Core 2+);
+         net8.0: the same code plus what newer runtimes allow (SuppressGCTransition on short native calls) -->
+    <TargetFrameworks>netstandard2.0;net8.0</TargetFrameworks>
+    <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
   </PropertyGroup>
 
  
+
+  <!-- Span, MemoryMarshal, ArrayPool for netstandard2.0 (built into net8.0) -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+    <PackageReference Include="System.Memory" Version="4.5.5" />
+    <PackageReference Include="Microsoft.Bcl.HashCode" Version="1.1.1" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\FullInt.AsmForNet\FullInt.AsmForNet.csproj" />

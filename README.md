@@ -56,6 +56,8 @@ The current public API is listed in [docs/OPERATIONS.md](docs/OPERATIONS.md).
 | `win-arm64`, `linux-arm64`, `osx-arm64` | AArch64 assembly | planned |
 | anything else (incl. 32-bit) | managed C# | ✅ complete, slower than asm |
 
+Runtimes: one package with two builds, `netstandard2.0` (.NET Framework 4.6.1+, Xamarin, Mono, Unity) and `net8.0` (.NET 8 and later). If the native library cannot be loaded, the managed core is used automatically.
+
 Details: [docs/PLATFORMS.md](docs/PLATFORMS.md).
 
 ## Building

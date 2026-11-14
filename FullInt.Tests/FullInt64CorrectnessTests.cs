@@ -12,6 +12,25 @@ namespace FullInt.Tests
     [TestClass]
     public class FullInt64CorrectnessTests
     {
+        // ---------------------------------------------------------------- core selection
+
+        /// <summary>
+        /// The factory falls back to the managed core when the native library cannot be loaded.
+        /// That must not hide a broken native build: in a 64-bit Windows process the asm core is
+        /// expected (unless FULLINT_FORCE_MANAGED=1); in any other process the managed one.
+        /// </summary>
+        [TestMethod]
+        public void Factory_PicksTheExpectedCore()
+        {
+            var core = FullIntCoreFactory.Create();
+            bool forced = Environment.GetEnvironmentVariable(FullIntCoreFactory.ForceManagedEnvVar) == "1";
+            bool winX64 = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows)
+                && System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture == System.Runtime.InteropServices.Architecture.X64;
+            var expected = winX64 && !forced ? typeof(FullIntCoreWindowsX64) : typeof(FullInt64CoreDefault);
+            Assert.AreEqual(expected, core.GetType(),
+                $"process: {System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture}, framework: {System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}");
+        }
+
         // ---------------------------------------------------------------- negative zero (C7)
 
         [TestMethod]
@@ -112,8 +131,8 @@ namespace FullInt.Tests
                 rnd.NextBytes(bytes);
                 bool neg = rnd.Next(2) == 0;
 
-                // BigInteger(ReadOnlySpan<byte>, isUnsigned: true, isBigEndian: false) = same layout
-                var expected = new BigInteger(bytes, isUnsigned: true, isBigEndian: false);
+                // unsigned little-endian magnitude = same layout
+                var expected = BigCompat.FromUnsignedLittleEndian(bytes);
                 if (neg) expected = -expected;
 
                 Assert.AreEqual(expected.ToString(), new FullInt64(bytes, neg).ToString(10));

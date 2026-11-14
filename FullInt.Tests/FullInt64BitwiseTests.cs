@@ -21,7 +21,7 @@ namespace FullInt.Tests
 
         private static ulong[] ToLimbs(BigInteger magnitude)
         {
-            var bytes = magnitude.ToByteArray(isUnsigned: true, isBigEndian: true);
+            var bytes = BigCompat.ToUnsignedBigEndian(magnitude);
             int words = Math.Max((bytes.Length + 7) / 8, 1);
             var padded = new byte[words * 8];
             bytes.CopyTo(padded, padded.Length - bytes.Length);
@@ -35,7 +35,7 @@ namespace FullInt.Tests
             var bytes = new byte[limbs.Length * 8];
             for (int i = 0; i < limbs.Length; i++)
                 BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan((limbs.Length - 1 - i) * 8), limbs[i]);
-            return new BigInteger(bytes, isUnsigned: true);
+            return BigCompat.FromUnsignedLittleEndian(bytes);
         }
 
         private static FullInt64 ToFull(BigInteger v) => new FullInt64(v.Sign < 0, ToLimbs(BigInteger.Abs(v)), toBase.hex);
@@ -138,7 +138,7 @@ namespace FullInt.Tests
                 Assert.AreEqual((x ^ y).ToString(), FullInt64.Xor(fx, fy).ToString(10), $"{x} xor {y}");
                 Assert.AreEqual((~x).ToString(), (~fx).ToString(10), $"~{x}");
                 Assert.AreEqual((x << shift).ToString(), (fx << shift).ToString(10), $"{x} << {shift}");
-                Assert.AreEqual((x >> shift).ToString(), (fx >> shift).ToString(10), $"{x} >> {shift}");
+                Assert.AreEqual(BigCompat.ShiftRightFloor(x, shift).ToString(), (fx >> shift).ToString(10), $"{x} >> {shift}");
             }
         }
 

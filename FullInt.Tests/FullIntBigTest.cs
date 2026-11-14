@@ -1,6 +1,5 @@
 ﻿using FullInt.Core;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -30,7 +29,7 @@ namespace FullInt.Tests
                 return (Array.Empty<ulong>(), false);
 
             // Определение знака по старшему биту последнего байта (т.к. little-endian)
-            bool isNegative = (bytes[^1] & 0x80) != 0;
+            bool isNegative = (bytes[bytes.Length - 1] & 0x80) != 0;
 
             byte[] workingBytes = new byte[(bytes.Length / 8 + (bytes.Length % 8 == 0 ? 0 : 1)) * 8];
             Buffer.BlockCopy(Enumerable.Reverse(bytes).ToArray(), 0, workingBytes, workingBytes.Length - bytes.Length, bytes.Length);
@@ -55,7 +54,7 @@ namespace FullInt.Tests
 
             ulong[] result = workingBytes
                 .Chunk(8)
-                .Select(x => BitConverter.ToUInt64(Enumerable.Reverse(x).ToArray()))
+                .Select(x => BitConverter.ToUInt64(Enumerable.Reverse(x).ToArray(), 0))
                 .ToArray();
 
             

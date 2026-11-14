@@ -69,7 +69,7 @@ All core methods work on **magnitudes** (unsigned limb spans, MSW first). Signs 
 
 ```
 dotnet build
-  └─ FullInt.Core → ProjectReference → FullInt.AsmForNet (netstandard2.1, no sources)
+  └─ FullInt.Core → ProjectReference → FullInt.AsmForNet (netstandard2.0, no sources)
         ├─ resolve FullIntNativeRid = $(RuntimeIdentifier) or host (e.g. win-x64)
         ├─ supported (FullIntNativeSupportedRids = win-x64)?
         │     no  → warning FULLINT001, managed fallback

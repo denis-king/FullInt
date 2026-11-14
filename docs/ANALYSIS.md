@@ -128,7 +128,7 @@ public readonly struct FullInteger :           // имя на выбор
 - Малые значения (|x| < 2⁶³) — без массива (как `BigInteger._sign`).
 - Отдельно — низкоуровневый статический API `FullIntOps.Add(ReadOnlySpan<ulong>, ReadOnlySpan<ulong>, Span<ulong>)` для zero-alloc сценариев.
 - `Pow` — метод, а не `^`; `Parse`/`TryParse` с `NumberStyles`, а не неявный `string`.
-- TFM: `net8.0;net10.0` (generic math) + опционально `netstandard2.1` без generic math.
+- TFM: сейчас `netstandard2.0;net8.0` (Framework, Xamarin, Mono и современный .NET из одного кода); generic math позже — отдельной целью `net8.0`+ через `#if`.
 
 ### 4.5. P/Invoke
 
