@@ -9,7 +9,7 @@ namespace FullInt.Core
         /// unbalanced), a level splits in three (Toom-3) instead of two. Tuned with
         /// `FullInt.Benchmarks kara`; see docs/benchmarks.
         /// </summary>
-        public static int Toom3Threshold { get; set; } = 256;
+        public static int Toom3Threshold { get; set; } = Environment.Is64BitProcess ? 256 : 128;   // x86: see Karatsuba.Threshold
 
         // Toom-3 (Toom-Cook 3-way), evaluation points 0, 1, -1, -2, inf; Bodrato's interpolation:
         //   a = a2·X² + a1·X + a0,  b likewise,  X = B^k  (a0, a1: k words, a2: the rest)

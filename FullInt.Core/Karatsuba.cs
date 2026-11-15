@@ -29,7 +29,13 @@ namespace FullInt.Core
         /// basecase. GMP uses ~30; ours is higher because the column asm is fast for its size
         /// and each core call from C# still costs ~10-15 ns.
         /// </summary>
-        public static int Threshold { get; set; } = 64;
+        public static int Threshold { get; set; } = Environment.Is64BitProcess ? 64 : 32;
+
+        // x86 (a 32-bit process): a word product is four 32x32 multiplies, so every level pays
+        // off earlier. `kara`, `kara toom`, `kara toom4` in a 32-bit .NET 8 process (Zen 3):
+        // Karatsuba 24..32 best (128 words 0.56 of the basecase, 64: 0.65; 512: 0.34 / 0.41);
+        // Toom-3 from 128 (2048 words 0.76 of Karatsuba alone, 256: 0.82); Toom-4 from 256
+        // (1024-4096 words 0.87-0.91).
 
         /// <summary>Scratch words needed by <see cref="Multiply(IFullIntCore, Span{ulong}, Span{ulong}, Span{ulong}, int)"/>.</summary>
         public static int ScratchLength(int lenA, int lenB) => 16 * Math.Max(lenA, lenB) + 1024;
