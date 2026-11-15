@@ -20,8 +20,11 @@ struct Karatsuba
     static inline int FftThreshold = 131072;
 #endif
 
-    // the FFT parameter choice: a butterfly with the native kernels ~[0] + [1]·n ns (n words)
-    static inline double FftNativeButterfly[2] = { 30, 1.0 };
+    // the FFT parameter choice: a butterfly with the native kernels ~[0] + [1]·n ns (n words).
+    // Calibrated on the whole product (x64, Zen 3, the unrolled FftAdx.asm kernels): {10, 0.8}
+    // 0.97 of {30, 1.0} over 8192..131072 words (8192: 0.86) - the larger K it picks shortens
+    // the pointwise products, which are 60-66% of the time
+    static inline double FftNativeButterfly[2] = { 10, 0.8 };
 
 #if defined(_M_X64) || defined(__x86_64__)
     // Shorter operand below this many words: the basecase (column) multiply.

@@ -39,32 +39,106 @@ section .text
 %%done:
 %endmacro
 
-global Fullint64FftAddSubWIN_adx
-Fullint64FftAddSubWIN_adx:
-	push rbx
-	push rsi
-	mov r10, rcx                ; u
-	movsxd r8, r8d              ; n1
-	lea r11, [r8 - 1]           ; w
-	mov rsi, r11                ; index from the low end word
-	mov rcx, r8                 ; words left
-	mov al, 7Fh
-	add al, 1                   ; OF = 1 (the + 1 of u + ~v + 1), CF = 0
-.loop:
-	mov rax, [r10 + rsi*8]
-	mov rbx, [rdx + rsi*8]
+; jrcxz to a label out of the short range: through a jmp (no flags touched either way)
+%macro JRCXZ_FAR 1
+	jrcxz %%far
+	jmp %%near
+%%far:
+	jmp %1
+%%near:
+%endmacro
+
+; one word of AddSub at index rsi (+ %1 bytes): u + v on the CF chain, u + ~v on the OF chain
+%macro ADDSUB_WORD 1
+	mov rax, [r10 + rsi*8 + %1]
+	mov rbx, [rdx + rsi*8 + %1]
 	mov r9, rax
 	adcx rax, rbx               ; u + v
 	not rbx
 	adox r9, rbx                ; u - v
-	mov [r10 + rsi*8], rax
-	mov [rdx + rsi*8], r9
-	lea rsi, [rsi - 1]
-	lea rcx, [rcx - 1]
+	mov [r10 + rsi*8 + %1], rax
+	mov [rdx + rsi*8 + %1], r9
+%endmacro
+
+global Fullint64FftAddSubWIN_adx
+Fullint64FftAddSubWIN_adx:
+	push rbx
+	push rsi
+	push rdi
+	push rbp
+	push r12
+	push r13
+	push r14
+	push r15
+	mov r10, rcx                ; u
+	movsxd r8, r8d              ; n1
+	lea r11, [r8 - 1]           ; w
+	; blocks of four words from the low end: the four sums on one adc chain, then the four
+	; differences on one sbb chain (u read again), the carry and the borrow kept as 0 / -1
+	; masks between blocks (adcx / adox interleaved word by word ran at ~3 cycles a word on
+	; Zen 3: both chains write the one flags register)
+	lea rsi, [r10 + r11*8]      ; u: the low word
+	lea rdi, [rdx + r11*8]      ; v: the low word
+	mov rcx, r8
+	shr rcx, 2                  ; groups of four
+	and r8, 3                   ; then single words
+	xor ebx, ebx                ; carry mask
+	xor ebp, ebp                ; borrow mask
+	jrcxz .singles
+.quad:
+	mov rax, [rsi]
+	mov r9, [rsi - 8]
+	mov r12, [rsi - 16]
+	mov r13, [rsi - 24]
+	add rbx, rbx                ; CF = the carry
+	adc rax, [rdi]
+	adc r9, [rdi - 8]
+	adc r12, [rdi - 16]
+	adc r13, [rdi - 24]
+	sbb rbx, rbx
+	mov r14, [rsi]
+	mov r15, [rsi - 8]
+	add rbp, rbp                ; CF = the borrow
+	sbb r14, [rdi]
+	sbb r15, [rdi - 8]
+	mov [rdi], r14
+	mov [rdi - 8], r15
+	mov r14, [rsi - 16]
+	mov r15, [rsi - 24]
+	sbb r14, [rdi - 16]
+	sbb r15, [rdi - 24]
+	sbb rbp, rbp
+	mov [rdi - 16], r14
+	mov [rdi - 24], r15
+	mov [rsi], rax
+	mov [rsi - 8], r9
+	mov [rsi - 16], r12
+	mov [rsi - 24], r13
+	lea rsi, [rsi - 32]
+	lea rdi, [rdi - 32]
+	dec rcx
+	jnz .quad
+.singles:
+	mov rcx, r8
 	jrcxz .done
-	jmp .loop
+.one:
+	mov rax, [rsi]
+	mov r9, rax
+	add rbx, rbx
+	adc rax, [rdi]
+	sbb rbx, rbx
+	add rbp, rbp
+	sbb r9, [rdi]
+	sbb rbp, rbp
+	mov [rsi], rax
+	mov [rdi], r9
+	lea rsi, [rsi - 8]
+	lea rdi, [rdi - 8]
+	dec rcx
+	jnz .one
 .done:
-	seto bl                     ; 1: u >= v
+	test rbp, rbp
+	setz bl                     ; 1: u >= v (no borrow out)
 
 	; the sum: top word t > 0 -> low - t, + p on a borrow
 	mov rax, [r10]
@@ -90,6 +164,12 @@ Fullint64FftAddSubWIN_adx:
 	jnz .diffDone
 	LOW_PLUS_ONE rdx, r11
 .diffDone:
+	pop r15
+	pop r14
+	pop r13
+	pop r12
+	pop rbp
+	pop rdi
 	pop rsi
 	pop rbx
 	ret
@@ -108,27 +188,66 @@ Fullint64FftAddSubWIN_adx:
 	lea rax, [rax + rbx]
 %endmacro
 
-; the three regions; %1 = 0: L - H, 1: H - L. rsi x, rdi dst, r14 w, r12 ws, r15 = w - 1 - ws
-%macro SHLMOD_BODY 1
-	lea rdx, [rdi + r14*8]      ; dst word i = 0 (the lowest)
-	mov rcx, r12
-	clc
-	jrcxz %%regionB
-	lea r9, [rsi + r12*8]       ; x word j = w - ws
-%%regionA:                      ; i < ws: 0 - H
-	SH r9
+; one output word of region A (i < ws: 0 - H, negated: H) from x at r9 - %2 into dst at rdx - %2
+%macro OUT_A 2
+	SH r9 - %2
 %if %1
 	sbb rax, 0
-	mov [rdx], rax
+	mov [rdx - %2], rax
 %else
 	mov rbx, 0
 	sbb rbx, rax
-	mov [rdx], rbx
+	mov [rdx - %2], rbx
 %endif
+%endmacro
+
+; one output word of region C (i > ws: L, negated: 0 - L)
+%macro OUT_C 2
+	SH r9 - %2
+%if %1
+	mov rbx, 0
+	sbb rbx, rax
+	mov [rdx - %2], rbx
+%else
+	sbb rax, 0
+	mov [rdx - %2], rax
+%endif
+%endmacro
+
+; the three regions; %1 = 0: L - H, 1: H - L. rsi x, rdi dst, r14 w, r12 ws, r15 = w - 1 - ws
+%macro SHLMOD_BODY 1
+	lea rdx, [rdi + r14*8]      ; dst word i = 0 (the lowest)
+	lea r9, [rsi + r12*8]       ; x word j = w - ws
+	mov rbx, r15
+	shr rbx, 2
+	push rbx                    ; region C: groups of four (r15 = w - 1 - ws words)
+	mov rbx, r15
+	and rbx, 3
+	push rbx                    ; region C: single words, popped first
+	mov r8, r12
+	shr r8, 2                   ; groups of four (counted before clc: shr / and set CF)
+	mov rcx, r12
+	and rcx, 3
+	clc
+	jrcxz %%aQuads
+%%aOne:                         ; i < ws: 0 - H, single words first
+	OUT_A %1, 0
 	lea r9, [r9 - 8]
 	lea rdx, [rdx - 8]
+	dec rcx                     ; (dec keeps CF)
+	jnz %%aOne
+%%aQuads:
+	mov rcx, r8
+	JRCXZ_FAR %%regionB
+%%aQuad:
+	OUT_A %1, 0
+	OUT_A %1, 8
+	OUT_A %1, 16
+	OUT_A %1, 24
+	lea r9, [r9 - 32]
+	lea rdx, [rdx - 32]
 	dec rcx
-	jnz %%regionA
+	jnz %%aQuad
 %%regionB:                      ; i = ws: sh(0) - sh(w)
 	SH rsi
 	mov rbx, [rsi + r14*8]
@@ -141,23 +260,27 @@ Fullint64FftAddSubWIN_adx:
 	mov [rdx], rbx
 %endif
 	lea rdx, [rdx - 8]
-	mov rcx, r15
-	jrcxz %%top
 	lea r9, [rsi + r14*8 - 8]   ; x word j = 1
-%%regionC:                      ; i > ws: L
-	SH r9
-%if %1
-	mov rbx, 0
-	sbb rbx, rax
-	mov [rdx], rbx
-%else
-	sbb rax, 0
-	mov [rdx], rax
-%endif
+	pop rcx                     ; region C single words (pushed before clc; pop keeps CF)
+	jrcxz %%cQuads
+%%cOne:                         ; i > ws: L
+	OUT_C %1, 0
 	lea r9, [r9 - 8]
 	lea rdx, [rdx - 8]
 	dec rcx
-	jnz %%regionC
+	jnz %%cOne
+%%cQuads:
+	pop rcx                     ; region C groups of four
+	JRCXZ_FAR %%top
+%%cQuad:
+	OUT_C %1, 0
+	OUT_C %1, 8
+	OUT_C %1, 16
+	OUT_C %1, 24
+	lea r9, [r9 - 32]
+	lea rdx, [rdx - 32]
+	dec rcx
+	jnz %%cQuad
 %%top:
 	mov qword [rdi], 0
 	jnc %%done
