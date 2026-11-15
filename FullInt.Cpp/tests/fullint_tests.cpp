@@ -226,14 +226,15 @@ void MultiplyThresholds()
         std::vector<uint64_t> r(a.Length() + b.Length());
         int threshold = 2 + (int)(rng() % 10), toom3 = 3 + (int)(rng() % 20);
         int toom4 = rng() % 3 == 0 ? 1 << 30 : 4 + (int)(rng() % 40);   // Toom-4 levels too
-        fullint::Karatsuba::Multiply(a.Words(), b.Words(), r, threshold, toom3, toom4);
+        int toom6 = rng() % 3 == 0 ? 1 << 30 : 6 + (int)(rng() % 60);   // Toom-6 levels too (from 36 words)
+        fullint::Karatsuba::Multiply(a.Words(), b.Words(), r, threshold, toom3, toom4, toom6, fullint::Karatsuba::FftThreshold);
         Mpz ma, mb, e, got;
         ToMpz(Abs(a), ma.v);
         ToMpz(Abs(b), mb.v);
         mpz_mul(e.v, ma.v, mb.v);
         mpz_import(got.v, r.size(), 1, sizeof(uint64_t), 0, 0, r.data());
-        CHECK(mpz_cmp(e.v, got.v) == 0, "Karatsuba thresholds " + std::to_string(threshold) + "/" + std::to_string(toom3) +
-                                            " " + std::to_string(la) + "x" + std::to_string(lb));
+        CHECK(mpz_cmp(e.v, got.v) == 0, "Karatsuba thresholds " + std::to_string(threshold) + "/" + std::to_string(toom3) + "/" +
+                                            std::to_string(toom4) + "/" + std::to_string(toom6) + " " + std::to_string(la) + "x" + std::to_string(lb));
     }
 }
 

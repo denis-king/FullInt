@@ -46,7 +46,8 @@ int main(int argc, char** argv)
 {
     bool fft = argc > 1 && std::strcmp(argv[1], "fft") == 0;
     bool toom4 = argc > 1 && std::strcmp(argv[1], "toom4") == 0;
-    bool toom = fft || toom4 || (argc > 1 && std::strcmp(argv[1], "toom") == 0);
+    bool toom6 = argc > 1 && std::strcmp(argv[1], "toom6") == 0;
+    bool toom = fft || toom4 || toom6 || (argc > 1 && std::strcmp(argv[1], "toom") == 0);
     int kara = Karatsuba::Threshold, rounds = 7;
     for (int i = 1; i < argc; i++)
     {
@@ -57,15 +58,18 @@ int main(int argc, char** argv)
     SetThreadAffinityMask(GetCurrentThread(), 1ull << 2);
 
     std::vector<int> sizes = fft ? std::vector<int>{ 2048, 4096, 8192, 16384, 32768, 65536, 131072 }
+                           : toom6 ? std::vector<int>{ 512, 768, 1024, 1536, 2048, 3072, 4096, 6144, 8192 }
                            : toom4 ? std::vector<int>{ 256, 384, 512, 768, 1024, 1536, 2048, 4096, 8192 }
                            : toom ? std::vector<int>{ 64, 96, 128, 192, 256, 384, 512, 768, 1024, 2048, 4096 }
                                   : std::vector<int>{ 12, 16, 20, 24, 32, 48, 64, 96, 128, 256, 512, 1024 };
     std::vector<int> thresholds = fft ? std::vector<int>{ 1024, 2048, 4096, 8192, 16384, 32768 }
+                                : toom6 ? std::vector<int>{ 384, 512, 768, 1024, 1536, 2048, 3072 }
                                 : toom4 ? std::vector<int>{ 192, 256, 384, 512, 768, 1024, 1536 }
                                 : toom ? std::vector<int>{ 48, 64, 96, 128, 192, 256, 384 }
                                        : std::vector<int>{ 8, 12, 16, 20, 24, 28, 32, 40, 48, 64 };
 
     std::printf(fft ? "FFT threshold T (Karatsuba at %d, Toom defaults); ratio = with the FFT from T / without\n"
+              : toom6 ? "Toom-6 threshold T (Karatsuba at %d, Toom-3/4 defaults, no FFT); ratio = with Toom-6 from T / without\n"
               : toom4 ? "Toom-4 threshold T (Karatsuba at %d, Toom-3 default); ratio = with Toom-4 from T / without\n"
               : toom ? "Toom-3 threshold T (Karatsuba at %d); ratio = with Toom-3 from T / Karatsuba alone\n"
                      : "Karatsuba threshold T%.0d; ratio = Karatsuba from T / basecase kernel alone\n", kara);
@@ -85,16 +89,20 @@ int main(int argc, char** argv)
         std::vector<std::function<void()>> fs;
         int t3 = Karatsuba::Toom3Threshold;
         int t4 = Karatsuba::Toom4Threshold;
-        if (fft) fs.push_back([&] { Karatsuba::Multiply(a, b, r, kara, t3, t4, 1 << 30); });
-        else if (toom4) fs.push_back([&] { Karatsuba::Multiply(a, b, r, kara, t3, 1 << 30, 1 << 30); });
-        else if (toom) fs.push_back([&] { Karatsuba::Multiply(a, b, r, kara, 1 << 30, 1 << 30, 1 << 30); });
+        int t6 = Karatsuba::Toom6Threshold;
+        constexpr int off = 1 << 30;
+        if (fft) fs.push_back([&] { Karatsuba::Multiply(a, b, r, kara, t3, t4, t6, off); });
+        else if (toom6) fs.push_back([&] { Karatsuba::Multiply(a, b, r, kara, t3, t4, off, off); });
+        else if (toom4) fs.push_back([&] { Karatsuba::Multiply(a, b, r, kara, t3, off, off, off); });
+        else if (toom) fs.push_back([&] { Karatsuba::Multiply(a, b, r, kara, off, off, off, off); });
         else fs.push_back([&] { FullIntCore::Mult(a, b, r); });
         for (int t : thresholds)
         {
-            if (fft) fs.push_back([&, t] { Karatsuba::Multiply(a, b, r, kara, t3, t4, t); });
-            else if (toom4) fs.push_back([&, t] { Karatsuba::Multiply(a, b, r, kara, t3, t, 1 << 30); });
-            else if (toom) fs.push_back([&, t] { Karatsuba::Multiply(a, b, r, kara, t, 1 << 30, 1 << 30); });
-            else fs.push_back([&, t] { Karatsuba::Multiply(a, b, r, t, 1 << 30, 1 << 30, 1 << 30); });
+            if (fft) fs.push_back([&, t] { Karatsuba::Multiply(a, b, r, kara, t3, t4, t6, t); });
+            else if (toom6) fs.push_back([&, t] { Karatsuba::Multiply(a, b, r, kara, t3, t4, t, off); });
+            else if (toom4) fs.push_back([&, t] { Karatsuba::Multiply(a, b, r, kara, t3, t, off, off); });
+            else if (toom) fs.push_back([&, t] { Karatsuba::Multiply(a, b, r, kara, t, off, off, off); });
+            else fs.push_back([&, t] { Karatsuba::Multiply(a, b, r, t, off, off, off, off); });
         }
 
         std::vector<long long> iters;

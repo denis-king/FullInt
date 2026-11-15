@@ -15,7 +15,7 @@
 
 namespace fullint {
 
-void Karatsuba::Toom3(CSpan a, CSpan b, Span r, Span scratch, int threshold, int toom3Threshold, int toom4Threshold, int fftThreshold)
+void Karatsuba::Toom3(CSpan a, CSpan b, Span r, Span scratch, const Limits& lim)
 {
     size_t la = a.size(), lb = b.size(), len = la + lb;
     size_t k = (la + 2) / 3;
@@ -35,16 +35,16 @@ void Karatsuba::Toom3(CSpan a, CSpan b, Span r, Span scratch, int threshold, int
     Evaluate(a0, a1, a2, p1, pm1, pm2, nPm1, nPm2);
     Evaluate(b0, b1, b2, q1, qm1, qm2, nQm1, nQm2);
 
-    Mul(p1, q1, r1, rest, threshold, toom3Threshold, toom4Threshold, fftThreshold);
-    Mul(pm1, qm1, rm1, rest, threshold, toom3Threshold, toom4Threshold, fftThreshold);
-    Mul(pm2, qm2, rm2, rest, threshold, toom3Threshold, toom4Threshold, fftThreshold);
+    Mul(p1, q1, r1, rest, lim);
+    Mul(pm1, qm1, rm1, rest, lim);
+    Mul(pm2, qm2, rm2, rest, lim);
     bool nRm1 = nPm1 != nQm1, nRm2 = nPm2 != nQm2;
 
     // r(0) and r(inf) go straight into their final places in r; the 2k words between them are cleared
     Span r0 = r.subspan(len - 2 * k);
     Span rInf = r.subspan(0, len - 4 * k);
-    Mul(a0, b0, r0, rest, threshold, toom3Threshold, toom4Threshold, fftThreshold);
-    Mul(a2, b2, rInf, rest, threshold, toom3Threshold, toom4Threshold, fftThreshold);
+    Mul(a0, b0, r0, rest, lim);
+    Mul(a2, b2, rInf, rest, lim);
     std::memset(r.data() + (len - 4 * k), 0, 2 * k * sizeof(uint64_t));
 
     uint64_t rem;

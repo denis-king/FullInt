@@ -241,10 +241,10 @@ void Karatsuba::FftMultiply(CSpan a, CSpan b, Span r, int k)
 {
     if (r.size() != a.size() + b.size()) throw std::invalid_argument("r.size() must be a.size() + b.size()");
     if (k < 1 || k > 20) throw std::out_of_range("k");
-    FftMul(a, b, r, Threshold, Toom3Threshold, Toom4Threshold, FftThreshold, k);
+    FftMul(a, b, r, Limits{ Threshold, Toom3Threshold, Toom4Threshold, Toom6Threshold, FftThreshold }, k);
 }
 
-void Karatsuba::FftMul(CSpan a, CSpan b, Span r, int threshold, int toom3Threshold, int toom4Threshold, int fftThreshold, int forceK)
+void Karatsuba::FftMul(CSpan a, CSpan b, Span r, const Limits& lim, int forceK)
 {
     bool native = NativeKernels();
     size_t la = a.size(), lb = b.size(), len = la + lb;
@@ -275,7 +275,7 @@ void Karatsuba::FftMul(CSpan a, CSpan b, Span r, int threshold, int toom3Thresho
     for (int i = 0; i < K; i++)
     {
         Span x(all + sa[i], n1), y(all + sb[i], n1);
-        Mul(x, y, prod, rest, threshold, toom3Threshold, toom4Threshold, fftThreshold);
+        Mul(x, y, prod, rest, lim);
         ReduceProduct(prod, x);
     }
 
