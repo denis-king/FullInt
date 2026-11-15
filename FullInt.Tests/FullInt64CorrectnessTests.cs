@@ -572,6 +572,12 @@ namespace FullInt.Tests
                 if (i == 10) length = acc.value.Length;
             }
             Assert.AreEqual(length, acc.value.Length, "the reused array grows");
+
+            // zero in a long reused array prints as "0" (the long-number text path)
+            var big = new FullInt64(0);
+            FullInt64.Multiply(big, FullInt64.Parse(new string('9', 2000)), FullInt64.Parse(new string('7', 2000)));
+            FullInt64.Subtract(big, big, big);
+            Assert.AreEqual("0", big.ToString(10), "zero in a long array");
             Assert.AreEqual((BigInteger.Parse("123456789012345678901234567890") * 2 + 1000).ToString(), acc.ToString(10));
         }
 

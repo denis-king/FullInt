@@ -60,7 +60,9 @@ namespace FullInt.Core
         private string ToDecStringRecursive(FullInt64 value)
         {
             var magnitude = new FullInt64(false, value.value);   // read only here
-            int words = FullHelper.DeleteZeros(value.value).Length;
+            var trimmed = FullHelper.DeleteZeros(value.value);
+            if (trimmed.Length == 1 && trimmed[0] == 0) return "0";   // a long array holding zero (in-place results)
+            int words = trimmed.Length;
             int capacity = (int)(words * 19.27) + 2;              // 64·log10(2) = 19.266 digits per word
             var text = new char[capacity + 1];
             int start = WriteDecimal(magnitude, text, text.Length, -1);
