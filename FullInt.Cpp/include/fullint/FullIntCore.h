@@ -2,6 +2,7 @@
 //
 // Kernel versions: the baseline kernels run on any x86-64; where the CPU has more (Cpu.h),
 // the newer versions are called instead (Mult: BMI2 + ADX; And / Or / Xor, shifts, Compare: AVX2).
+// Div by a reciprocal (DivRecip.asm) is plain x86-64: everywhere unless FULLINT_CPU=baseline.
 //
 // In .NET the core is an interface (asm on win-x64/x86, managed elsewhere) and every call
 // pins the spans and crosses into the DLL. Here the asm kernels are linked into the same
@@ -19,6 +20,7 @@
 #include <fullint/kernels.h>
 
 #include <cstdint>
+#include <memory>
 #include <span>
 
 namespace fullint {
@@ -28,6 +30,21 @@ using CSpan = std::span<const uint64_t>;
 
 struct FullIntCore
 {
+    static constexpr size_t RecipWordsMin = 64;
+
+    // scratch of the reciprocal division (its dividend copy): per thread, grown on demand
+    static uint64_t* DivWork(size_t words)
+    {
+        thread_local std::unique_ptr<uint64_t[]> buffer;
+        thread_local size_t capacity = 0;
+        if (capacity < words)
+        {
+            buffer = std::make_unique_for_overwrite<uint64_t[]>(words);
+            capacity = words;
+        }
+        return buffer.get();
+    }
+
     static uint64_t Add(CSpan a, CSpan b, Span r) noexcept
     {
         return Fullint64AddWIN(a.data(), b.data(), r.data(), (int)a.size(), (int)b.size(), (int)r.size());
@@ -52,11 +69,32 @@ struct FullIntCore
 
     static void Div(CSpan dividend, CSpan divisor, Span quotient, Span remainder) noexcept
     {
+#if defined(_M_X64) || defined(__x86_64__)
+        // DivRecip.asm; equal lengths (a quotient of 0 or 1) stay with the baseline: it decides
+        // those by a compare, the reciprocal's own div would not pay off
+        if (Cpu::Has(Cpu::Recip) && divisor.size() >= 2 && dividend.size() > divisor.size())
+        {
+            uint64_t stackWork[64];   // small: no thread_local lookup (a few ns at 3 words)
+            uint64_t* work = dividend.size() < 64 ? stackWork : DivWork(dividend.size() + 1);
+            Fullint64DivWIN_recip(dividend.data(), divisor.data(), quotient.data(), remainder.data(),
+                                  (int)dividend.size(), (int)divisor.size(), work);
+            return;
+        }
+#endif
         Fullint64DivWin(dividend.data(), divisor.data(), quotient.data(), remainder.data(), (int)dividend.size(), (int)divisor.size());
     }
 
     static void Div(CSpan dividend, uint64_t divisor, Span quotient, uint64_t* remainder) noexcept
     {
+#if defined(_M_X64) || defined(__x86_64__)
+        // DivRecip.asm from RecipWordsMin words: below that the reciprocal's own div does not pay
+        // off (measured on Zen 3: 1-3 words slower, 4-48 even, 64 words 1.1x, 1024 1.4x)
+        if (Cpu::Has(Cpu::Recip) && dividend.size() >= RecipWordsMin)
+        {
+            Fullint64Div2longWIN_recip(dividend.data(), divisor, quotient.data(), remainder, (int)dividend.size());
+            return;
+        }
+#endif
         Fullint64Div2longWin(dividend.data(), divisor, quotient.data(), remainder, (int)dividend.size());
     }
 

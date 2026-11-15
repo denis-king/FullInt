@@ -41,13 +41,14 @@ namespace FullInt.Core
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern int Fullint64CpuFeatures();
 
-        /// <summary>Bit 0 BMI2, bit 1 ADX, bit 2 AVX2 (OS-enabled); 0 with FULLINT_CPU=baseline.</summary>
+        /// <summary>Bit 0 BMI2, bit 1 ADX, bit 2 AVX2 (OS-enabled); bit 3 Recip: not a CPU feature,
+        /// the division by reciprocal (DivRecip.asm) runs on any x86-64; 0 with FULLINT_CPU=baseline.</summary>
         public static readonly int CpuFeatures = DetectCpuFeatures();
 
         private static int DetectCpuFeatures()
         {
             if (Environment.GetEnvironmentVariable("FULLINT_CPU") == "baseline") return 0;
-            try { return Fullint64CpuFeatures(); }
+            try { return Fullint64CpuFeatures() | 8; }
             catch (EntryPointNotFoundException) { return 0; }   // an older native DLL
         }
 
@@ -75,12 +76,25 @@ namespace FullInt.Core
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern int Fullint64CompareWIN_avx2(IntPtr a, IntPtr b, int lenA, int lenB);
 
+        // division by a precomputed reciprocal (DivRecip.asm): any x86-64. Long division when the
+        // dividend is longer than the divisor (equal lengths: the baseline decides by a compare);
+        // by one word from RecipWordsMin words (below that its own div does not pay off: measured
+        // on Zen 3, 1-3 words slower, 4-48 even, 64 words 1.1x, 1024 1.4x)
+        private static readonly bool DivRecip = (CpuFeatures & 8) == 8;
+        private const int RecipWordsMin = 64;
+
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern void Fullint64Div2longWIN_recip(IntPtr a, ulong b, IntPtr q, out ulong r, int lenA);
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern void Fullint64DivWIN_recip(IntPtr a, IntPtr b, IntPtr q, IntPtr r, int lenA, int lenB, IntPtr work);
+
         /// <summary>Which kernel versions this process uses, e.g. for a log line.</summary>
         public static string KernelVersions =>
-            MultAdx && LogicAvx2 ? "Mult: adx; And/Or/Xor, Shl/Shr, Compare: avx2; other: baseline"
-            : MultAdx ? "Mult: adx; other: baseline"
-            : LogicAvx2 ? "And/Or/Xor, Shl/Shr, Compare: avx2; other: baseline"
-            : "all: baseline";
+            !DivRecip ? "all: baseline"
+            : MultAdx && LogicAvx2 ? "Mult: adx; And/Or/Xor, Shl/Shr, Compare: avx2; Div: recip; other: baseline"
+            : MultAdx ? "Mult: adx; Div: recip; other: baseline"
+            : LogicAvx2 ? "And/Or/Xor, Shl/Shr, Compare: avx2; Div: recip; other: baseline"
+            : "Div: recip; other: baseline";
 
 #if NET5_0_OR_GREATER
         // The same entry points without the GC transition: ~10 ns less per call, which is most
@@ -168,11 +182,36 @@ namespace FullInt.Core
 
         protected override void Div(IntPtr a, IntPtr b, IntPtr q, IntPtr r, int lenA, int lenB)
         {
+            if (DivRecip && lenB >= 2 && lenA > lenB)
+            {
+                DivRecipLong(a, b, q, r, lenA, lenB);
+                return;
+            }
             Fullint64DivWin(a, b, q, r, lenA, lenB);
+        }
+
+        // the reciprocal kernel works on a copy of the dividend: lenA + 1 words of scratch
+        private static unsafe void DivRecipLong(IntPtr a, IntPtr b, IntPtr q, IntPtr r, int lenA, int lenB)
+        {
+            if (lenA < FullHelper.StackAllocLimitWords)
+            {
+                ulong* work = stackalloc ulong[lenA + 1];
+                Fullint64DivWIN_recip(a, b, q, r, lenA, lenB, (IntPtr)work);
+                return;
+            }
+            var rented = System.Buffers.ArrayPool<ulong>.Shared.Rent(lenA + 1);
+            fixed (ulong* work = rented)
+                Fullint64DivWIN_recip(a, b, q, r, lenA, lenB, (IntPtr)work);
+            System.Buffers.ArrayPool<ulong>.Shared.Return(rented);
         }
 		
 		protected override void Div(IntPtr a, ulong b, IntPtr q, out ulong r, int lenA)
         {
+            if (DivRecip && lenA >= RecipWordsMin)
+            {
+                Fullint64Div2longWIN_recip(a, b, q, out r, lenA);
+                return;
+            }
             Fullint64Div2longWin(a, b, q, out r, lenA);
         }
 

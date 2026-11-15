@@ -13,7 +13,9 @@ namespace fullint {
 
 struct Cpu
 {
-    enum : int { Bmi2 = 1, Adx = 2, Avx2 = 4 };
+    // Recip is not a CPU feature: the division by reciprocal (DivRecip.asm) runs on any x86-64,
+    // set unless FULLINT_CPU=baseline (then the original Div kernels run)
+    enum : int { Bmi2 = 1, Adx = 2, Avx2 = 4, Recip = 8 };
 
     static int Detect() noexcept
     {
@@ -21,7 +23,7 @@ struct Cpu
         const char* forced = std::getenv("FULLINT_CPU");
         if (forced != nullptr && std::strcmp(forced, "baseline") == 0) return 0;
 #if defined(_M_X64) || defined(__x86_64__)
-        return Fullint64CpuFeatures();
+        return Fullint64CpuFeatures() | Recip;
 #else
         return 0;   // x86: the baseline kernels only, for now
 #endif
@@ -35,10 +37,11 @@ struct Cpu
     static const char* Describe() noexcept
     {
         bool adx = Has(Bmi2 | Adx), avx2 = Has(Avx2);
-        return adx && avx2 ? "Mult: adx; And/Or/Xor, Shl/Shr, Compare: avx2; other: baseline"
-             : adx         ? "Mult: adx; other: baseline"
-             : avx2        ? "And/Or/Xor, Shl/Shr, Compare: avx2; other: baseline"
-                           : "all: baseline";
+        if (!Has(Recip)) return "all: baseline";
+        return adx && avx2 ? "Mult: adx; And/Or/Xor, Shl/Shr, Compare: avx2; Div: recip; other: baseline"
+             : adx         ? "Mult: adx; Div: recip; other: baseline"
+             : avx2        ? "And/Or/Xor, Shl/Shr, Compare: avx2; Div: recip; other: baseline"
+                           : "Div: recip; other: baseline";
     }
 };
 

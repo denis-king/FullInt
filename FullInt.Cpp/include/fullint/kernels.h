@@ -46,6 +46,11 @@ int  Fullint64XorWIN_avx2(const uint64_t* a, const uint64_t* b, uint64_t* r, int
 void Fullint64ShlWIN_avx2(const uint64_t* a, uint64_t* r, int lenA, int lenR, int shift);   // AVX2
 void Fullint64ShrWIN_avx2(const uint64_t* a, uint64_t* r, int lenA, int lenR, int shift);
 int  Fullint64CompareWIN_avx2(const uint64_t* a, const uint64_t* b, int lenA, int lenB);    // AVX2
+
+// division by a precomputed reciprocal (DivRecip.asm): any x86-64. Div: lenA >= lenB >= 2,
+// work = lenA + 1 words of scratch; otherwise the contracts of the baseline Div / Div2long.
+void Fullint64Div2longWIN_recip(const uint64_t* a, uint64_t b, uint64_t* q, uint64_t* r, int lenA);
+void Fullint64DivWIN_recip(const uint64_t* a, const uint64_t* b, uint64_t* q, uint64_t* r, int lenA, int lenB, uint64_t* work);
 #endif
 
 }
