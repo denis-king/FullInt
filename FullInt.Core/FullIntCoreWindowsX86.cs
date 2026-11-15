@@ -48,14 +48,21 @@ namespace FullInt.Core
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern int Fullint64CpuFeatures();
 
-        private static readonly bool LogicSse2 = DetectSse2();
+        private static readonly int CpuFeatures = DetectCpuFeatures();
+        private static readonly bool LogicSse2 = (CpuFeatures & 16) != 0;
 
-        private static bool DetectSse2()
+        // Mult with mulx / adcx / adox in 32-bit digits (x86/MultAdx.asm): BMI2 + ADX
+        private static readonly bool MultAdx = (CpuFeatures & 3) == 3;
+
+        private static int DetectCpuFeatures()
         {
-            if (!DivRecip) return false;   // FULLINT_CPU=baseline
-            try { return (Fullint64CpuFeatures() & 16) != 0; }
-            catch (EntryPointNotFoundException) { return false; }   // an older native DLL
+            if (!DivRecip) return 0;   // FULLINT_CPU=baseline
+            try { return Fullint64CpuFeatures(); }
+            catch (EntryPointNotFoundException) { return 0; }   // an older native DLL
         }
+
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern void Fullint64MultWIN_adx(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR);
 
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern int Fullint64AndWIN_sse2(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs);
@@ -140,7 +147,10 @@ namespace FullInt.Core
             => Fullint64SubWIN(a, b, r, lenA, lenB, lenR);
 
         protected override void Mult(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR)
-            => Fullint64MultWIN(a, b, r, lenA, lenB, lenR);   // 5x the managed core already at 4 words
+        {
+            if (MultAdx) Fullint64MultWIN_adx(a, b, r, lenA, lenB, lenR);   // 1.2-1.3x the baseline
+            else Fullint64MultWIN(a, b, r, lenA, lenB, lenR);
+        }   // 5x the managed core already at 4 words
 
         protected override int Compare(IntPtr a, IntPtr b, int lenA, int lenB)
             => Fullint64CompareWIN(a, b, lenA, lenB);
@@ -214,6 +224,7 @@ namespace FullInt.Core
             public static int Or(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => Fullint64OrWIN(a, b, r, lenA, lenB, lenR, signs);
             public static int Xor(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => Fullint64XorWIN(a, b, r, lenA, lenB, lenR, signs);
             public static int CpuFeatures() => Fullint64CpuFeatures();
+            public static void MultAdx(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR) => Fullint64MultWIN_adx(a, b, r, lenA, lenB, lenR);
             public static int AndSse2(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => Fullint64AndWIN_sse2(a, b, r, lenA, lenB, lenR, signs);
             public static int OrSse2(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => Fullint64OrWIN_sse2(a, b, r, lenA, lenB, lenR, signs);
             public static int XorSse2(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => Fullint64XorWIN_sse2(a, b, r, lenA, lenB, lenR, signs);

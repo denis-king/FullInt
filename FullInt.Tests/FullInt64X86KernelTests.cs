@@ -139,6 +139,41 @@ namespace FullInt.Tests
         }
 
         /// <summary>
+        /// The mulx / adcx / adox multiply (x86/MultAdx.asm), where the CPU has BMI2 + ADX: every
+        /// length pair 1..24, special words, a longer result (its extra words must be zero).
+        /// </summary>
+        [TestMethod]
+        public void X86Kernels_MultAdx_MatchesBigInteger()
+        {
+            if (!IsX86Windows)
+            {
+                Assert.Inconclusive("x86 kernels run only in a 32-bit Windows process");
+                return;
+            }
+            if ((FullIntCoreWindowsX86.Kernels.CpuFeatures() & 3) != 3)
+            {
+                Assert.Inconclusive("the CPU has no BMI2 + ADX");
+                return;
+            }
+
+            var rnd = new Random(6161);
+            for (int la = 1; la <= 24; la++)
+                for (int lb = 1; lb <= 24; lb++)
+                {
+                    var a = Next(rnd, la);
+                    var b = Next(rnd, lb);
+                    int lr = la + lb + rnd.Next(0, 3);
+                    var r = new ulong[lr];
+                    for (int i = 0; i < lr; i++) r[i] = 0xDEAD_BEEF_DEAD_BEEFUL;   // must be fully overwritten
+                    using (Pinned pa = new Pinned(a), pb = new Pinned(b), pr = new Pinned(r))
+                    {
+                        FullIntCoreWindowsX86.Kernels.MultAdx(pa.P, pb.P, pr.P, la, lb, lr);
+                    }
+                    Assert.AreEqual(Big(a) * Big(b), Big(r), $"mult adx {la}x{lb} lenR={lr}");
+                }
+        }
+
+        /// <summary>
         /// The x86 decimal string kernels: ToDecString of random values, FromDecString of their
         /// digits with and without leading zeros (chunk boundaries at multiples of 19 digits),
         /// against BigInteger.

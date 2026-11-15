@@ -9,6 +9,7 @@ namespace fullint {
 
 struct Karatsuba
 {
+#if defined(_M_X64) || defined(__x86_64__)
     // Shorter operand below this many words: the basecase (column) multiply.
     // C# uses 64: there each core call costs ~10-15 ns more (interop). Here a kernel call is
     // a direct call; tuned with fullint_kara_tune (Zen 3): 28..48 are equal within noise and
@@ -23,6 +24,15 @@ struct Karatsuba
     // From this many words in the shorter operand (operands not too unbalanced): Toom-4
     // (C#: Toom4Threshold, the same value).
     static inline int Toom4Threshold = 512;
+#else
+    // x86: a word product is four 32x32 multiplies, the basecase ~4x dearer than on x64, so
+    // every level pays off earlier. fullint_kara_tune on the x86 build (Zen 3): Karatsuba
+    // 16..24 best (48 words 0.77 of the basecase, 32: 0.83); Toom-3 from 96 (4096 words 0.71
+    // of Karatsuba alone, 256: 0.76); Toom-4 from 256 (0.86-0.94, 512: 0.88-0.95).
+    static inline int Threshold = 20;
+    static inline int Toom3Threshold = 96;
+    static inline int Toom4Threshold = 256;
+#endif
 
     // Scratch words needed by Multiply.
     static size_t ScratchLength(size_t lenA, size_t lenB) { return 16 * (lenA > lenB ? lenA : lenB) + 1024; }

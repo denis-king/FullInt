@@ -62,13 +62,11 @@ struct FullIntCore
 
     static void Mult(CSpan a, CSpan b, Span r) noexcept
     {
-#if defined(_M_X64) || defined(__x86_64__)
-        if (Cpu::Has(Cpu::Bmi2 | Cpu::Adx))   // mulx / adcx / adox (MultAdx.asm)
+        if (Cpu::Has(Cpu::Bmi2 | Cpu::Adx))   // mulx / adcx / adox (MultAdx.asm; x86: in 32-bit digits)
         {
             Fullint64MultWIN_adx(a.data(), b.data(), r.data(), (int)a.size(), (int)b.size(), (int)r.size());
             return;
         }
-#endif
         Fullint64MultWIN(a.data(), b.data(), r.data(), (int)a.size(), (int)b.size(), (int)r.size());
     }
 
