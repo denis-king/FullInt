@@ -5,6 +5,7 @@
 //   Parse(t):     t = [high][low: 19·2^k digits]  ->  Parse(high)·P_k + Parse(low)
 // Leaves below DecimalConversion thresholds are the ToDecString / FromDecString kernels.
 #include <fullint/FullInt64.h>
+#include <fullint/NewtonDivision.h>
 
 #include <cmath>
 #include <cstring>
@@ -23,6 +24,18 @@ int DecimalPowerWords(int k) { return (int)std::ceil(BitsPerPower0 * (double)(1L
 
 std::mutex powersLock;
 std::vector<std::unique_ptr<FullInt64>> powers;   // [k] = P_k; the objects never move
+
+// [k] = P_k prepared for the division (its reciprocal), made on first use
+std::mutex preparedLock;
+std::vector<std::unique_ptr<NewtonDivision::Prepared>> prepared;
+
+const NewtonDivision::Prepared& PreparedPower(int k, const FullInt64& pk)
+{
+    std::lock_guard<std::mutex> guard(preparedLock);
+    if ((int)prepared.size() <= k) prepared.resize(k + 1);
+    if (!prepared[k]) prepared[k] = std::make_unique<NewtonDivision::Prepared>(NewtonDivision::Prepare(pk.Words()));
+    return *prepared[k];
+}
 
 }  // namespace
 
@@ -66,8 +79,21 @@ size_t FullInt64Engine::WriteDecimal(const FullInt64& x, char* text, size_t end,
     // P_k of about half of x's words
     int k = 0;
     while ((size_t)DecimalPowerWords(k + 1) * 2 <= w.size()) k++;
+    const FullInt64& pk = DecimalPower(k);
     FullInt64 q, r;
-    divRem(x, DecimalPower(k), &q, &r);
+    CSpan pw = pk.Words();
+    if (pw.size() >= (size_t)DecimalConversion::PreparedFrom)
+    {
+        // the same P_k divides 2^level numbers: its reciprocal once, then a product for the
+        // quotient and one (cyclic when long) for the remainder per division
+        const NewtonDivision::Prepared& p = PreparedPower(k, pk);
+        uint32_t lq = (uint32_t)(w.size() - pw.size() + 1), lr = (uint32_t)pw.size() + 2;
+        NewtonDivision::DivRem(w, p, Span(q.Prepare(lq), lq), Span(r.Prepare(lr), lr));
+        q.Normalize(false);
+        r.Normalize(false);
+    }
+    else
+        divRem(x, pk, &q, &r);
     size_t low = (size_t)19 << k;
     WriteDecimal(r, text, end, (ptrdiff_t)low);
     return WriteDecimal(q, text, end - low, width < 0 ? -1 : width - (ptrdiff_t)low);

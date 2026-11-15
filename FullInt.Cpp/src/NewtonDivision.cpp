@@ -100,13 +100,38 @@ void NewtonDivision::DivRem(CSpan a, CSpan b, Span q, Span r, int split, int inv
     if (cyclicFrom == 0) cyclicFrom = (size_t)CyclicFrom;
     if (split < 0) throw std::out_of_range("split");
     if (inverseBase < 2) throw std::out_of_range("inverseBase");
-    size_t la = a.size(), n = b.size();
+    size_t n = b.size();
     int sigma = FullHelper::LeadingZeroCount(b[0]);
 
-    // B' = B << sigma: n words, top bit set;  A' = A << sigma
+    // B' = B << sigma: n words, top bit set
     Words bShifted(n + 1);
     FullIntCore::ShiftLeft(b, sigma, bShifted);
-    CSpan bn = CSpan(bShifted).subspan(1);
+    Run(a, CSpan(bShifted).subspan(1), sigma, nullptr, split, inverseBase, cyclicFrom, q, r);
+}
+
+NewtonDivision::Prepared NewtonDivision::Prepare(CSpan b)
+{
+    Prepared p;
+    size_t n = b.size();
+    p.sigma = FullHelper::LeadingZeroCount(b[0]);
+    p.shifted.assign(n + 1, 0);
+    FullIntCore::ShiftLeft(b, p.sigma, p.shifted);
+    p.inverse = Inverse(CSpan(p.shifted).subspan(1), InverseBase, (size_t)CyclicFrom);   // n + 1 words
+    return p;
+}
+
+void NewtonDivision::DivRem(CSpan a, const Prepared& p, Span q, Span r)
+{
+    Run(a, CSpan(p.shifted).subspan(1), p.sigma, &p.inverse, 1, InverseBase, (size_t)CyclicFrom, q, r);
+}
+
+// the division by B' = B << sigma (n words, top bit set); inverseN: B''s whole reciprocal (n + 1
+// words, the blocks then take n words, any shorter ones truncate it), or none: one of the
+// length the split asks for, computed here
+void NewtonDivision::Run(CSpan a, CSpan bn, int sigma, const std::vector<uint64_t>* inverseN, int split, int inverseBase,
+                         size_t cyclicFrom, Span q, Span r)
+{
+    size_t la = a.size(), n = bn.size();
     Words aShifted(la + 1);
     FullIntCore::ShiftLeft(a, sigma, aShifted);
     CSpan at = DeleteZeros(aShifted);
@@ -131,10 +156,22 @@ void NewtonDivision::DivRem(CSpan a, CSpan b, Span q, Span r, int split, int inv
 
     if (qn > 0)
     {
-        if (split == 0) split = qn >= 2 * n || n < (size_t)SplitFrom ? 1 : 2;
-        size_t blocks = std::max<size_t>(1, (qn + n - 1) / n) * (size_t)split;
-        size_t s = std::min(n, (qn + blocks - 1) / blocks);
-        Words inv = Inverse(bn.subspan(0, s), inverseBase, cyclicFrom);   // s + 1 words
+        size_t s;
+        Words own;
+        const Words* inv;
+        if (inverseN)
+        {
+            s = n;
+            inv = inverseN;
+        }
+        else
+        {
+            if (split == 0) split = qn >= 2 * n || n < (size_t)SplitFrom ? 1 : 2;
+            size_t blocks = std::max<size_t>(1, (qn + n - 1) / n) * (size_t)split;
+            s = std::min(n, (qn + blocks - 1) / blocks);
+            own = Inverse(bn.subspan(0, s), inverseBase, cyclicFrom);   // s + 1 words
+            inv = &own;
+        }
 
         size_t t = qn - (qn - 1) / s * s;                            // the first block: 1..s words
         Words x(n + s), prod(2 * s + 1), tb(n + s);
@@ -153,7 +190,7 @@ void NewtonDivision::DivRem(CSpan a, CSpan b, Span q, Span r, int split, int inv
 
             // q̂ = top t words of X · top t + 1 words of I, over β^t (kept below β^t)
             Span p = Span(prod).subspan(0, 2 * t + 1);
-            Karatsuba::Multiply(xs.subspan(0, t), CSpan(inv).subspan(0, t + 1), p);
+            Karatsuba::Multiply(xs.subspan(0, t), CSpan(*inv).subspan(0, t + 1), p);
             if (p[0] != 0) std::fill(qb.begin(), qb.end(), ~0ull);
             else std::copy(p.begin() + 1, p.begin() + 1 + t, qb.begin());
 

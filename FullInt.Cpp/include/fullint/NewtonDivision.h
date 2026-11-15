@@ -56,7 +56,22 @@ struct NewtonDivision
     // I ~ β^(2s)/D for D of s words with its top bit set: s + 1 words, within a few units of
     // the floor (tests).
     static std::vector<uint64_t> Inverse(CSpan d, int inverseBase);
+
+    // A divisor used many times (the powers of ToString): B << sigma and its whole reciprocal
+    // computed once; DivRem then divides in blocks of n words with it, nothing recomputed.
+    struct Prepared
+    {
+        std::vector<uint64_t> shifted;   // n + 1 words: [0] = the word shifted out (0), then B'
+        std::vector<uint64_t> inverse;   // n + 1 words: ~ β^(2n) / B'
+        int sigma = 0;
+    };
+    static Prepared Prepare(CSpan b);
+    static void DivRem(CSpan a, const Prepared& p, Span q, Span r);
     static std::vector<uint64_t> Inverse(CSpan d, int inverseBase, size_t cyclicFrom);
+
+private:
+    static void Run(CSpan a, CSpan bn, int sigma, const std::vector<uint64_t>* inverseN, int split, int inverseBase,
+                    size_t cyclicFrom, Span q, Span r);
 };
 
 }  // namespace fullint

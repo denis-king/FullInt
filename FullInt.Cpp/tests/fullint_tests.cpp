@@ -568,10 +568,13 @@ void DecimalByHalves()
     }
 
     int savedTo = fullint::DecimalConversion::ToStringThreshold, savedParse = fullint::DecimalConversion::ParseThreshold;
+    int savedPrepared = fullint::DecimalConversion::PreparedFrom;
     for (auto [to, parse] : { std::pair{ savedTo, savedParse }, std::pair{ 2, 20 }, std::pair{ 3, 39 }, std::pair{ 5, 100 } })
     {
         fullint::DecimalConversion::ToStringThreshold = to;
         fullint::DecimalConversion::ParseThreshold = parse;
+        // small thresholds: the division by prepared powers from small powers too
+        fullint::DecimalConversion::PreparedFrom = to == savedTo ? savedPrepared : 2 + to;
         for (auto& t : texts)
         {
             if (to != savedTo && t.size() > 5000) continue;
@@ -588,6 +591,7 @@ void DecimalByHalves()
     }
     fullint::DecimalConversion::ToStringThreshold = savedTo;
     fullint::DecimalConversion::ParseThreshold = savedParse;
+    fullint::DecimalConversion::PreparedFrom = savedPrepared;
 }
 
 }  // namespace

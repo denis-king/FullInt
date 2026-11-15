@@ -8,11 +8,23 @@ namespace FullInt.Core
     /// </summary>
     public static class DecimalConversion
     {
-        /// <summary>Numbers above this many words are converted to text by halves; below, by the core's ToDecString.</summary>
-        public static int ToStringThreshold { get; set; } = 48;
+        /// <summary>
+        /// Numbers above this many words are converted to text by halves; below, by the core's
+        /// ToDecString. 32 with <see cref="PreparedFrom"/> 128 (`FullInt.Benchmarks decprep`, x64,
+        /// Zen 3): 0.95 of 48 without the prepared division over 64..4096 words.
+        /// </summary>
+        public static int ToStringThreshold { get; set; } = 32;
 
         /// <summary>Text above this many digits is parsed by halves; below, by the core's FromDecString.</summary>
         public static int ParseThreshold { get; set; } = 48 * 19;
+
+        /// <summary>
+        /// ToString divides by the powers P_k from this many words of P_k through a reciprocal
+        /// computed once per power (<see cref="NewtonDivision.Prepared"/>), not the general
+        /// division: the same P_k divides 2^level numbers. Below it Burnikel–Ziegler / the core's
+        /// Div are faster.
+        /// </summary>
+        public static int PreparedFrom { get; set; } = 128;
     }
 
     /// <summary>
@@ -27,6 +39,23 @@ namespace FullInt.Core
     public partial class FullInt64Engine
     {
         private static FullInt64[] _decimalPowers = Array.Empty<FullInt64>();   // [k] = P_k
+        private static NewtonDivision.Prepared?[] _preparedPowers = Array.Empty<NewtonDivision.Prepared?>();   // [k] = P_k prepared
+
+        private NewtonDivision.Prepared PreparedPower(int k, FullInt64 pk)
+        {
+            var prepared = Volatile.Read(ref _preparedPowers);
+            if (k < prepared.Length && prepared[k] != null) return prepared[k]!;
+            lock (_decimalPowersLock)
+            {
+                prepared = _preparedPowers;
+                if (k < prepared.Length && prepared[k] != null) return prepared[k]!;
+                var grown = new NewtonDivision.Prepared?[Math.Max(prepared.Length, k + 1)];
+                Array.Copy(prepared, grown, prepared.Length);
+                grown[k] = NewtonDivision.Prepare(_core, FullHelper.DeleteZeros(pk.value));
+                Volatile.Write(ref _preparedPowers, grown);
+                return grown[k]!;
+            }
+        }
         private static readonly object _decimalPowersLock = new object();
 
         private const double BitsPerPower0 = 63.11663380285988;   // 19·log2(10): bits of P_0; P_k has 2^k times as many
@@ -87,9 +116,26 @@ namespace FullInt.Core
             // P_k of about half of x's words
             int k = 0;
             while (DecimalPowerWords(k + 1) * 2 <= w.Length) k++;
-            var q = divRem(x, DecimalPower(k), wantQuotient: true, wantRemainder: true, out var r)!;
+            var pk = DecimalPower(k);
+            Span<ulong> pw = FullHelper.DeleteZeros(pk.value);
+            FullInt64 q, r;
+            if (pw.Length >= DecimalConversion.PreparedFrom)
+            {
+                // the same P_k divides 2^level numbers: its reciprocal once, then a product for the
+                // quotient and one (cyclic when long) for the remainder per division
+                var qw = new ulong[w.Length - pw.Length + 1];
+                var rw = new ulong[pw.Length + 2];
+                NewtonDivision.DivRem(_core, w, PreparedPower(k, pk), qw, rw);
+                q = new FullInt64(false, qw);
+                r = new FullInt64(false, rw);
+            }
+            else
+            {
+                q = divRem(x, pk, wantQuotient: true, wantRemainder: true, out var rr)!;
+                r = rr!;
+            }
             int low = 19 << k;
-            WriteDecimal(r!, text, end, low);
+            WriteDecimal(r, text, end, low);
             return WriteDecimal(q, text, end - low, width < 0 ? -1 : width - low);
         }
 

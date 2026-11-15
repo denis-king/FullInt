@@ -99,10 +99,50 @@ namespace FullInt.Core
             int la = a.Length, n = b.Length;
             int sigma = FullHelper.LeadingZeroCount(b[0]);
 
-            // B' = B << sigma: n words, top bit set;  A' = A << sigma
+            // B' = B << sigma: n words, top bit set
             var bShifted = new ulong[n + 1];
             core.ShiftLeft(b, sigma, bShifted);
-            Span<ulong> bn = bShifted.AsSpan(1);
+            Run(core, a, bShifted.AsSpan(1), sigma, null, split, inverseBase, cyclicFrom, q, r);
+        }
+
+        /// <summary>
+        /// A divisor used many times (the powers of ToString): B &lt;&lt; sigma and its whole
+        /// reciprocal computed once; <see cref="DivRem(IFullIntCore, Span{ulong}, Prepared, Span{ulong}, Span{ulong})"/>
+        /// then divides in blocks of n words with it, nothing recomputed.
+        /// </summary>
+        public sealed class Prepared
+        {
+            internal readonly ulong[] Shifted;   // n + 1 words: [0] = the word shifted out (0), then B'
+            internal readonly ulong[] Inverse;   // n + 1 words: ~ β^(2n) / B'
+            internal readonly int Sigma;
+
+            internal Prepared(ulong[] shifted, ulong[] inverse, int sigma)
+            {
+                Shifted = shifted; Inverse = inverse; Sigma = sigma;
+            }
+        }
+
+        /// <summary>B prepared for <see cref="DivRem(IFullIntCore, Span{ulong}, Prepared, Span{ulong}, Span{ulong})"/> (B without leading zero words).</summary>
+        public static Prepared Prepare(IFullIntCore core, Span<ulong> b)
+        {
+            int n = b.Length;
+            int sigma = FullHelper.LeadingZeroCount(b[0]);
+            var shifted = new ulong[n + 1];
+            core.ShiftLeft(b, sigma, shifted);
+            return new Prepared(shifted, Inverse(core, shifted.AsSpan(1), InverseBase, CyclicFrom), sigma);
+        }
+
+        /// <summary>The core.Div contract (q: a.Length - b.Length + 1 words, r: b.Length + 2) with a prepared divisor.</summary>
+        public static void DivRem(IFullIntCore core, Span<ulong> a, Prepared p, Span<ulong> q, Span<ulong> r) =>
+            Run(core, a, p.Shifted.AsSpan(1), p.Sigma, p.Inverse, 1, InverseBase, CyclicFrom, q, r);
+
+        // the division by B' = B << sigma (n words, top bit set); inverseN: B''s whole reciprocal
+        // (n + 1 words, the blocks then take n words, shorter ones truncate it), or null: one of
+        // the length the split asks for, computed here
+        private static void Run(IFullIntCore core, Span<ulong> a, Span<ulong> bn, int sigma, ulong[]? inverseN, int split,
+            int inverseBase, int cyclicFrom, Span<ulong> q, Span<ulong> r)
+        {
+            int la = a.Length, n = bn.Length;
             var aShifted = new ulong[la + 1];
             core.ShiftLeft(a, sigma, aShifted);
             Span<ulong> at = FullHelper.DeleteZeros(aShifted);
@@ -127,10 +167,20 @@ namespace FullInt.Core
 
             if (qn > 0)
             {
-                if (split == 0) split = qn >= 2 * n || n < SplitFrom ? 1 : 2;
-                int blocks = Math.Max(1, (qn + n - 1) / n) * split;
-                int s = Math.Min(n, (qn + blocks - 1) / blocks);
-                ulong[] inv = Inverse(core, bn.Slice(0, s), inverseBase, cyclicFrom);   // s + 1 words
+                int s;
+                ulong[] inv;
+                if (inverseN != null)
+                {
+                    s = n;
+                    inv = inverseN;
+                }
+                else
+                {
+                    if (split == 0) split = qn >= 2 * n || n < SplitFrom ? 1 : 2;
+                    int blocks = Math.Max(1, (qn + n - 1) / n) * split;
+                    s = Math.Min(n, (qn + blocks - 1) / blocks);
+                    inv = Inverse(core, bn.Slice(0, s), inverseBase, cyclicFrom);   // s + 1 words
+                }
 
                 int t = qn - (qn - 1) / s * s;                            // the first block: 1..s words
                 var x = new ulong[n + s];

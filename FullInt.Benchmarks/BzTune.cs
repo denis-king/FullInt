@@ -158,6 +158,59 @@ namespace FullInt.Benchmarks
             return 0;
         }
 
+        /// <summary>
+        /// "decprep [rounds]": ToString with pairs (leaf words, PreparedFrom words) - the leaf size
+        /// of the conversion by halves and the power size from which it divides through a prepared
+        /// reciprocal; ratio to the first pair, the geometric mean last.
+        /// </summary>
+        public static int RunDecimalPrepared(string[] args)
+        {
+            int rounds = args.Length > 0 ? int.Parse(args[0]) : 5;
+            var configs = new (int leaf, int prep)[] { (48, int.MaxValue), (48, 96), (32, 96), (32, 128), (48, 128), (32, 64), (24, 96), (40, 96), (32, 192) };
+            var rnd = new Random(2);
+            Console.Write($"{"N",6}");
+            foreach (var c in configs) Console.Write($" {c.leaf + "/" + (c.prep == int.MaxValue ? "-" : c.prep.ToString()),8}");
+            Console.WriteLine();
+            var logs = new double[configs.Length];
+            int count = 0;
+            foreach (int n in new[] { 64, 96, 128, 192, 256, 512, 1024, 2048, 4096 })
+            {
+                var w = new ulong[n];
+                for (int i = 0; i < n; i++) w[i] = (ulong)rnd.NextInt64() ^ ((ulong)rnd.Next(2) << 63);
+                w[0] |= 1;
+                var x = new FullInt64(false, w);
+                x.ToString(10);
+                var t = new double[configs.Length];
+                for (int c = 0; c < configs.Length; c++)
+                {
+                    DecimalConversion.ToStringThreshold = configs[c].leaf;
+                    DecimalConversion.PreparedFrom = configs[c].prep;
+                    x.ToString(10);
+                    double best = double.MaxValue;
+                    for (int r = 0; r < rounds; r++)
+                    {
+                        int it = 0;
+                        var sw = Stopwatch.StartNew();
+                        do { x.ToString(10); it++; } while (sw.ElapsedMilliseconds < 20);
+                        best = Math.Min(best, sw.Elapsed.TotalMilliseconds * 1000 / it);
+                    }
+                    t[c] = best;
+                }
+                Console.Write($"{n,6}");
+                for (int c = 0; c < configs.Length; c++)
+                {
+                    Console.Write($" {t[c] / t[0],8:F3}");
+                    logs[c] += Math.Log(t[c] / t[0]);
+                }
+                Console.WriteLine();
+                count++;
+            }
+            Console.Write($"{"geo",6}");
+            foreach (double l in logs) Console.Write($" {Math.Exp(l / count),8:F3}");
+            Console.WriteLine();
+            return 0;
+        }
+
         public static int Run(string[] args)
         {
             int rounds = args.Length > 0 ? int.Parse(args[0]) : 5;

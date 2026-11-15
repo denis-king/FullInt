@@ -553,6 +553,37 @@ namespace FullInt.Tests
         }
 
         /// <summary>
+        /// ToString of long numbers (the halves divide by the powers of ten through the prepared
+        /// reciprocal from DecimalConversion.PreparedFrom words), against BigInteger: random,
+        /// all-ones and 10^k ± 1 (long runs of 9 and 0 across the halves).
+        /// </summary>
+        [TestMethod]
+        public void ToString_LongNumbers_MatchBigInteger()
+        {
+            var rnd = new Random(1919);
+            var cases = new List<BigInteger>();
+            foreach (int words in new[] { 260, 600, 1500, 3100 })
+            {
+                cases.Add(ToBig(Next(rnd, words, nonZeroTop: true)));
+                var ones = new ulong[words];
+                ones.AsSpan().Fill(ulong.MaxValue);
+                cases.Add(ToBig(ones));
+            }
+            foreach (int digits in new[] { 19 * 256, 19 * 512 + 7, 19 * 2048 })
+            {
+                var p = BigInteger.Pow(10, digits);
+                cases.Add(p - 1);
+                cases.Add(p);
+                cases.Add(p + 1);
+            }
+            foreach (var big in cases)
+            {
+                var x = FullInt64.Parse(big.ToString());
+                Assert.AreEqual(big.ToString(), x.ToString(10), $"{big.ToString().Length} digits");
+            }
+        }
+
+        /// <summary>
         /// The exact division (Toom-Cook interpolation): multiples of odd and even d (d = d'·2^t,
         /// d' below 2^32), into another buffer and in place; a non-multiple returns nonzero.
         /// </summary>

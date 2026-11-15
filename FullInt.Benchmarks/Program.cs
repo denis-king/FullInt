@@ -28,6 +28,12 @@ if (args.Length > 0 && args[0] == "newton")
     return BzTune.RunNewton(args.Skip(1).ToArray());
 }
 
+// decprep [rounds]                          → ToString leaf / prepared-division thresholds (see BzTune.RunDecimalPrepared)
+if (args.Length > 0 && args[0] == "decprep")
+{
+    return BzTune.RunDecimalPrepared(args.Skip(1).ToArray());
+}
+
 // quot [rounds]                             → the quotient alone against the full division (see BzTune.RunQuotient)
 if (args.Length > 0 && args[0] == "quot")
 {

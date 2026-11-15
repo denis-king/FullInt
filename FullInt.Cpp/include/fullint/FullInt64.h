@@ -35,8 +35,14 @@ class FullInt64Engine;
 // Thresholds of the decimal conversion by halves (C# DecimalConversion)
 struct DecimalConversion
 {
-    static inline int ToStringThreshold = 48;      // words; below: the ToDecString kernel
+    // words; below: the ToDecString kernel. 32 with PreparedFrom 96 (x64, Zen 3): 0.95 of 48 / 48
+    // over 64..4096 words (0.89-0.92 at 192-1024)
+    static inline int ToStringThreshold = 32;
     static inline int ParseThreshold = 48 * 19;    // digits; below: the FromDecString kernel
+    // ToString divides by the powers P_k from this many words of P_k through a reciprocal
+    // computed once per power (NewtonDivision::Prepared), not the general division (below:
+    // Burnikel-Ziegler / the kernel are faster)
+    static inline int PreparedFrom = 96;
 };
 
 // Word buffers for the heap-stored numbers. Freed buffers are kept per thread by size class
