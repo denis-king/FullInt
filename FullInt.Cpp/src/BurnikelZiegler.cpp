@@ -61,26 +61,35 @@ void BurnikelZiegler::DivRem(CSpan a, CSpan b, Span q, Span r, int threshold)
     FullIntCore::ShiftLeft(b, sigma, bShifted);
     CSpan bn = CSpan(bShifted).subspan(bShifted.size() - n);
 
-    // A' = A << sigma, padded to t blocks of n words with the top bit of the top block clear
+    // A' = A << sigma: [top: n + h words][c blocks of n words], 0 <= h < n
     Words aShifted(la + sigma / 64 + 1);
     FullIntCore::ShiftLeft(a, sigma, aShifted);
     CSpan at = DeleteZeros(aShifted);
-    size_t bits = at.size() * 64 - (size_t)FullHelper::LeadingZeroCount(at[0]);
-    size_t t = std::max<size_t>(2, (bits + 1 + 64 * n - 1) / (64 * n));
-    Words z(t * n);
-    std::copy(at.begin(), at.end(), z.end() - at.size());
+    size_t c = (at.size() - n) / n, h = at.size() - n - c * n;
+    Words quotient(1 + h + c * n);   // [0 or 1][h words][c blocks]
 
-    // from the top: Z = [R, next block], one n-word quotient block per step
-    Words quotient((t - 1) * n), zz(2 * n), ri(n);
-    std::copy(z.begin(), z.begin() + 2 * n, zz.begin());
-    for (size_t p = 0; p + 2 <= t; p++)
+    // The top part. Its top n words are below β^n <= 2·B' (B' has its top bit set): if not
+    // below B', that quotient word is 1 and B' is subtracted once. Then its h quotient
+    // words by one unbalanced step (Div3n2n with a k = h split of B'). The textbook pads
+    // A' to whole blocks with its top bit clear instead: an extra, nearly empty block that
+    // costs a whole Div2n1n (half of all numbers; 4096 / 2048 words ~2x, 8192 / 4096 more).
+    Words ri(n), tt(at.begin(), at.begin() + n + h);
+    Span topN = Span(tt).subspan(0, n);
+    if (CompareEqualLength(topN, bn) >= 0)
     {
-        Div2n1n(zz, bn, Span(quotient).subspan(p * n, n), ri, threshold);
-        if (p + 2 <= t - 1)
-        {
-            std::copy(ri.begin(), ri.end(), zz.begin());
-            std::copy(z.begin() + (p + 2) * n, z.begin() + (p + 3) * n, zz.begin() + n);
-        }
+        FullIntCore::Sub(topN, bn, topN);
+        quotient[0] = 1;
+    }
+    if (h == 0) std::copy(topN.begin(), topN.end(), ri.begin());
+    else Div3n2n(tt, bn, Span(quotient).subspan(1, h), ri, threshold);
+
+    // then from the top: Z = [R, next block], one n-word quotient block per step
+    Words zz(2 * n);
+    for (size_t p = 0; p < c; p++)
+    {
+        std::copy(ri.begin(), ri.end(), zz.begin());
+        std::copy(at.begin() + n + h + p * n, at.begin() + n + h + (p + 1) * n, zz.begin() + n);
+        Div2n1n(zz, bn, Span(quotient).subspan(1 + h + p * n, n), ri, threshold);
     }
 
     // q: the low q.size() words (the quotient fits; any words above are zero)
@@ -110,15 +119,17 @@ void BurnikelZiegler::Div2n1n(CSpan a, CSpan b, Span q, Span r, int threshold)
     Div3n2n(r1, b, q.subspan(k, k), r, threshold);
 }
 
-// A (3k) < B·β^k, B = [B1 B2] (2k, top bit set) -> Q (k), R (2k)
+// A (n + k) < B·β^k, B = [B1 B2] (n, top bit set; B1 k words) -> Q (k), R (n)
 void BurnikelZiegler::Div3n2n(CSpan a, CSpan b, Span q, Span r, int threshold)
 {
-    size_t k = b.size() / 2;
-    CSpan a1 = a.subspan(0, k), a2 = a.subspan(k, k), a3 = a.subspan(2 * k, k);
-    CSpan b1 = b.subspan(0, k), b2 = b.subspan(k, k);
+    // k = q.size(): n / 2 inside the recursion; any 1 <= k < n for the top part of DivRem
+    // (A: n + k words, B1: the top k words of B, B2: the other n - k)
+    size_t n = b.size(), k = q.size();
+    CSpan a1 = a.subspan(0, k), a2 = a.subspan(k, k), a3 = a.subspan(2 * k, n - k);
+    CSpan b1 = b.subspan(0, k), b2 = b.subspan(k, n - k);
 
-    // X = [R1, A3] in 2k + 1 words (R1 can take k + 1 words)
-    Words x(2 * k + 1);
+    // X = [R1, A3] in n + 1 words (R1 can take k + 1 words)
+    Words x(n + 1);
     Span r1 = Span(x).subspan(0, k + 1);
     if (CompareEqualLength(a1, b1) < 0)
     {
@@ -133,7 +144,7 @@ void BurnikelZiegler::Div3n2n(CSpan a, CSpan b, Span q, Span r, int threshold)
     std::copy(a3.begin(), a3.end(), x.begin() + k + 1);
 
     // R̂ = X - Q̂·B2, sign-magnitude in x
-    Words d(2 * k);
+    Words d(n);
     Karatsuba::Multiply(q, b2, d);
     bool negative = FullIntCore::Sub(x, d, x) < 0;
 

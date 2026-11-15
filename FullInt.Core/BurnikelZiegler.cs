@@ -59,28 +59,36 @@ namespace FullInt.Core
             core.ShiftLeft(b, sigma, bShifted);
             Span<ulong> bn = bShifted.AsSpan(bShifted.Length - n);
 
-            // A' = A << sigma, padded to t blocks of n words with the top bit of the top block clear
+            // A' = A << sigma: [top: n + h words][c blocks of n words], 0 <= h < n
             var aShifted = new ulong[la + sigma / 64 + 1];
             core.ShiftLeft(a, sigma, aShifted);
             Span<ulong> at = FullHelper.DeleteZeros(aShifted);
-            long bits = (long)at.Length * 64 - FullHelper.LeadingZeroCount(at[0]);
-            int t = (int)Math.Max(2, (bits + 1 + 64L * n - 1) / (64L * n));
-            var z = new ulong[(long)t * n];
-            at.CopyTo(z.AsSpan(z.Length - at.Length));
+            int c = (at.Length - n) / n, h = at.Length - n - c * n;
+            var quotient = new ulong[1 + h + c * n];   // [0 or 1][h words][c blocks]
 
-            // from the top: Z = [R, next block], one n-word quotient block per step
-            var quotient = new ulong[(t - 1) * n];
-            var zz = new ulong[2 * n];
+            // The top part. Its top n words are below β^n <= 2·B' (B' has its top bit set): if not
+            // below B', that quotient word is 1 and B' is subtracted once. Then its h quotient
+            // words by one unbalanced step (Div3n2n with a k = h split of B'). The textbook pads
+            // A' to whole blocks with its top bit clear instead: an extra, nearly empty block that
+            // costs a whole Div2n1n (half of all numbers; 4096 / 2048 words ~2x, 8192 / 4096 more).
             var ri = new ulong[n];
-            z.AsSpan(0, 2 * n).CopyTo(zz);
-            for (int p = 0; p <= t - 2; p++)
+            var tt = at.Slice(0, n + h).ToArray();
+            Span<ulong> topN = tt.AsSpan(0, n);
+            if (CompareEqualLength(topN, bn) >= 0)
             {
-                Div2n1n(core, zz, bn, quotient.AsSpan(p * n, n), ri, threshold);
-                if (p + 2 <= t - 1)
-                {
-                    ri.CopyTo(zz);
-                    z.AsSpan((p + 2) * n, n).CopyTo(zz.AsSpan(n));
-                }
+                core.Sub(topN, bn, topN);
+                quotient[0] = 1;
+            }
+            if (h == 0) topN.CopyTo(ri);
+            else Div3n2n(core, tt, bn, quotient.AsSpan(1, h), ri, threshold);
+
+            // then from the top: Z = [R, next block], one n-word quotient block per step
+            var zz = new ulong[2 * n];
+            for (int p = 0; p < c; p++)
+            {
+                ri.CopyTo(zz);
+                at.Slice(n + h + p * n, n).CopyTo(zz.AsSpan(n));
+                Div2n1n(core, zz, bn, quotient.AsSpan(1 + h + p * n, n), ri, threshold);
             }
 
             // q: the low q.Length words (the quotient fits; any words above are zero)
@@ -110,15 +118,17 @@ namespace FullInt.Core
             Div3n2n(core, r1, b, q.Slice(k, k), r, threshold);
         }
 
-        // A (3k) < B·β^k, B = [B1 B2] (2k, top bit set) -> Q (k), R (2k)
+        // A (n + k) < B·β^k, B = [B1 B2] (n, top bit set; B1 k words) -> Q (k), R (n)
         private static void Div3n2n(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> q, Span<ulong> r, int threshold)
         {
-            int k = b.Length / 2;
-            Span<ulong> a1 = a.Slice(0, k), a2 = a.Slice(k, k), a3 = a.Slice(2 * k, k);
-            Span<ulong> b1 = b.Slice(0, k), b2 = b.Slice(k, k);
+            // k = q.Length: n / 2 inside the recursion; any 1 <= k < n for the top part of DivRem
+            // (A: n + k words, B1: the top k words of B, B2: the other n - k)
+            int n = b.Length, k = q.Length;
+            Span<ulong> a1 = a.Slice(0, k), a2 = a.Slice(k, k), a3 = a.Slice(2 * k, n - k);
+            Span<ulong> b1 = b.Slice(0, k), b2 = b.Slice(k, n - k);
 
-            // X = [R1, A3] in 2k + 1 words (R1 can take k + 1 words)
-            var x = new ulong[2 * k + 1];
+            // X = [R1, A3] in n + 1 words (R1 can take k + 1 words)
+            var x = new ulong[n + 1];
             Span<ulong> r1 = x.AsSpan(0, k + 1);
             if (CompareEqualLength(a1, b1) < 0)
             {
@@ -133,7 +143,7 @@ namespace FullInt.Core
             a3.CopyTo(x.AsSpan(k + 1));
 
             // R̂ = X - Q̂·B2, sign-magnitude in x
-            var d = new ulong[2 * k];
+            var d = new ulong[n];
             Karatsuba.Multiply(core, q, b2, d);
             bool negative = core.Sub(x, d, x) < 0;
 
