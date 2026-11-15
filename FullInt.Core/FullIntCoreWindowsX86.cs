@@ -103,8 +103,13 @@ namespace FullInt.Core
         int IFullIntCore.Sub(Span<ulong> a, Span<ulong> b, Span<ulong> r)
             => Small(a.Length, b.Length, r.Length) ? Managed.Sub(a, b, r) : Sub(a, b, r);
 
+        // short values (and the engine decides most compares itself, by length and top word): the
+        // managed core; long ones: the kernel, whose loop beats the managed one well before the call
+        // cost (4096 equal words: managed 8.5 us, BigInteger 3.7 us)
         int IFullIntCore.Compare(Span<ulong> a, Span<ulong> b)
-            => Managed.Compare(a, b);   // Fullint64CompareWIN stays available through the base class and Kernels
+            => a.Length <= CompareManagedWords && b.Length <= CompareManagedWords ? Managed.Compare(a, b) : Compare(a, b);
+
+        private const int CompareManagedWords = 16;
 
         int IFullIntCore.And(Span<ulong> a, bool negA, Span<ulong> b, bool negB, Span<ulong> r)
             => Small(a.Length, b.Length, r.Length) ? Managed.And(a, negA, b, negB, r) : And(a, negA, b, negB, r);

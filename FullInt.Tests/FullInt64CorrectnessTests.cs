@@ -366,6 +366,46 @@ namespace FullInt.Tests
         }
 
         /// <summary>
+        /// Compare of equal-length values with the same top word (decided in the engine by the first
+        /// differing word: CommonPrefixLength on .NET 8, a loop up to 16 words on netstandard, the
+        /// core beyond): one word differs at a random place, or none; lengths across the 16 / 64
+        /// word limits; every sign; against BigInteger.
+        /// </summary>
+        [TestMethod]
+        public void Compare_EqualTopWords_MatchBigInteger()
+        {
+            var rnd = new Random(31337);
+            static BigInteger Big(ulong[] w, bool neg)
+            {
+                BigInteger m = 0;
+                foreach (var x in w) m = (m << 64) + x;
+                return neg ? -m : m;
+            }
+            for (int it = 0; it < 3_000; it++)
+            {
+                int n = rnd.Next(4) == 0 ? rnd.Next(1, 300) : rnd.Next(1, 80);
+                var aw = new ulong[n];
+                for (int k = 0; k < n; k++) aw[k] = (ulong)rnd.NextInt64() ^ ((ulong)rnd.Next(2) << 63);
+                if (aw[0] == 0) aw[0] = 1;
+                var bw = (ulong[])aw.Clone();
+                if (n > 1 && rnd.Next(5) != 0)
+                {
+                    int at = rnd.Next(1, n);   // the top word stays the same
+                    bw[at] = rnd.Next(3) switch { 0 => bw[at] + 1, 1 => bw[at] - 1, _ => (ulong)rnd.NextInt64() };
+                }
+                bool an = rnd.Next(2) == 0, bn = rnd.Next(4) == 0 ? !an : an;
+                var fa = new FullInt64(an, aw);
+                var fb = new FullInt64(bn, bw);
+                BigInteger A = Big(aw, an), B = Big(bw, bn);
+                string ctx = $"n={n} it={it}";
+                Assert.AreEqual(A < B, fa < fb, "< " + ctx);
+                Assert.AreEqual(A > B, fa > fb, "> " + ctx);
+                Assert.AreEqual(A == B, fa == fb, "== " + ctx);
+                Assert.AreEqual(B > A, fb > fa, "> swapped " + ctx);
+            }
+        }
+
+        /// <summary>
         /// "/" and "%" (which no longer materialize the result they don't return) agree with
         /// the combined div(a, b, out remainder) and with BigInteger, on multi-word operands.
         /// </summary>

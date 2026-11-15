@@ -399,18 +399,44 @@ namespace FullInt.Core
         }
 
         // Magnitudes almost always differ in the length or the top word: with no leading zero
-        // words that decides it here, without the core call. Otherwise (equal top words, leading
-        // zeros) the core compares as before.
+        // words that decides it here, without the core call. Equal length and top word: the
+        // first differing word decides - found here too (.NET 8: CommonPrefixLength, vectorized;
+        // netstandard: a loop up to ShortCompareWords). Leading zeros, and long values on
+        // netstandard: the core.
         private static int CompareAbsQuick(Span<ulong> value1, Span<ulong> value2)
         {
             if (value1.Length > 0 && value2.Length > 0 && value1[0] != 0 && value2[0] != 0)
             {
-                if (value1.Length != value2.Length) return value1.Length > value2.Length ? 1 : -1;
+                int n = value1.Length;
+                if (n != value2.Length) return n > value2.Length ? 1 : -1;
                 if (value1[0] != value2[0]) return value1[0] > value2[0] ? 1 : -1;
-                if (value1.Length == 1) return 0;
+                if (n == 1) return 0;
+#if NET7_0_OR_GREATER
+                // 16-byte vectors: half the speed of the x64 AVX2 kernel on long values, which go
+                // there (the call costs ~10 ns); on x86 this beats the kernel at every length
+                if (n <= LongCompareWords || !Is64Bit)
+                {
+                    int i = 1 + value1.Slice(1).CommonPrefixLength(value2.Slice(1));
+                    if (i == n) return 0;
+                    return value1[i] > value2[i] ? 1 : -1;
+                }
+#else
+                if (n <= ShortCompareWords)
+                {
+                    for (int i = 1; i < n; i++)
+                        if (value1[i] != value2[i]) return value1[i] > value2[i] ? 1 : -1;
+                    return 0;
+                }
+#endif
             }
             return _core.Compare(value1, value2);
         }
+
+        // netstandard (.NET Framework): longer equal-topped values go to the core (a native call
+        // costs ~10 ns on x64, ~40 ns on x86 .NET Framework)
+        private const int ShortCompareWords = 16;
+        private const int LongCompareWords = 64;   // x64, measured: 64 words even, 128: the kernel 1.3x ahead
+        private static readonly bool Is64Bit = Environment.Is64BitProcess;
 
         public bool IsABiggerOrEqualsB(FullInt64 value1, FullInt64 value2)
         {
