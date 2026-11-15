@@ -218,13 +218,15 @@ void EdgeCases()
 // the multiplication dispatcher with small thresholds, so every level runs on small sizes
 void MultiplyThresholds()
 {
-    for (int round = 0; round < 300; round++)
+    for (int round = 0; round < 1500; round++)
     {
         int la = 1 + (int)(rng() % 120), lb = 1 + (int)(rng() % 120);
+        if (round % 50 == 0) { la = 300 + (int)(rng() % 900); lb = 300 + (int)(rng() % 900); }
         FullInt64 a = RandomValue(la), b = RandomValue(lb);
         std::vector<uint64_t> r(a.Length() + b.Length());
         int threshold = 2 + (int)(rng() % 10), toom3 = 3 + (int)(rng() % 20);
-        fullint::Karatsuba::Multiply(a.Words(), b.Words(), r, threshold, toom3);
+        int toom4 = rng() % 3 == 0 ? 1 << 30 : 4 + (int)(rng() % 40);   // Toom-4 levels too
+        fullint::Karatsuba::Multiply(a.Words(), b.Words(), r, threshold, toom3, toom4);
         Mpz ma, mb, e, got;
         ToMpz(Abs(a), ma.v);
         ToMpz(Abs(b), mb.v);

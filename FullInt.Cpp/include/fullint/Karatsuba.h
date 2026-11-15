@@ -20,17 +20,25 @@ struct Karatsuba
     // noise; the C# value is kept.
     static inline int Toom3Threshold = 256;
 
+    // From this many words in the shorter operand (operands not too unbalanced): Toom-4
+    // (C#: Toom4Threshold, the same value).
+    static inline int Toom4Threshold = 512;
+
     // Scratch words needed by Multiply.
     static size_t ScratchLength(size_t lenA, size_t lenB) { return 16 * (lenA > lenB ? lenA : lenB) + 1024; }
 
     // r = a * b with r.size() == a.size() + b.size().
     static void Multiply(CSpan a, CSpan b, Span r);
     static void Multiply(CSpan a, CSpan b, Span r, int threshold, int toom3Threshold);
+    static void Multiply(CSpan a, CSpan b, Span r, int threshold, int toom3Threshold, int toom4Threshold);
 
 private:
-    static void Mul(CSpan a, CSpan b, Span r, Span scratch, int threshold, int toom3Threshold);
-    static void MulUnbalanced(CSpan a, CSpan b, Span r, Span scratch, int threshold, int toom3Threshold);
-    static void Toom3(CSpan a, CSpan b, Span r, Span scratch, int threshold, int toom3Threshold);
+    static void Mul(CSpan a, CSpan b, Span r, Span scratch, int threshold, int toom3Threshold, int toom4Threshold);
+    static void MulUnbalanced(CSpan a, CSpan b, Span r, Span scratch, int threshold, int toom3Threshold, int toom4Threshold);
+    static void Toom3(CSpan a, CSpan b, Span r, Span scratch, int threshold, int toom3Threshold, int toom4Threshold);
+    static void Toom4(CSpan a, CSpan b, Span r, Span scratch, int threshold, int toom3Threshold, int toom4Threshold);
+    static void Evaluate4(CSpan x0, CSpan x1, CSpan x2, CSpan x3, Span p1, Span pm1, Span p2, Span pm2, Span ph,
+                          Span t, Span u, bool& negPm1, bool& negPm2);
     static void Evaluate(CSpan x0, CSpan x1, CSpan x2, Span p1, Span pm1, Span pm2, bool& negPm1, bool& negPm2);
     static bool SignedAdd(CSpan x, bool xNegative, CSpan y, bool yNegative, Span r);
 };

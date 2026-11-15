@@ -59,7 +59,8 @@ add_library(fullint STATIC
     src/FullInt64Engine.Decimal.cpp
     src/BurnikelZiegler.cpp
     src/Karatsuba.cpp
-    src/Toom3.cpp)
+    src/Toom3.cpp
+    src/Toom4.cpp)
 target_link_libraries(fullint PUBLIC FullInt::kernels)
 add_library(FullInt::fullint ALIAS fullint)
 

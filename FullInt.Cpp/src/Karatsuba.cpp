@@ -38,16 +38,22 @@ void Karatsuba::Multiply(CSpan a, CSpan b, Span r)
 
 void Karatsuba::Multiply(CSpan a, CSpan b, Span r, int threshold, int toom3Threshold)
 {
+    Multiply(a, b, r, threshold, toom3Threshold, Toom4Threshold);
+}
+
+void Karatsuba::Multiply(CSpan a, CSpan b, Span r, int threshold, int toom3Threshold, int toom4Threshold)
+{
     if (threshold < 2) throw std::out_of_range("threshold");
     if (toom3Threshold < 3) throw std::out_of_range("toom3Threshold");
+    if (toom4Threshold < 4) throw std::out_of_range("toom4Threshold");
     if (r.size() != a.size() + b.size()) throw std::invalid_argument("r.size() must be a.size() + b.size()");
 
-    Mul(a, b, r, ThreadScratch(ScratchLength(a.size(), b.size())), threshold, toom3Threshold);
+    Mul(a, b, r, ThreadScratch(ScratchLength(a.size(), b.size())), threshold, toom3Threshold, toom4Threshold);
 }
 
 // r = a · b, r.size() == a.size() + b.size(). The scratch is dirty on entry: everything taken
 // from it is fully written before it is read.
-void Karatsuba::Mul(CSpan a, CSpan b, Span r, Span scratch, int threshold, int toom3Threshold)
+void Karatsuba::Mul(CSpan a, CSpan b, Span r, Span scratch, int threshold, int toom3Threshold, int toom4Threshold)
 {
     if (a.size() < b.size()) std::swap(a, b);
     size_t la = a.size(), lb = b.size();
@@ -61,13 +67,19 @@ void Karatsuba::Mul(CSpan a, CSpan b, Span r, Span scratch, int threshold, int t
     size_t m = (la + 1) / 2;
     if (lb <= m)
     {
-        MulUnbalanced(a, b, r, scratch, threshold, toom3Threshold);
+        MulUnbalanced(a, b, r, scratch, threshold, toom3Threshold, toom4Threshold);
+        return;
+    }
+
+    if (lb >= (size_t)toom4Threshold && lb > 3 * ((la + 3) / 4))   // b reaches its top quarter
+    {
+        Toom4(a, b, r, scratch, threshold, toom3Threshold, toom4Threshold);
         return;
     }
 
     if (lb >= (size_t)toom3Threshold && lb > 2 * ((la + 2) / 3))   // b reaches its top third
     {
-        Toom3(a, b, r, scratch, threshold, toom3Threshold);
+        Toom3(a, b, r, scratch, threshold, toom3Threshold, toom4Threshold);
         return;
     }
 
@@ -85,8 +97,8 @@ void Karatsuba::Mul(CSpan a, CSpan b, Span r, Span scratch, int threshold, int t
     Span mid = scratch.subspan(4 * m, 2 * m + 1);
     Span rest = scratch.subspan(6 * m + 1);  // for the recursive calls, one at a time
 
-    Mul(a0, b0, z0, rest, threshold, toom3Threshold);
-    Mul(a1, b1, z2, rest, threshold, toom3Threshold);
+    Mul(a0, b0, z0, rest, threshold, toom3Threshold, toom4Threshold);
+    Mul(a1, b1, z2, rest, threshold, toom3Threshold, toom4Threshold);
 
     int sa = FullIntCore::Sub(a1, a0, da);   // da = |a1 - a0|, sa = sign of (a1 - a0)
     int sb = FullIntCore::Sub(b1, b0, db);
@@ -95,7 +107,7 @@ void Karatsuba::Mul(CSpan a, CSpan b, Span r, Span scratch, int threshold, int t
     FullIntCore::Add(z0, z2, mid);
     if (sa != 0 && sb != 0)
     {
-        Mul(da, db, zm, rest, threshold, toom3Threshold);
+        Mul(da, db, zm, rest, threshold, toom3Threshold, toom4Threshold);
         if (sa == sb)
             FullIntCore::Sub(mid, zm, mid);
         else
@@ -110,7 +122,7 @@ void Karatsuba::Mul(CSpan a, CSpan b, Span r, Span scratch, int threshold, int t
 
 // a much longer than b (b.size() <= half of a): a is cut into chunks of b.size() words from
 // the low end, each chunk·b (balanced, so Karatsuba again) is added in at its place.
-void Karatsuba::MulUnbalanced(CSpan a, CSpan b, Span r, Span scratch, int threshold, int toom3Threshold)
+void Karatsuba::MulUnbalanced(CSpan a, CSpan b, Span r, Span scratch, int threshold, int toom3Threshold, int toom4Threshold)
 {
     size_t la = a.size(), lb = b.size(), len = la + lb;
     std::memset(r.data(), 0, r.size_bytes());
@@ -123,7 +135,7 @@ void Karatsuba::MulUnbalanced(CSpan a, CSpan b, Span r, Span scratch, int thresh
         size_t c = std::min(lb, la - done);
         CSpan chunk = a.subspan(la - done - c, c);
         Span t = tmp.subspan(0, c + lb);
-        Mul(chunk, b, t, rest, threshold, toom3Threshold);
+        Mul(chunk, b, t, rest, threshold, toom3Threshold, toom4Threshold);
 
         // only the c + lb words at this offset change: everything below fits there, no carry out
         Span target = r.subspan(len - done - c - lb, c + lb);
