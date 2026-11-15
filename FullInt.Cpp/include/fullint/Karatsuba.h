@@ -67,6 +67,16 @@ struct Karatsuba
     // the FFT product alone with K = 2^k pieces (tests: the FFT on small numbers)
     static void FftMultiply(CSpan a, CSpan b, Span r, int k);
 
+    // Products modulo β^m - 1 (C#: Karatsuba.MultiplyMod): through the cyclic FFT from cyclicFrom
+    // words (the convolution without zero padding wraps: about half the transform of the full
+    // product), otherwise the full product folded. MulModLength: the m that MultiplyMod takes
+    // for at least minWords words. r in [0, β^m - 1) (β^m - 1, the other zero, written as 0);
+    // a and b at most m words.
+    static size_t MulModLength(size_t minWords, size_t cyclicFrom);
+    static void MultiplyMod(CSpan a, CSpan b, Span r, size_t cyclicFrom);
+    // r = x mod (β^m - 1), m = r.size(), in [0, β^m - 1)
+    static void FoldMod(CSpan x, Span r);
+
 private:
     // the thresholds of one Multiply call, passed down the recursion
     struct Limits
@@ -82,6 +92,8 @@ private:
     static void Toom4(CSpan a, CSpan b, Span r, Span scratch, const Limits& lim);
     static void FftMul(CSpan a, CSpan b, Span r, const Limits& lim, int forceK);
     static void ChooseFft(size_t la, size_t lb, int forceK, int& k, size_t& m, int& nBits);
+    static void ChooseFftCyclic(size_t mMin, bool exact, int& k, size_t& m, int& nBits);
+    static void Convolve(CSpan a, CSpan b, Span r, int k, size_t m, int nBits, const Limits& lim);
     static void Evaluate4(CSpan x0, CSpan x1, CSpan x2, CSpan x3, Span p1, Span pm1, Span p2, Span pm2, Span ph,
                           Span t, Span u, bool& negPm1, bool& negPm2);
     static void Evaluate(CSpan x0, CSpan x1, CSpan x2, Span p1, Span pm1, Span pm2, bool& negPm1, bool& negPm2);

@@ -306,6 +306,35 @@ void DivideThresholds()
     }
 }
 
+// products modulo β^m - 1: the cyclic FFT forced from small sizes and the folded full product;
+// all-ones operands (the β^m - 1 = 0 representation)
+void MultiplyModCheck()
+{
+    for (int round = 0; round < 300; round++)
+    {
+        size_t minWords = 8 + rng() % 392;
+        size_t cyclicFrom = rng() % 3 == 0 ? (size_t)1 << 30 : 8;
+        size_t m = fullint::Karatsuba::MulModLength(minWords, cyclicFrom);
+        CHECK(m >= minWords, "MulModLength");
+        std::vector<uint64_t> a(1 + rng() % m), b(1 + rng() % m), r(m, 0xDEADBEEFDEADBEEFull);
+        for (auto& x : a) x = rng();
+        for (auto& x : b) x = rng();
+        if (rng() % 5 == 0) std::fill(a.begin(), a.end(), ~0ull);
+        if (rng() % 5 == 0) std::fill(b.begin(), b.end(), ~0ull);
+        fullint::Karatsuba::MultiplyMod(a, b, r, cyclicFrom);
+        Mpz ma, mb, mod, e, got;
+        mpz_import(ma.v, a.size(), 1, 8, 0, 0, a.data());
+        mpz_import(mb.v, b.size(), 1, 8, 0, 0, b.data());
+        mpz_set_ui(mod.v, 1);
+        mpz_mul_2exp(mod.v, mod.v, 64 * m);
+        mpz_sub_ui(mod.v, mod.v, 1);
+        mpz_mul(e.v, ma.v, mb.v);
+        mpz_mod(e.v, e.v, mod.v);
+        mpz_import(got.v, r.size(), 1, 8, 0, 0, r.data());
+        CHECK(mpz_cmp(e.v, got.v) == 0, "MultiplyMod " + std::to_string(a.size()) + "x" + std::to_string(b.size()) + " m " + std::to_string(m));
+    }
+}
+
 // the quotient alone: small thresholds (the approximation recurses on small numbers), long
 // divisors with short quotients (cut down), exact multiples A = B·Q (+ 0/1) put the guard word
 // at the boundary (the fallback to the full division)
@@ -360,9 +389,9 @@ void QuotientOnly()
 // path run on small numbers; a few at the sizes the engine sends there; the reciprocal itself
 void NewtonDivide()
 {
-    auto check = [](const std::vector<uint64_t>& a, const std::vector<uint64_t>& b, int split, int base) {
+    auto check = [](const std::vector<uint64_t>& a, const std::vector<uint64_t>& b, int split, int base, size_t cyclicFrom = 0) {
         std::vector<uint64_t> q(a.size() - b.size() + 1, 0xDEADBEEFDEADBEEFull), r(b.size() + 2, 0xDEADBEEFDEADBEEFull);
-        fullint::NewtonDivision::DivRem(a, b, q, r, split, base);
+        fullint::NewtonDivision::DivRem(a, b, q, r, split, base, cyclicFrom);
         Mpz ma, mb, eq, er, gq, gr;
         mpz_import(ma.v, a.size(), 1, 8, 0, 0, a.data());
         mpz_import(mb.v, b.size(), 1, 8, 0, 0, b.data());
@@ -370,7 +399,7 @@ void NewtonDivide()
         mpz_import(gq.v, q.size(), 1, 8, 0, 0, q.data());
         mpz_import(gr.v, r.size(), 1, 8, 0, 0, r.data());
         CHECK(mpz_cmp(eq.v, gq.v) == 0 && mpz_cmp(er.v, gr.v) == 0,
-              "Newton division split " + std::to_string(split) + " base " + std::to_string(base) + " " +
+              "Newton division split " + std::to_string(split) + " base " + std::to_string(base) + " cyclic " + std::to_string(cyclicFrom) + " " +
                   std::to_string(a.size()) + "/" + std::to_string(b.size()));
     };
     auto shaped = [](size_t len) {
@@ -390,7 +419,7 @@ void NewtonDivide()
         size_t lb = 1 + rng() % 120, la = lb + rng() % 300;
         auto a = shaped(la), b = shaped(lb);
         if (rng() % 4 == 0) std::copy(b.begin(), b.end(), a.begin());
-        check(a, b, split, base);
+        check(a, b, split, base, rng() % 2 ? 0 : 8 + rng() % 56);   // the products modulo β^m - 1 on small numbers
     }
     check(shaped(20000), shaped(9000), 0, fullint::NewtonDivision::InverseBase);
     check(shaped(30000), shaped(8200), 0, fullint::NewtonDivision::InverseBase);
@@ -400,7 +429,7 @@ void NewtonDivide()
         size_t s = 1 + rng() % 200;
         auto d = shaped(s);
         d[0] |= 1ull << 63;
-        auto inv = fullint::NewtonDivision::Inverse(d, bases[rng() % 7]);
+        auto inv = fullint::NewtonDivision::Inverse(d, bases[rng() % 7], rng() % 2 ? (size_t)1 << 30 : 8 + rng() % 56);
         Mpz md, exact, got;
         mpz_import(md.v, d.size(), 1, 8, 0, 0, d.data());
         mpz_set_ui(exact.v, 1);
@@ -519,6 +548,7 @@ int main()
     DivideThresholds();
     NewtonDivide();
     QuotientOnly();
+    MultiplyModCheck();
     InPlaceApi();
     DecimalByHalves();
 

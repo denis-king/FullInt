@@ -62,6 +62,20 @@ void NegateLow(Span x)
     Increment(x);
 }
 
+// x = |x - y| for the value v = x - y mod β^m - 1 (x, y: m-word residues) with |v| < β^m / 2;
+// returns v < 0. x - y is v or v ± (β^m - 1): above β^m / 2 in size it is the latter, and
+// (β^m - 1) - |x - y| is the complement of its words.
+bool SignedResidue(Span x, CSpan y)
+{
+    bool negative = FullIntCore::Sub(x, y, x) < 0;
+    if ((x[0] >> 63) != 0)
+    {
+        for (auto& w : x) w = ~w;
+        negative = !negative;
+    }
+    return negative && !IsZero(x);
+}
+
 // r = R >> sigma: n words, right-aligned in r
 void Finish(CSpan rem, int sigma, Span r)
 {
@@ -78,6 +92,12 @@ void NewtonDivision::DivRem(CSpan a, CSpan b, Span q, Span r)
 
 void NewtonDivision::DivRem(CSpan a, CSpan b, Span q, Span r, int split, int inverseBase)
 {
+    DivRem(a, b, q, r, split, inverseBase, 0);
+}
+
+void NewtonDivision::DivRem(CSpan a, CSpan b, Span q, Span r, int split, int inverseBase, size_t cyclicFrom)
+{
+    if (cyclicFrom == 0) cyclicFrom = (size_t)CyclicFrom;
     if (split < 0) throw std::out_of_range("split");
     if (inverseBase < 2) throw std::out_of_range("inverseBase");
     size_t la = a.size(), n = b.size();
@@ -114,10 +134,15 @@ void NewtonDivision::DivRem(CSpan a, CSpan b, Span q, Span r, int split, int inv
         if (split == 0) split = qn >= 2 * n || n < (size_t)SplitFrom ? 1 : 2;
         size_t blocks = std::max<size_t>(1, (qn + n - 1) / n) * (size_t)split;
         size_t s = std::min(n, (qn + blocks - 1) / blocks);
-        Words inv = Inverse(bn.subspan(0, s), inverseBase);        // s + 1 words
+        Words inv = Inverse(bn.subspan(0, s), inverseBase, cyclicFrom);   // s + 1 words
 
         size_t t = qn - (qn - 1) / s * s;                            // the first block: 1..s words
         Words x(n + s), prod(2 * s + 1), tb(n + s);
+        // long: T = q̂·B' only modulo β^m - 1 (m >= n + 2, the cyclic FFT, about half the
+        // product): R = X - T is below 8·B' < β^m / 2 in size, so its residue gives it back
+        bool wrap = n + 2 >= cyclicFrom;
+        size_t mw = wrap ? Karatsuba::MulModLength(n + 2, cyclicFrom) : 0;
+        Words xm(mw), tm(mw);
         for (size_t pos = n; pos < at.size(); pos += t, t = s)
         {
             // X = [R, next t words]
@@ -131,6 +156,26 @@ void NewtonDivision::DivRem(CSpan a, CSpan b, Span q, Span r, int split, int inv
             Karatsuba::Multiply(xs.subspan(0, t), CSpan(inv).subspan(0, t + 1), p);
             if (p[0] != 0) std::fill(qb.begin(), qb.end(), ~0ull);
             else std::copy(p.begin() + 1, p.begin() + 1 + t, qb.begin());
+
+            if (wrap)
+            {
+                Karatsuba::FoldMod(xs, xm);
+                Karatsuba::MultiplyMod(bn, qb, tm, cyclicFrom);
+                bool negative = SignedResidue(xm, tm);              // R = X - T, |R| in xm
+                // R < 0: R += B', q̂ -= 1 (|R| > B' stays negative: |R| - B'; else B' - |R|)
+                while (negative)
+                {
+                    Decrement(qb);
+                    negative = FullIntCore::Sub(xm, bn, xm) > 0;
+                }
+                while (!IsZero(CSpan(xm).subspan(0, mw - n)) || CompareEqualLength(CSpan(xm).subspan(mw - n), bn) >= 0)
+                {
+                    FullIntCore::Sub(xm, bn, xm);
+                    Increment(qb);
+                }
+                std::copy(xm.end() - n, xm.end(), rem.begin());
+                continue;
+            }
 
             // T = q̂·B';  q̂ -= 1 while T > X;  R = X - T;  q̂ += 1 while R >= B'
             Span tt = Span(tb).subspan(0, n + t);
@@ -158,6 +203,11 @@ void NewtonDivision::DivRem(CSpan a, CSpan b, Span q, Span r, int split, int inv
 
 std::vector<uint64_t> NewtonDivision::Inverse(CSpan d, int inverseBase)
 {
+    return Inverse(d, inverseBase, (size_t)CyclicFrom);
+}
+
+std::vector<uint64_t> NewtonDivision::Inverse(CSpan d, int inverseBase, size_t cyclicFrom)
+{
     size_t s = d.size();
     if (s <= (size_t)inverseBase || s < 4)
     {
@@ -169,16 +219,35 @@ std::vector<uint64_t> NewtonDivision::Inverse(CSpan d, int inverseBase)
     }
 
     size_t h = s / 2 + 1;
-    Words ih = Inverse(d.subspan(0, h), inverseBase);               // h + 1 words
+    Words ih = Inverse(d.subspan(0, h), inverseBase, cyclicFrom);   // h + 1 words
 
     // e = β^(s+h) - D·Ih  (|e| < β^(s+2))
-    Words p(s + h + 1);
-    Karatsuba::Multiply(d, ih, p);
-    bool eNegative = p[0] != 0;
-    if (eNegative) p[0]--;                                            // |e| = P - β^(s+h)
-    else NegateLow(Span(p).subspan(1));                               // |e| = β^(s+h) - P
-    // Ih·e/β^(2h): e without its low h - 1 words (the error that drops is below 2/β)
-    CSpan et = DeleteZeros(CSpan(p).subspan(0, s + 2));
+    bool eNegative;
+    Words p;
+    CSpan et;
+    if (s + 3 >= cyclicFrom)
+    {
+        // long: D·Ih only modulo β^m - 1 (m >= s + 3): e = β^((s+h) mod m) - P̃ there, and
+        // |e| < β^m / 2 gives it back
+        size_t m = Karatsuba::MulModLength(s + 3, cyclicFrom);
+        Words pm(m);
+        Karatsuba::MultiplyMod(d, ih, pm, cyclicFrom);
+        p.assign(m, 0);
+        p[m - 1 - (s + h) % m] = 1;
+        eNegative = SignedResidue(p, pm);
+        // Ih·e/β^(2h): e without its low h - 1 words (the error that drops is below 2/β)
+        et = DeleteZeros(CSpan(p).subspan(0, m - (h - 1)));
+    }
+    else
+    {
+        p.assign(s + h + 1, 0);
+        Karatsuba::Multiply(d, ih, p);
+        eNegative = p[0] != 0;
+        if (eNegative) p[0]--;                                        // |e| = P - β^(s+h)
+        else NegateLow(Span(p).subspan(1));                           // |e| = β^(s+h) - P
+        // Ih·e/β^(2h): e without its low h - 1 words (the error that drops is below 2/β)
+        et = DeleteZeros(CSpan(p).subspan(0, s + 2));
+    }
 
     Words inv(s + 1);
     std::copy(ih.begin(), ih.end(), inv.begin());

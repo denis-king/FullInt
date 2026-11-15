@@ -246,11 +246,98 @@ void Karatsuba::FftMultiply(CSpan a, CSpan b, Span r, int k)
 
 void Karatsuba::FftMul(CSpan a, CSpan b, Span r, const Limits& lim, int forceK)
 {
-    bool native = NativeKernels();
-    size_t la = a.size(), lb = b.size(), len = la + lb;
     int k, nBits;
     size_t m;
-    ChooseFft(la, lb, forceK, k, m, nBits);
+    ChooseFft(a.size(), b.size(), forceK, k, m, nBits);
+    Convolve(a, b, r, k, m, nBits, lim);
+}
+
+size_t Karatsuba::MulModLength(size_t minWords, size_t cyclicFrom)
+{
+    if (minWords < cyclicFrom) return minWords;
+    int k, nBits;
+    size_t m;
+    ChooseFftCyclic(minWords, false, k, m, nBits);
+    return m << k;
+}
+
+void Karatsuba::MultiplyMod(CSpan a, CSpan b, Span r, size_t cyclicFrom)
+{
+    size_t m = r.size();
+    if (m >= cyclicFrom)
+    {
+        int k, nBits;
+        size_t pm;
+        ChooseFftCyclic(m, true, k, pm, nBits);
+        if (pm << k == m)
+        {
+            // K = 2^k pieces of M words, K·M = m: sum c_i·β^(M·i) = a·b mod β^(KM) - 1
+            size_t n1 = (size_t)nBits / 64 + 1;
+            std::vector<uint64_t> acc(m + n1 + 1);
+            Convolve(a, b, acc, k, pm, nBits, Limits{ Threshold, Toom3Threshold, Toom4Threshold, Toom6Threshold, FftThreshold });
+            FoldMod(acc, r);
+            return;
+        }
+    }
+    std::vector<uint64_t> prod(a.size() + b.size());
+    Multiply(a, b, prod);
+    FoldMod(prod, r);
+}
+
+void Karatsuba::FoldMod(CSpan x, Span r)
+{
+    size_t m = r.size();
+    std::memset(r.data(), 0, r.size_bytes());
+    for (size_t end = x.size(); end > 0; end = end > m ? end - m : 0)
+    {
+        size_t start = end > m ? end - m : 0;
+        CSpan chunk = Trim(x.subspan(start, end - start));
+        uint64_t c = FullIntCore::Add(r, chunk, r);
+        while (c != 0)                                                // β^m = 1
+        {
+            c = 1;
+            for (size_t i = m; i-- > 0 && c != 0;) c = ++r[i] == 0 ? 1 : 0;
+        }
+    }
+    for (uint64_t w : r)
+        if (w != ~0ull) return;
+    std::memset(r.data(), 0, r.size_bytes());                         // β^m - 1 = 0
+}
+
+// k, M, N for a cyclic product modulo β^(K·M) - 1 of at least mMin words (exact: K·M = mMin,
+// only the K that divide it)
+void Karatsuba::ChooseFftCyclic(size_t mMin, bool exact, int& k, size_t& m, int& nBits)
+{
+    bool native = NativeKernels();
+    double best = 1e300;
+    k = 0; m = 0; nBits = 0;
+    for (int kk = 3; kk <= 20; kk++)
+    {
+        size_t K = (size_t)1 << kk;
+        if (exact && mMin % K != 0) continue;
+        size_t mm = (mMin + K - 1) / K;
+        long long unit = std::max<long long>(64, (long long)K / 2);
+        long long bits = 128LL * (long long)mm + kk + 1;
+        long long nb = (bits + unit - 1) / unit * unit;
+        if (nb > (1LL << 30)) continue;
+        double n1 = (double)(nb / 64 + 1);
+        double mulCost = n1 < 32 ? 0.45 * n1 * n1 : 2.3 * std::pow(n1, 1.55);
+        double bfly = native ? FftNativeButterfly[0] + FftNativeButterfly[1] * n1 : 20 + 6.0 * n1;
+        double cost = (double)K * mulCost + 3.0 * (double)K * kk * bfly;
+        if (cost < best)
+        {
+            best = cost; k = kk; m = mm; nBits = (int)nb;
+        }
+        if (mm == 1) break;
+    }
+}
+
+// r = sum c_i·β^(M·i) of the convolution of a and b in K = 2^k pieces of M words mod 2^N + 1
+// (r: the words the coefficients land on, cleared here; a coefficient beyond it is zero)
+void Karatsuba::Convolve(CSpan a, CSpan b, Span r, int k, size_t m, int nBits, const Limits& lim)
+{
+    bool native = NativeKernels();
+    size_t len = r.size();
     int K = 1 << k;
     size_t n1 = (size_t)nBits / 64 + 1;
 
