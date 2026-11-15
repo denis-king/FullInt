@@ -8,7 +8,7 @@
 ;
 ;  Shl: R = A << shift,  lenR >= lenA + ws + 1
 ;       R = [lead zeros][A shifted: lenA + 1 words][ws zeros]
-;  Shr: R = A >> shift,  lenR >= max(lenA - ws, 1);  R may alias A
+;  Shr: R = A >> shift,  lenR >= max(lenA - ws, 1);  R may alias A (with ws >= 1 low end first)
 ;       R = [lead zeros][A[0 .. lenA-ws-1] shifted right by s]
 ;
 ;  void Fullint64ShlWIN(A, R, int lenA, int lenR, int shift)   (cdecl)
@@ -205,6 +205,20 @@ Fullint64ShrWIN:
 	jbe .allZero                  ; lenA <= ws: everything shifted out
 	mov [esp], eax                ; count = lenA - ws source words
 
+	; R over A with whole words shifted out (ws >= 1): this top-down pass would overwrite
+	; limbs of A before reading them (the lead zeros, and every store ws limbs up) - that case
+	; goes low end first (.inPlace). R apart from A, or ws = 0: as before.
+	test edx, edx
+	jz .topDown
+	mov ebx, [esp+32]
+	lea ebx, [esi + ebx*8]        ; the end of A
+	cmp edi, ebx
+	jae .topDown
+	mov ebx, [esp+36]
+	lea ebx, [edi + ebx*8]        ; the end of R
+	cmp esi, ebx
+	jb .inPlace
+.topDown:
 	mov ebx, [esp+36]
 	sub ebx, eax                  ; lead = lenR - count
 	xor eax, eax
@@ -304,6 +318,68 @@ Fullint64ShrWIN:
 	dec dword [esp]
 	jnz .shiftHigh
 	jmp .done
+
+.inPlace:                         ; from the low end, the lead zeros last (count in [esp], eax)
+	mov ebx, [esp+36]
+	sub ebx, eax                  ; lead
+	mov [esp+36], ebx
+	lea edi, [edi + ebx*8]        ; R[lead]
+	lea esi, [esi + eax*8 - 8]    ; A[count-1]
+	lea edi, [edi + eax*8 - 8]    ; its place
+	dec dword [esp]               ; limbs with a limb above them
+	jz .inPlaceTop
+	cmp ecx, 32
+	jae .inPlaceHigh
+.inPlaceLow:                      ; s < 32: outLo = shrd(curLo, curHi), outHi = shrd(curHi, prevLo)
+	mov eax, [esi]
+	mov edx, [esi + 4]
+	mov ebp, [esi - 8]
+	shrd eax, edx, cl
+	shrd edx, ebp, cl
+	mov [edi], eax
+	mov [edi + 4], edx
+	sub esi, 8
+	sub edi, 8
+	dec dword [esp]
+	jnz .inPlaceLow
+	jmp .inPlaceTop
+.inPlaceHigh:                     ; s >= 32 (cl acts as s - 32): outLo = shrd(curHi, prevLo), outHi = shrd(prevLo, prevHi)
+	mov edx, [esi + 4]
+	mov ebp, [esi - 8]
+	mov ebx, [esi - 4]
+	shrd edx, ebp, cl
+	shrd ebp, ebx, cl
+	mov [edi], edx
+	mov [edi + 4], ebp
+	sub esi, 8
+	sub edi, 8
+	dec dword [esp]
+	jnz .inPlaceHigh
+.inPlaceTop:                      ; k = 0: A[0] >> s
+	mov eax, [esi]
+	mov edx, [esi + 4]
+	cmp ecx, 32
+	jae .inPlaceTopHigh
+	shrd eax, edx, cl
+	shr edx, cl
+	jmp .inPlaceTopStore
+.inPlaceTopHigh:
+	mov eax, edx
+	shr eax, cl
+	xor edx, edx
+.inPlaceTopStore:
+	mov [edi], eax
+	mov [edi + 4], edx
+	mov ebx, [esp+36]
+	xor eax, eax
+.inPlaceLead:
+	test ebx, ebx
+	jz .done
+	sub edi, 8
+	mov [edi], eax
+	mov [edi + 4], eax
+	dec ebx
+	jmp .inPlaceLead
 
 .allZero:
 	mov ebx, [esp+36]             ; lenR

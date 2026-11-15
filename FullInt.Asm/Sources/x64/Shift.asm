@@ -10,7 +10,7 @@ section .text
 ;
 ;  Shl: R = A << shift,  lenR >= lenA + ws + 1
 ;       R = [lead zeros][A shifted: lenA + 1 words][ws zeros]
-;  Shr: R = A >> shift,  lenR >= max(lenA - ws, 1);  R may alias A
+;  Shr: R = A >> shift,  lenR >= max(lenA - ws, 1);  R may alias A (with ws >= 1 low end first)
 ;       R = [lead zeros][A[0 .. lenA-ws-1] shifted right by s]
 ;
 ;  Windows : void Fullint64ShlWIN(A, R, int lenA, int lenR, int shift)
@@ -152,6 +152,19 @@ Fullint64Shr:
 	jbe .allZero                ; lenA <= ws: everything shifted out
 	mov r9, rax                 ; count = lenA - ws source words
 
+	; R over A with whole words shifted out (ws >= 1): this top-down pass would overwrite
+	; words of A before reading them (the lead zeros, and every store ws words up) - that case
+	; goes low end first (.inPlace). R apart from A, or ws = 0: as before.
+	test r11, r11
+	jz .topDown
+	lea rax, [r9 + r11]
+	lea rax, [rdi + rax*8]      ; the end of A
+	cmp rsi, rax
+	jae .topDown
+	lea rax, [rsi + r10*8]      ; the end of R
+	cmp rdi, rax
+	jb .inPlace
+.topDown:
 	mov rax, r10
 	sub rax, r9                 ; lead = lenR - count
 	xor edx, edx
@@ -211,6 +224,33 @@ Fullint64Shr:
 	add rsi, 8
 	dec r9
 	jnz .copy
+	ret
+
+.inPlace:                       ; from the low end: R[lead + k] = shrd(A[k], A[k-1], s), the lead
+	sub r10, r9                 ; zeros last; every store lands above all words still to be read
+	lea r11, [rsi + r10*8]      ; R[lead]
+.inPlaceWords:
+	cmp r9, 2
+	jb .inPlaceTop
+	mov rax, [rdi + r9*8 - 8]   ; A[k], k = r9 - 1
+	mov rdx, [rdi + r9*8 - 16]  ; A[k-1]
+	shrd rax, rdx, cl           ; s = 0: A[k]
+	mov [r11 + r9*8 - 8], rax
+	dec r9
+	jmp .inPlaceWords
+.inPlaceTop:                    ; k = 0: A[0] >> s
+	mov rax, [rdi]
+	shr rax, cl
+	mov [r11], rax
+	xor eax, eax
+.inPlaceLead:
+	test r10, r10
+	jz .inPlaceDone
+	sub r11, 8
+	mov [r11], rax
+	dec r10
+	jmp .inPlaceLead
+.inPlaceDone:
 	ret
 
 .allZero:
