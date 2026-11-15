@@ -237,6 +237,40 @@ void MultiplyThresholds()
     }
 }
 
+// the Schönhage–Strassen FFT with forced K = 2^k on small and unbalanced numbers, and the
+// dispatcher with small FFT thresholds (the pointwise products recurse), against GMP
+void FftProducts()
+{
+    for (int round = 0; round < 800; round++)
+    {
+        int la = 1 + (int)(rng() % (round % 10 == 0 ? 400 : 60)), lb = 1 + (int)(rng() % (round % 10 == 0 ? 400 : 60));
+        FullInt64 a = RandomValue(la), b = RandomValue(lb);
+        std::vector<uint64_t> r(a.Length() + b.Length());
+        int k = 1 + (int)(rng() % 9);
+        fullint::Karatsuba::FftMultiply(a.Words(), b.Words(), r, k);
+        Mpz ma, mb, e, got;
+        ToMpz(Abs(a), ma.v);
+        ToMpz(Abs(b), mb.v);
+        mpz_mul(e.v, ma.v, mb.v);
+        mpz_import(got.v, r.size(), 1, sizeof(uint64_t), 0, 0, r.data());
+        CHECK(mpz_cmp(e.v, got.v) == 0, "FFT k=" + std::to_string(k) + " " + std::to_string(la) + "x" + std::to_string(lb));
+    }
+    for (int round = 0; round < 12; round++)
+    {
+        int la = 100 + (int)(rng() % 600), lb = 100 + (int)(rng() % 600);
+        FullInt64 a = RandomValue(la), b = RandomValue(lb);
+        std::vector<uint64_t> r(a.Length() + b.Length());
+        int fft = round % 3 == 0 ? 24 : round % 3 == 1 ? 48 : 100;
+        fullint::Karatsuba::Multiply(a.Words(), b.Words(), r, 8, 24, 48, fft);
+        Mpz ma, mb, e, got;
+        ToMpz(Abs(a), ma.v);
+        ToMpz(Abs(b), mb.v);
+        mpz_mul(e.v, ma.v, mb.v);
+        mpz_import(got.v, r.size(), 1, sizeof(uint64_t), 0, 0, r.data());
+        CHECK(mpz_cmp(e.v, got.v) == 0, "FFT threshold " + std::to_string(fft) + " " + std::to_string(la) + "x" + std::to_string(lb));
+    }
+}
+
 // Burnikel–Ziegler with small thresholds (deep recursion on small numbers), against GMP;
 // the shapes hit the Q̂ = β^k - 1 branch (b copied into the top of a, all ones) and divisors
 // with small top words (large normalization shifts)
@@ -372,6 +406,7 @@ int main()
 
     EdgeCases();
     MultiplyThresholds();
+    FftProducts();
     DivideThresholds();
     InPlaceApi();
     DecimalByHalves();

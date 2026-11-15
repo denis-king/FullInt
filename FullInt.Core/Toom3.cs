@@ -20,7 +20,7 @@ namespace FullInt.Core
         // Values at -1 and -2 and the interpolation temporaries are signed (sign-magnitude:
         // a span plus a bool); the final r1, r2, r3 are never negative.
         // Needs lb > 2k so that b2 is not empty (checked by the caller).
-        private static void Toom3(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> r, Span<ulong> scratch, int threshold, int toom3Threshold, int toom4Threshold)
+        private static void Toom3(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> r, Span<ulong> scratch, int threshold, int toom3Threshold, int toom4Threshold, int fftThreshold)
         {
             int la = a.Length, lb = b.Length, len = la + lb;
             int k = (la + 2) / 3;
@@ -39,16 +39,16 @@ namespace FullInt.Core
             Evaluate(core, a0, a1, a2, p1, pm1, pm2, out bool nPm1, out bool nPm2);
             Evaluate(core, b0, b1, b2, q1, qm1, qm2, out bool nQm1, out bool nQm2);
 
-            Mul(core, p1, q1, r1, rest, threshold, toom3Threshold, toom4Threshold);
-            Mul(core, pm1, qm1, rm1, rest, threshold, toom3Threshold, toom4Threshold);
-            Mul(core, pm2, qm2, rm2, rest, threshold, toom3Threshold, toom4Threshold);
+            Mul(core, p1, q1, r1, rest, threshold, toom3Threshold, toom4Threshold, fftThreshold);
+            Mul(core, pm1, qm1, rm1, rest, threshold, toom3Threshold, toom4Threshold, fftThreshold);
+            Mul(core, pm2, qm2, rm2, rest, threshold, toom3Threshold, toom4Threshold, fftThreshold);
             bool nRm1 = nPm1 != nQm1, nRm2 = nPm2 != nQm2;
 
             // r(0) and r(inf) go straight into their final places in r; the 2k words between them are cleared
             Span<ulong> r0 = r.Slice(len - 2 * k);
             Span<ulong> rInf = r.Slice(0, len - 4 * k);
-            Mul(core, a0, b0, r0, rest, threshold, toom3Threshold, toom4Threshold);
-            Mul(core, a2, b2, rInf, rest, threshold, toom3Threshold, toom4Threshold);
+            Mul(core, a0, b0, r0, rest, threshold, toom3Threshold, toom4Threshold, fftThreshold);
+            Mul(core, a2, b2, rInf, rest, threshold, toom3Threshold, toom4Threshold, fftThreshold);
             r.Slice(len - 4 * k, 2 * k).Clear();
 
             // r3 = (r(-2) - r(1)) / 3                      -> u

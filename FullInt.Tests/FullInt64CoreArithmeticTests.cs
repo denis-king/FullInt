@@ -137,6 +137,47 @@ namespace FullInt.Tests
         }
 
         /// <summary>
+        /// The Schönhage–Strassen FFT product, against BigInteger: forced K = 2^k (1..9) on small
+        /// and unbalanced numbers (pieces of one word up to hundreds), all-ones and zero words;
+        /// and the dispatcher with a small FFT threshold, so the pointwise products recurse into
+        /// the FFT and the Toom levels too.
+        /// </summary>
+        [DataTestMethod]
+        [DynamicData(nameof(Cores), DynamicDataSourceType.Method)]
+        public void Fft_MatchesBigInteger(string coreName)
+        {
+            var core = GetCore(coreName);
+            var rnd = new Random(1717);
+            ulong[] Shaped(int length) => rnd.Next(6) switch
+            {
+                0 => Enumerable.Repeat(ulong.MaxValue, length).ToArray(),
+                1 => Enumerable.Range(0, length).Select(i => i % 3 == 0 ? 0UL : ulong.MaxValue).ToArray(),
+                _ => Next(rnd, length),
+            };
+            for (int it = 0; it < 600; it++)
+            {
+                int k = rnd.Next(1, 10);
+                int la = rnd.Next(1, it % 10 == 0 ? 400 : 60), lb = rnd.Next(1, it % 10 == 0 ? 400 : 60);
+                var a = Shaped(la);
+                var b = Shaped(lb);
+                var r = new ulong[la + lb];
+                r.AsSpan().Fill(0xDEAD_BEEF_DEAD_BEEFUL);
+                Karatsuba.FftMultiply(core, a, b, r, k);
+                Assert.AreEqual(ToBig(a) * ToBig(b), ToBig(r), $"[{coreName}] fft {la}x{lb} k={k} (iteration {it})");
+            }
+            for (int it = 0; it < 12; it++)
+            {
+                int la = rnd.Next(100, 700), lb = rnd.Next(100, 700);
+                var a = Shaped(la);
+                var b = Shaped(lb);
+                var r = new ulong[la + lb];
+                int fft = new[] { 24, 48, 100 }[it % 3];
+                Karatsuba.Multiply(core, a, b, r, 8, 24, 48, fft);
+                Assert.AreEqual(ToBig(a) * ToBig(b), ToBig(r), $"[{coreName}] {la}x{lb} fft threshold {fft}");
+            }
+        }
+
+        /// <summary>
         /// Karatsuba and Toom-3 over the core's basecase, against BigInteger. Small thresholds make
         /// the recursion go deep (and mix the three methods) on small numbers. Covers unbalanced
         /// lengths (chunked path), all-ones words (long carries), equal halves (|a1 - a0| = 0,

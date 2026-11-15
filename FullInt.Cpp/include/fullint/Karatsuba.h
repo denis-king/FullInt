@@ -9,6 +9,11 @@ namespace fullint {
 
 struct Karatsuba
 {
+    // From this many words in the shorter operand: the Schönhage–Strassen FFT (Fft.cpp).
+    // fullint_kara_tune fft (Zen 3): 0.91 of the Toom levels at 32768-65536 words, ~0.8 at
+    // 131072; up to 16384 no gain (the butterflies are the cost so far).
+    static inline int FftThreshold = 32768;
+
 #if defined(_M_X64) || defined(__x86_64__)
     // Shorter operand below this many words: the basecase (column) multiply.
     // C# uses 64: there each core call costs ~10-15 ns more (interop). Here a kernel call is
@@ -41,12 +46,17 @@ struct Karatsuba
     static void Multiply(CSpan a, CSpan b, Span r);
     static void Multiply(CSpan a, CSpan b, Span r, int threshold, int toom3Threshold);
     static void Multiply(CSpan a, CSpan b, Span r, int threshold, int toom3Threshold, int toom4Threshold);
+    static void Multiply(CSpan a, CSpan b, Span r, int threshold, int toom3Threshold, int toom4Threshold, int fftThreshold);
+    // the FFT product alone with K = 2^k pieces (tests: the FFT on small numbers)
+    static void FftMultiply(CSpan a, CSpan b, Span r, int k);
 
 private:
-    static void Mul(CSpan a, CSpan b, Span r, Span scratch, int threshold, int toom3Threshold, int toom4Threshold);
-    static void MulUnbalanced(CSpan a, CSpan b, Span r, Span scratch, int threshold, int toom3Threshold, int toom4Threshold);
-    static void Toom3(CSpan a, CSpan b, Span r, Span scratch, int threshold, int toom3Threshold, int toom4Threshold);
-    static void Toom4(CSpan a, CSpan b, Span r, Span scratch, int threshold, int toom3Threshold, int toom4Threshold);
+    static void Mul(CSpan a, CSpan b, Span r, Span scratch, int threshold, int toom3Threshold, int toom4Threshold, int fftThreshold);
+    static void MulUnbalanced(CSpan a, CSpan b, Span r, Span scratch, int threshold, int toom3Threshold, int toom4Threshold, int fftThreshold);
+    static void Toom3(CSpan a, CSpan b, Span r, Span scratch, int threshold, int toom3Threshold, int toom4Threshold, int fftThreshold);
+    static void Toom4(CSpan a, CSpan b, Span r, Span scratch, int threshold, int toom3Threshold, int toom4Threshold, int fftThreshold);
+    static void FftMul(CSpan a, CSpan b, Span r, int threshold, int toom3Threshold, int toom4Threshold, int fftThreshold, int forceK);
+    static void ChooseFft(size_t la, size_t lb, int forceK, int& k, size_t& m, int& nBits);
     static void Evaluate4(CSpan x0, CSpan x1, CSpan x2, CSpan x3, Span p1, Span pm1, Span p2, Span pm2, Span ph,
                           Span t, Span u, bool& negPm1, bool& negPm2);
     static void Evaluate(CSpan x0, CSpan x1, CSpan x2, Span p1, Span pm1, Span pm2, bool& negPm1, bool& negPm2);
