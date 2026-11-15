@@ -67,11 +67,19 @@ namespace FullInt.Core
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern int Fullint64XorWIN_avx2(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs);
 
+        // vpsllq / vpsrlq (ShiftAvx2.asm), vpcmpeqq (CompareAvx2.asm): AVX2, the same flag as the logic
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern void Fullint64ShlWIN_avx2(IntPtr a, IntPtr r, int lenA, int lenR, int shift);
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern void Fullint64ShrWIN_avx2(IntPtr a, IntPtr r, int lenA, int lenR, int shift);
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern int Fullint64CompareWIN_avx2(IntPtr a, IntPtr b, int lenA, int lenB);
+
         /// <summary>Which kernel versions this process uses, e.g. for a log line.</summary>
         public static string KernelVersions =>
-            MultAdx && LogicAvx2 ? "Mult: adx; And/Or/Xor: avx2; other: baseline"
+            MultAdx && LogicAvx2 ? "Mult: adx; And/Or/Xor, Shl/Shr, Compare: avx2; other: baseline"
             : MultAdx ? "Mult: adx; other: baseline"
-            : LogicAvx2 ? "And/Or/Xor: avx2; other: baseline"
+            : LogicAvx2 ? "And/Or/Xor, Shl/Shr, Compare: avx2; other: baseline"
             : "all: baseline";
 
 #if NET5_0_OR_GREATER
@@ -99,6 +107,13 @@ namespace FullInt.Core
         private static extern int Fullint64OrWIN_avx2_Fast(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs);
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "Fullint64XorWIN_avx2"), SuppressGCTransition]
         private static extern int Fullint64XorWIN_avx2_Fast(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs);
+
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "Fullint64ShlWIN_avx2"), SuppressGCTransition]
+        private static extern void Fullint64ShlWIN_avx2_Fast(IntPtr a, IntPtr r, int lenA, int lenR, int shift);
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "Fullint64ShrWIN_avx2"), SuppressGCTransition]
+        private static extern void Fullint64ShrWIN_avx2_Fast(IntPtr a, IntPtr r, int lenA, int lenR, int shift);
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "Fullint64CompareWIN_avx2"), SuppressGCTransition]
+        private static extern int Fullint64CompareWIN_avx2_Fast(IntPtr a, IntPtr b, int lenA, int lenB);
 
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "Fullint64CompareWIN"), SuppressGCTransition]
         private static extern int Fullint64CompareWIN_Fast(IntPtr a, IntPtr b, int lenA, int lenB);
@@ -164,9 +179,10 @@ namespace FullInt.Core
         protected override int Compare(IntPtr a, IntPtr b, int lenA, int lenB)
 		{
 #if NET5_0_OR_GREATER
-			if (Short(lenA, lenB, 0)) return Fullint64CompareWIN_Fast(a, b, lenA, lenB);
+			if (Short(lenA, lenB, 0))
+				return LogicAvx2 ? Fullint64CompareWIN_avx2_Fast(a, b, lenA, lenB) : Fullint64CompareWIN_Fast(a, b, lenA, lenB);
 #endif
-			return Fullint64CompareWIN(a, b, lenA, lenB);
+			return LogicAvx2 ? Fullint64CompareWIN_avx2(a, b, lenA, lenB) : Fullint64CompareWIN(a, b, lenA, lenB);
 		}
         
         protected override void ToDecString(IntPtr value, IntPtr valueBuf, IntPtr resultBuf, int lenValue, ref int lenResult)
@@ -224,17 +240,25 @@ namespace FullInt.Core
         protected override void ShiftLeft(IntPtr a, IntPtr r, int lenA, int lenR, int shift)
         {
 #if NET5_0_OR_GREATER
-            if (Short(lenA, 0, lenR)) { Fullint64ShlWIN_Fast(a, r, lenA, lenR, shift); return; }
+            if (Short(lenA, 0, lenR))
+            {
+                if (LogicAvx2) Fullint64ShlWIN_avx2_Fast(a, r, lenA, lenR, shift); else Fullint64ShlWIN_Fast(a, r, lenA, lenR, shift);
+                return;
+            }
 #endif
-            Fullint64ShlWIN(a, r, lenA, lenR, shift);
+            if (LogicAvx2) Fullint64ShlWIN_avx2(a, r, lenA, lenR, shift); else Fullint64ShlWIN(a, r, lenA, lenR, shift);
         }
 
         protected override void ShiftRight(IntPtr a, IntPtr r, int lenA, int lenR, int shift)
         {
 #if NET5_0_OR_GREATER
-            if (Short(lenA, 0, lenR)) { Fullint64ShrWIN_Fast(a, r, lenA, lenR, shift); return; }
+            if (Short(lenA, 0, lenR))
+            {
+                if (LogicAvx2) Fullint64ShrWIN_avx2_Fast(a, r, lenA, lenR, shift); else Fullint64ShrWIN_Fast(a, r, lenA, lenR, shift);
+                return;
+            }
 #endif
-            Fullint64ShrWIN(a, r, lenA, lenR, shift);
+            if (LogicAvx2) Fullint64ShrWIN_avx2(a, r, lenA, lenR, shift); else Fullint64ShrWIN(a, r, lenA, lenR, shift);
         }
     }
 }

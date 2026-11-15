@@ -1,7 +1,7 @@
 // Port of FullInt.Core/IFullIntCore.cs + FullIntCoreBase.cs: the span-level kernel calls.
 //
 // Kernel versions: the baseline kernels run on any x86-64; where the CPU has more (Cpu.h),
-// the newer versions are called instead (Mult: BMI2 + ADX; And / Or / Xor: AVX2).
+// the newer versions are called instead (Mult: BMI2 + ADX; And / Or / Xor, shifts, Compare: AVX2).
 //
 // In .NET the core is an interface (asm on win-x64/x86, managed elsewhere) and every call
 // pins the spans and crosses into the DLL. Here the asm kernels are linked into the same
@@ -62,6 +62,10 @@ struct FullIntCore
 
     static int Compare(CSpan a, CSpan b) noexcept
     {
+#if defined(_M_X64) || defined(__x86_64__)
+        if (Cpu::Has(Cpu::Avx2))   // CompareAvx2.asm (different lengths: the baseline inside)
+            return Fullint64CompareWIN_avx2(a.data(), b.data(), (int)a.size(), (int)b.size());
+#endif
         return Fullint64CompareWIN(a.data(), b.data(), (int)a.size(), (int)b.size());
     }
 
@@ -106,11 +110,25 @@ struct FullIntCore
 
     static void ShiftLeft(CSpan a, int shift, Span r) noexcept
     {
+#if defined(_M_X64) || defined(__x86_64__)
+        if (Cpu::Has(Cpu::Avx2))   // ShiftAvx2.asm
+        {
+            Fullint64ShlWIN_avx2(a.data(), r.data(), (int)a.size(), (int)r.size(), shift);
+            return;
+        }
+#endif
         Fullint64ShlWIN(a.data(), r.data(), (int)a.size(), (int)r.size(), shift);
     }
 
     static void ShiftRight(CSpan a, int shift, Span r) noexcept
     {
+#if defined(_M_X64) || defined(__x86_64__)
+        if (Cpu::Has(Cpu::Avx2))   // ShiftAvx2.asm
+        {
+            Fullint64ShrWIN_avx2(a.data(), r.data(), (int)a.size(), (int)r.size(), shift);
+            return;
+        }
+#endif
         Fullint64ShrWIN(a.data(), r.data(), (int)a.size(), (int)r.size(), shift);
     }
 

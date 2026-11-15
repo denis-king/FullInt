@@ -35,9 +35,9 @@ struct Cpu
     static const char* Describe() noexcept
     {
         bool adx = Has(Bmi2 | Adx), avx2 = Has(Avx2);
-        return adx && avx2 ? "Mult: adx; And/Or/Xor: avx2; other: baseline"
+        return adx && avx2 ? "Mult: adx; And/Or/Xor, Shl/Shr, Compare: avx2; other: baseline"
              : adx         ? "Mult: adx; other: baseline"
-             : avx2        ? "And/Or/Xor: avx2; other: baseline"
+             : avx2        ? "And/Or/Xor, Shl/Shr, Compare: avx2; other: baseline"
                            : "all: baseline";
     }
 };
