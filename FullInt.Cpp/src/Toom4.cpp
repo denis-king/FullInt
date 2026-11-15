@@ -22,18 +22,6 @@
 
 namespace fullint {
 
-namespace {
-
-// r[0 .. upTo) += c  (c without its leading zero words: the value fits there)
-void AddAt(Span r, CSpan c, size_t upTo)
-{
-    size_t z = 0;
-    while (z + 1 < c.size() && c[z] == 0) z++;
-    Span up = r.subspan(0, upTo);
-    FullIntCore::Add(up, c.subspan(z), up);
-}
-
-}  // namespace
 
 void Karatsuba::Toom4(CSpan a, CSpan b, Span r, Span scratch, const Limits& lim)
 {

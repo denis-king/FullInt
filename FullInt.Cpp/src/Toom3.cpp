@@ -73,10 +73,9 @@ void Karatsuba::Toom3(CSpan a, CSpan b, Span r, Span scratch, const Limits& lim)
     }
 
     // r += r1·X + r2·X² + r3·X³  (in place, from the low end; everything fits len words)
-    Span up1 = r.subspan(0, len - k), up2 = r.subspan(0, len - 2 * k), up3 = r.subspan(0, len - 3 * k);
-    FullIntCore::Add(up1, r1, up1);
-    FullIntCore::Add(up2, rm1, up2);
-    FullIntCore::Add(up3, t, up3);
+    AddAt(r, r1, len - k);
+    AddAt(r, rm1, len - 2 * k);
+    AddAt(r, t, len - 3 * k);
 }
 
 // p(1) = x0 + x1 + x2,  p(-1) = x0 - x1 + x2,  p(-2) = (p(-1) + x2)·2 - x0  (all e = k + 1 words)

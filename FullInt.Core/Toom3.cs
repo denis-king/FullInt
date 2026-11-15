@@ -78,10 +78,9 @@ namespace FullInt.Core
             }
 
             // r += r1·X + r2·X² + r3·X³  (in place, from the low end; everything fits len words)
-            Span<ulong> up1 = r.Slice(0, len - k), up2 = r.Slice(0, len - 2 * k), up3 = r.Slice(0, len - 3 * k);
-            core.Add(up1, r1, up1);
-            core.Add(up2, rm1, up2);
-            core.Add(up3, t, up3);
+            AddAt(core, r, r1, len - k);
+            AddAt(core, r, rm1, len - 2 * k);
+            AddAt(core, r, t, len - 3 * k);
         }
 
         // p(1) = x0 + x1 + x2,  p(-1) = x0 - x1 + x2,  p(-2) = (p(-1) + x2)·2 - x0  (all e = k + 1 words)

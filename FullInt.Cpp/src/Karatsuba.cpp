@@ -145,8 +145,23 @@ void Karatsuba::Mul(CSpan a, CSpan b, Span r, Span scratch, const Limits& lim)
 
     // r += mid · B^m. In place: the add reads both words before writing, from the low end.
     // r[0 .. len - m) can be one word shorter than mid; that top word of mid is then zero.
-    Span rUp = r.subspan(0, len - m);
-    FullIntCore::Add(rUp, mid, rUp);
+    AddAt(r, mid, len - m);
+}
+
+// r[0 .. upTo) += c (the value fits there). Only the words c lands on and one for its carry: the
+// Add kernel walks its whole first operand (it copies it on), so an add into all of r above
+// c's place (as before) cost the length of the product per coefficient - 9 of them per Toom-6
+// level, ~63k words of passes instead of ~18k. A carry beyond them goes on by hand (rare).
+void Karatsuba::AddAt(Span r, CSpan c, size_t upTo)
+{
+    size_t z = 0;
+    while (z + 1 < c.size() && c[z] == 0) z++;
+    CSpan v = c.subspan(z);
+    size_t width = std::min(upTo, v.size() + 1);
+    Span target = r.subspan(upTo - width, width);
+    if (FullIntCore::Add(target, v, target) != 0)
+        for (size_t j = upTo - width; j-- > 0;)
+            if (++r[j] != 0) break;
 }
 
 // a much longer than b (b.size() <= half of a): a is cut into chunks of b.size() words from

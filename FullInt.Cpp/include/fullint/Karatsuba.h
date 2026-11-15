@@ -100,6 +100,7 @@ private:
     static void Toom6(CSpan a, CSpan b, Span r, Span scratch, const Limits& lim);
     static int Evaluate6(CSpan x0, CSpan x1, CSpan x2, CSpan x3, CSpan x4, CSpan x5, Span v, size_t e, Span tmp);
     static void Mul(CSpan a, CSpan b, Span r, Span scratch, const Limits& lim);
+    static void AddAt(Span r, CSpan c, size_t upTo);
     static void MulUnbalanced(CSpan a, CSpan b, Span r, Span scratch, const Limits& lim);
     static void Toom3(CSpan a, CSpan b, Span r, Span scratch, const Limits& lim);
     static void Toom4(CSpan a, CSpan b, Span r, Span scratch, const Limits& lim);

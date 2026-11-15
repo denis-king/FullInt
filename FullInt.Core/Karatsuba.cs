@@ -199,8 +199,7 @@ namespace FullInt.Core
 
             // r += mid · B^m. In place: the add reads both words before writing, from the low end.
             // r[0 .. len - m) can be one word shorter than mid; that top word of mid is then zero.
-            Span<ulong> rUp = r.Slice(0, len - m);
-            core.Add(rUp, mid, rUp);
+            AddAt(core, r, mid, len - m);
         }
 
         // a much longer than b (b.Length <= half of a): a is cut into chunks of b.Length words

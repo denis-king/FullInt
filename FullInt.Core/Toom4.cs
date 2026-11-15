@@ -129,12 +129,19 @@ namespace FullInt.Core
             AddAt(core, r, wm2, len - 5 * k);
         }
 
-        // r[0 .. upTo) += c  (c without its leading zero words: the value fits there)
+        // r[0 .. upTo) += c (the value fits there). Only the words c lands on and one for its
+        // carry: the Add kernel walks its whole first operand (it copies it on), so an add into all
+        // of r above c's place (as before) cost the length of the product per coefficient - 9 of
+        // them per Toom-6 level, ~63k words of passes instead of ~18k. A carry beyond them goes on
+        // by hand (rare). Toom-3 / 4 / 6 and the Karatsuba level (C++: -2..-5% from 512 words).
         private static void AddAt(IFullIntCore core, Span<ulong> r, Span<ulong> c, int upTo)
         {
             Span<ulong> v = FullHelper.DeleteZeros(c);
-            Span<ulong> up = r.Slice(0, upTo);
-            core.Add(up, v, up);
+            int width = Math.Min(upTo, v.Length + 1);
+            Span<ulong> target = r.Slice(upTo - width, width);
+            if (core.Add(target, v, target) != 0)
+                for (int j = upTo - width - 1; j >= 0; j--)
+                    if (++r[j] != 0) break;
         }
 
         // p(1), p(-1), p(2), p(-2) and 8·p(1/2) of x3·X³ + x2·X² + x1·X + x0 (all e = k + 1 words;
