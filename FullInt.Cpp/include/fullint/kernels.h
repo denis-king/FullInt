@@ -34,10 +34,12 @@ int  Fullint64XorWIN(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA
 void Fullint64ShlWIN(const uint64_t* a, uint64_t* r, int lenA, int lenR, int shift);
 void Fullint64ShrWIN(const uint64_t* a, uint64_t* r, int lenA, int lenR, int shift);
 
-// kernel versions for newer CPUs (x64 only; same contracts as the baseline ones above)
-#if defined(_M_X64) || defined(__x86_64__)
-// CPU features for picking kernel versions (Cpu.asm): bit 0 BMI2, bit 1 ADX, bit 2 AVX2 (OS-enabled)
+// CPU features for picking kernel versions (Cpu.asm): x64 bit 0 BMI2, bit 1 ADX, bit 2 AVX2
+// (OS-enabled); x86 bit 4 SSE2
 int Fullint64CpuFeatures(void);
+
+// kernel versions for newer CPUs (same contracts as the baseline ones above)
+#if defined(_M_X64) || defined(__x86_64__)
 
 void Fullint64MultWIN_adx(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR);   // BMI2 + ADX
 int  Fullint64AndWIN_avx2(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR, int signs);   // AVX2
@@ -46,6 +48,10 @@ int  Fullint64XorWIN_avx2(const uint64_t* a, const uint64_t* b, uint64_t* r, int
 void Fullint64ShlWIN_avx2(const uint64_t* a, uint64_t* r, int lenA, int lenR, int shift);   // AVX2
 void Fullint64ShrWIN_avx2(const uint64_t* a, uint64_t* r, int lenA, int lenR, int shift);
 int  Fullint64CompareWIN_avx2(const uint64_t* a, const uint64_t* b, int lenA, int lenB);    // AVX2
+#else
+int  Fullint64AndWIN_sse2(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR, int signs);   // x86 SSE2
+int  Fullint64OrWIN_sse2(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR, int signs);
+int  Fullint64XorWIN_sse2(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR, int signs);
 #endif
 
 // division by a precomputed reciprocal (DivRecip.asm, x64 and x86): any CPU. Div: lenA > lenB >= 2,

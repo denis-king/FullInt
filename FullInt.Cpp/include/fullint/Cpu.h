@@ -15,7 +15,8 @@ struct Cpu
 {
     // Recip is not a CPU feature: the division by reciprocal (DivRecip.asm, ToDecStringRecip.asm)
     // runs on any x86-64; set unless FULLINT_CPU=baseline (then the original kernels run)
-    enum : int { Bmi2 = 1, Adx = 2, Avx2 = 4, Recip = 8 };
+    // Sse2: x86 only (x64 has it always; its kernels are the AVX2 ones)
+    enum : int { Bmi2 = 1, Adx = 2, Avx2 = 4, Recip = 8, Sse2 = 16 };
 
     static int Detect() noexcept
     {
@@ -25,7 +26,7 @@ struct Cpu
 #if defined(_M_X64) || defined(__x86_64__)
         return Fullint64CpuFeatures() | Recip;
 #else
-        return Recip;   // x86: the reciprocal division (DivRecip.asm, ToDecStringRecip.asm)
+        return Fullint64CpuFeatures() | Recip;   // x86: SSE2 (x86/Cpu.asm) and the reciprocal division
 #endif
     }
 
@@ -38,6 +39,7 @@ struct Cpu
     {
         bool adx = Has(Bmi2 | Adx), avx2 = Has(Avx2);
         if (!Has(Recip)) return "all: baseline";
+        if (Has(Sse2)) return "And/Or/Xor: sse2; Div, ToDecString: recip; other: baseline";   // x86
         return adx && avx2 ? "Mult: adx; And/Or/Xor, Shl/Shr, Compare: avx2; Div, ToDecString: recip; other: baseline"
              : adx         ? "Mult: adx; Div, ToDecString: recip; other: baseline"
              : avx2        ? "And/Or/Xor, Shl/Shr, Compare: avx2; Div, ToDecString: recip; other: baseline"

@@ -228,6 +228,20 @@ namespace FullInt.Tests
                     nx = FullIntCoreWindowsX86.Kernels.Xor(pa.P, pb.P, px.P, a.Length, b.Length, lr, signs);
                     nm = managed.Xor(a, (signs & 1) != 0, b, (signs & 2) != 0, rm);
                     Assert.AreEqual(Big(rm), Big(rx), "xor " + ctx); Assert.AreEqual(nm, nx, "xor sign " + ctx);
+
+                    // the SSE2 versions (LogicSse2.asm), where the CPU has SSE2
+                    if ((FullIntCoreWindowsX86.Kernels.CpuFeatures() & 16) != 0)
+                    {
+                        nx = FullIntCoreWindowsX86.Kernels.AndSse2(pa.P, pb.P, px.P, a.Length, b.Length, lr, signs);
+                        nm = managed.And(a, (signs & 1) != 0, b, (signs & 2) != 0, rm);
+                        Assert.AreEqual(Big(rm), Big(rx), "and sse2 " + ctx); Assert.AreEqual(nm, nx, "and sse2 sign " + ctx);
+                        nx = FullIntCoreWindowsX86.Kernels.OrSse2(pa.P, pb.P, px.P, a.Length, b.Length, lr, signs);
+                        nm = managed.Or(a, (signs & 1) != 0, b, (signs & 2) != 0, rm);
+                        Assert.AreEqual(Big(rm), Big(rx), "or sse2 " + ctx); Assert.AreEqual(nm, nx, "or sse2 sign " + ctx);
+                        nx = FullIntCoreWindowsX86.Kernels.XorSse2(pa.P, pb.P, px.P, a.Length, b.Length, lr, signs);
+                        nm = managed.Xor(a, (signs & 1) != 0, b, (signs & 2) != 0, rm);
+                        Assert.AreEqual(Big(rm), Big(rx), "xor sse2 " + ctx); Assert.AreEqual(nm, nx, "xor sse2 sign " + ctx);
+                    }
                 }
 
                 // division by one 64-bit word: below 2^32 (two div r32 per word), 2^32, full width (fi_div128)

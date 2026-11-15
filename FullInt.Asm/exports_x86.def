@@ -15,3 +15,7 @@ Fullint64FromDecStringWin
 Fullint64Div2longWIN_recip
 Fullint64DivWIN_recip
 Fullint64ToDecStringWIN_recip
+Fullint64CpuFeatures
+Fullint64AndWIN_sse2
+Fullint64OrWIN_sse2
+Fullint64XorWIN_sse2

@@ -43,6 +43,27 @@ namespace FullInt.Core
         // on a copy of the dividend and the divisor: lenA + lenB + 2 words of scratch.
         private static readonly bool DivRecip = Environment.GetEnvironmentVariable("FULLINT_CPU") != "baseline";
 
+        // And / Or / Xor with SSE2 (LogicSse2.asm), checked by cpuid once (x86/Cpu.asm, bit 4);
+        // negative operands go on to the baseline inside the kernel
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern int Fullint64CpuFeatures();
+
+        private static readonly bool LogicSse2 = DetectSse2();
+
+        private static bool DetectSse2()
+        {
+            if (!DivRecip) return false;   // FULLINT_CPU=baseline
+            try { return (Fullint64CpuFeatures() & 16) != 0; }
+            catch (EntryPointNotFoundException) { return false; }   // an older native DLL
+        }
+
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern int Fullint64AndWIN_sse2(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs);
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern int Fullint64OrWIN_sse2(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs);
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern int Fullint64XorWIN_sse2(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs);
+
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern void Fullint64DivWIN_recip(IntPtr a, IntPtr b, IntPtr q, IntPtr r, int lenA, int lenB, IntPtr work);
 
@@ -150,13 +171,13 @@ namespace FullInt.Core
         }
 
         protected override int And(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs)
-            => Fullint64AndWIN(a, b, r, lenA, lenB, lenR, signs);
+            => LogicSse2 ? Fullint64AndWIN_sse2(a, b, r, lenA, lenB, lenR, signs) : Fullint64AndWIN(a, b, r, lenA, lenB, lenR, signs);
 
         protected override int Or(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs)
-            => Fullint64OrWIN(a, b, r, lenA, lenB, lenR, signs);
+            => LogicSse2 ? Fullint64OrWIN_sse2(a, b, r, lenA, lenB, lenR, signs) : Fullint64OrWIN(a, b, r, lenA, lenB, lenR, signs);
 
         protected override int Xor(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs)
-            => Fullint64XorWIN(a, b, r, lenA, lenB, lenR, signs);
+            => LogicSse2 ? Fullint64XorWIN_sse2(a, b, r, lenA, lenB, lenR, signs) : Fullint64XorWIN(a, b, r, lenA, lenB, lenR, signs);
 
         protected override void ShiftLeft(IntPtr a, IntPtr r, int lenA, int lenR, int shift)
             => Fullint64ShlWIN(a, r, lenA, lenR, shift);
@@ -187,6 +208,10 @@ namespace FullInt.Core
             public static int And(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => Fullint64AndWIN(a, b, r, lenA, lenB, lenR, signs);
             public static int Or(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => Fullint64OrWIN(a, b, r, lenA, lenB, lenR, signs);
             public static int Xor(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => Fullint64XorWIN(a, b, r, lenA, lenB, lenR, signs);
+            public static int CpuFeatures() => Fullint64CpuFeatures();
+            public static int AndSse2(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => Fullint64AndWIN_sse2(a, b, r, lenA, lenB, lenR, signs);
+            public static int OrSse2(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => Fullint64OrWIN_sse2(a, b, r, lenA, lenB, lenR, signs);
+            public static int XorSse2(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => Fullint64XorWIN_sse2(a, b, r, lenA, lenB, lenR, signs);
             public static void ShiftLeft(IntPtr a, IntPtr r, int lenA, int lenR, int shift) => Fullint64ShlWIN(a, r, lenA, lenR, shift);
             public static void ShiftRight(IntPtr a, IntPtr r, int lenA, int lenR, int shift) => Fullint64ShrWIN(a, r, lenA, lenR, shift);
         }
