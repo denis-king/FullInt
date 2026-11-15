@@ -241,7 +241,7 @@ void Karatsuba::FftMultiply(CSpan a, CSpan b, Span r, int k)
 {
     if (r.size() != a.size() + b.size()) throw std::invalid_argument("r.size() must be a.size() + b.size()");
     if (k < 1 || k > 20) throw std::out_of_range("k");
-    FftMul(a, b, r, Limits{ Threshold, Toom3Threshold, Toom4Threshold, Toom6Threshold, FftThreshold }, k);
+    FftMul(a, b, r, Limits{ Threshold, Toom3Threshold, Toom4Threshold, Toom6Threshold, FftThreshold, SqrThreshold }, k);
 }
 
 void Karatsuba::FftMul(CSpan a, CSpan b, Span r, const Limits& lim, int forceK)
@@ -274,7 +274,7 @@ void Karatsuba::MultiplyMod(CSpan a, CSpan b, Span r, size_t cyclicFrom)
             // K = 2^k pieces of M words, K·M = m: sum c_i·β^(M·i) = a·b mod β^(KM) - 1
             size_t n1 = (size_t)nBits / 64 + 1;
             std::vector<uint64_t> acc(m + n1 + 1);
-            Convolve(a, b, acc, k, pm, nBits, Limits{ Threshold, Toom3Threshold, Toom4Threshold, Toom6Threshold, FftThreshold });
+            Convolve(a, b, acc, k, pm, nBits, Limits{ Threshold, Toom3Threshold, Toom4Threshold, Toom6Threshold, FftThreshold, SqrThreshold });
             FoldMod(acc, r);
             return;
         }
@@ -353,15 +353,17 @@ void Karatsuba::Convolve(CSpan a, CSpan b, Span r, int k, size_t m, int nBits, c
     Span prod(all + vectors * n1, 2 * n1);
     Span rest(all + vectors * n1 + 2 * n1, ScratchLength(n1, n1));
 
+    // a square: one transform, the pointwise products squares
+    bool square = Same(a, b);
     Split(a, m, K, n1, all, sa);
-    Split(b, m, K, n1, all, sb);
+    if (!square) Split(b, m, K, n1, all, sb);
 
     ForwardDif(native, all, sa, K, n1, nBits);
-    ForwardDif(native, all, sb, K, n1, nBits);
+    if (!square) ForwardDif(native, all, sb, K, n1, nBits);
 
     for (int i = 0; i < K; i++)
     {
-        Span x(all + sa[i], n1), y(all + sb[i], n1);
+        Span x(all + sa[i], n1), y = square ? x : Span(all + sb[i], n1);
         Mul(x, y, prod, rest, lim);
         ReduceProduct(prod, x);
     }

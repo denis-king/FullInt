@@ -306,6 +306,60 @@ void DivideThresholds()
     }
 }
 
+// squares (the same words as both operands): the square kernel, Karatsuba / Toom-3 / 4 / 6 with
+// one evaluation, the FFT with one transform; small thresholds put every level on small
+// numbers; all-ones and equal halves; the engine's x * x
+void SquaresCheck()
+{
+    auto shaped = [](size_t n) {
+        std::vector<uint64_t> w(n);
+        for (auto& x : w) x = rng();
+        int shape = (int)(rng() % 5);
+        if (shape == 0) std::fill(w.begin(), w.end(), ~0ull);
+        if (shape == 1) std::copy(w.begin() + n / 2, w.begin() + n / 2 + n / 2, w.begin());   // equal halves
+        return w;
+    };
+    auto check = [](const std::vector<uint64_t>& a, const std::vector<uint64_t>& r, const std::string& what) {
+        Mpz ma, e, got;
+        mpz_import(ma.v, a.size(), 1, 8, 0, 0, a.data());
+        mpz_mul(e.v, ma.v, ma.v);
+        mpz_import(got.v, r.size(), 1, 8, 0, 0, r.data());
+        CHECK(mpz_cmp(e.v, got.v) == 0, what + " " + std::to_string(a.size()));
+    };
+    for (int round = 0; round < 2000; round++)
+    {
+        size_t n = 1 + rng() % 259;
+        auto a = shaped(n);
+        std::vector<uint64_t> r(2 * n, 0xDEADBEEFDEADBEEFull);
+        int t2 = 2 + (int)(rng() % 18), t3 = 3 + (int)(rng() % 57), t4 = 4 + (int)(rng() % 86), t6 = 6 + (int)(rng() % 114);
+        if (rng() % 3 == 0) t3 = t4 = t6 = 1 << 30;
+        int fft = rng() % 4 == 0 ? 8 + (int)(rng() % 56) : fullint::Karatsuba::FftThreshold;
+        fullint::Karatsuba::Multiply(a, a, r, t2, t3, t4, t6, fft);
+        check(a, r, "square thresholds " + std::to_string(t2) + "/" + std::to_string(t3) + "/" + std::to_string(t4) + "/" +
+                        std::to_string(t6) + "/" + std::to_string(fft));
+    }
+    for (int round = 0; round < 60; round++)
+    {
+        size_t n = 1 + rng() % 199;
+        auto a = shaped(n);
+        std::vector<uint64_t> r(2 * n);
+        fullint::Karatsuba::FftMultiply(a, a, r, 1 + (int)(rng() % 5));
+        check(a, r, "FFT square");
+        fullint::FullIntCore::Sqr(a, r);
+        check(a, r, "Sqr kernel");
+    }
+    for (int round = 0; round < 40; round++)
+    {
+        FullInt64 x = RandomValue(1 + (int)(rng() % 600));
+        FullInt64 sq = x * x;
+        Mpz mx, e, got;
+        ToMpz(Abs(x), mx.v);
+        mpz_mul(e.v, mx.v, mx.v);
+        ToMpz(sq, got.v);
+        CHECK(mpz_cmp(e.v, got.v) == 0 && !sq.IsNegative(), "engine x * x");
+    }
+}
+
 // products modulo β^m - 1: the cyclic FFT forced from small sizes and the folded full product;
 // all-ones operands (the β^m - 1 = 0 representation)
 void MultiplyModCheck()
@@ -549,6 +603,7 @@ int main()
     NewtonDivide();
     QuotientOnly();
     MultiplyModCheck();
+    SquaresCheck();
     InPlaceApi();
     DecimalByHalves();
 

@@ -60,7 +60,7 @@ void Karatsuba::Multiply(CSpan a, CSpan b, Span r, int threshold, int toom3Thres
     if (toom6Threshold < 6) throw std::out_of_range("toom6Threshold");
     if (r.size() != a.size() + b.size()) throw std::invalid_argument("r.size() must be a.size() + b.size()");
 
-    Limits lim{ threshold, toom3Threshold, toom4Threshold, toom6Threshold, fftThreshold };
+    Limits lim{ threshold, toom3Threshold, toom4Threshold, toom6Threshold, fftThreshold, threshold == Threshold ? SqrThreshold : threshold };
     Mul(a, b, r, ThreadScratch(ScratchLength(a.size(), b.size())), lim);
 }
 
@@ -70,10 +70,14 @@ void Karatsuba::Mul(CSpan a, CSpan b, Span r, Span scratch, const Limits& lim)
 {
     if (a.size() < b.size()) std::swap(a, b);
     size_t la = a.size(), lb = b.size();
+    // a square (the same words twice, as the Toom and FFT levels pass their values of a square):
+    // one evaluation, every subproduct a square again, the square kernel below
+    bool square = Same(a, b);
 
-    if (lb < (size_t)lim.Kara)
+    if (square ? lb < (size_t)lim.SqrKara : lb < (size_t)lim.Kara)
     {
-        FullIntCore::Mult(a, b, r);   // basecase: the column multiply
+        if (square) FullIntCore::Sqr(a, r);
+        else FullIntCore::Mult(a, b, r);   // basecase: the column multiply
         return;
     }
 
@@ -117,7 +121,7 @@ void Karatsuba::Mul(CSpan a, CSpan b, Span r, Span scratch, const Limits& lim)
     Span z2 = r.subspan(0, len - 2 * m);     // (la - m) + (lb - m) words
 
     Span da = scratch.subspan(0, m);
-    Span db = scratch.subspan(m, m);
+    Span db = square ? da : scratch.subspan(m, m);
     Span zm = scratch.subspan(2 * m, 2 * m);
     Span mid = scratch.subspan(4 * m, 2 * m + 1);
     Span rest = scratch.subspan(6 * m + 1);  // for the recursive calls, one at a time
@@ -126,7 +130,7 @@ void Karatsuba::Mul(CSpan a, CSpan b, Span r, Span scratch, const Limits& lim)
     Mul(a1, b1, z2, rest, lim);
 
     int sa = FullIntCore::Sub(a1, a0, da);   // da = |a1 - a0|, sa = sign of (a1 - a0)
-    int sb = FullIntCore::Sub(b1, b0, db);
+    int sb = square ? sa : FullIntCore::Sub(b1, b0, db);   // a square: (a1 - a0)², subtracted
 
     // mid = z0 + z2 - (a1 - a0)(b1 - b0) = a1·b0 + a0·b1  (never negative, fits 2m + 1 words)
     FullIntCore::Add(z0, z2, mid);

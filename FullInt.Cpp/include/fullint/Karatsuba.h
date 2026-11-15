@@ -55,6 +55,18 @@ struct Karatsuba
     static inline int Toom6Threshold = 512;
 #endif
 
+    // Squares (a·a, the same words twice) below this many words go to FullIntCore::Sqr (SqrAdx.asm),
+    // from it a Karatsuba square level (C#: Karatsuba.SqrThreshold). A Multiply with an explicit
+    // Karatsuba threshold other than Threshold (tests, tuning) uses that one for squares too.
+#if defined(_M_X64) || defined(__x86_64__)
+    static inline int SqrThreshold = 64;
+#else
+    static inline int SqrThreshold = 20;   // no square kernel yet: the multiply, as Threshold
+#endif
+
+    // a and b the same words: a square (one evaluation / transform, the square kernel below)
+    static bool Same(CSpan a, CSpan b) { return a.data() == b.data() && a.size() == b.size(); }
+
     // Scratch words needed by Multiply.
     static size_t ScratchLength(size_t lenA, size_t lenB) { return 16 * (lenA > lenB ? lenA : lenB) + 1024; }
 
@@ -81,8 +93,9 @@ private:
     // the thresholds of one Multiply call, passed down the recursion
     struct Limits
     {
-        int Kara, Toom3, Toom4, Toom6, Fft;
+        int Kara, Toom3, Toom4, Toom6, Fft, SqrKara;
     };
+
 
     static void Toom6(CSpan a, CSpan b, Span r, Span scratch, const Limits& lim);
     static int Evaluate6(CSpan x0, CSpan x1, CSpan x2, CSpan x3, CSpan x4, CSpan x5, Span v, size_t e, Span tmp);

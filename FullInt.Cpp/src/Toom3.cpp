@@ -33,7 +33,8 @@ void Karatsuba::Toom3(CSpan a, CSpan b, Span r, Span scratch, const Limits& lim)
 
     bool nPm1, nPm2, nQm1, nQm2;
     Evaluate(a0, a1, a2, p1, pm1, pm2, nPm1, nPm2);
-    Evaluate(b0, b1, b2, q1, qm1, qm2, nQm1, nQm2);
+    if (Same(a, b)) { q1 = p1; qm1 = pm1; qm2 = pm2; nQm1 = nPm1; nQm2 = nPm2; }   // a square: one evaluation
+    else Evaluate(b0, b1, b2, q1, qm1, qm2, nQm1, nQm2);
 
     Mul(p1, q1, r1, rest, lim);
     Mul(pm1, qm1, rm1, rest, lim);

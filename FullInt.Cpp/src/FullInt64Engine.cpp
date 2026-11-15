@@ -180,7 +180,9 @@ void FullInt64Engine::multInto(FullInt64& result, const FullInt64& value1, const
     Span r(result.Prepare(length), length);
     if (length == 2)
         r[0] = FullHelper::BigMul(a[0], b[0], &r[1]);
-    else if (std::min(a.size(), b.size()) >= (size_t)Karatsuba::Threshold)
+    else if (Karatsuba::Same(a, b) && a.size() < (size_t)Karatsuba::SqrThreshold)
+        FullIntCore::Sqr(a, r);                                       // x·x: the square kernel
+    else if (std::min(a.size(), b.size()) >= (size_t)Karatsuba::Threshold || Karatsuba::Same(a, b))
         Karatsuba::Multiply(a, b, r);
     else
         FullIntCore::Mult(a, b, r);
@@ -225,7 +227,9 @@ FullInt64 FullInt64Engine::multGeneral(const FullInt64& value1, const FullInt64&
     FullInt64 r;
     Span bytes(r.Prepare(length), length);
 
-    if (std::min(a.size(), b.size()) >= (size_t)Karatsuba::Threshold)
+    if (Karatsuba::Same(a, b) && a.size() < (size_t)Karatsuba::SqrThreshold)
+        FullIntCore::Sqr(a, bytes);                                   // x·x: the square kernel
+    else if (std::min(a.size(), b.size()) >= (size_t)Karatsuba::Threshold || Karatsuba::Same(a, b))
         Karatsuba::Multiply(a, b, bytes);   // recursion in C++, leaves in the kernels
     else
         FullIntCore::Mult(a, b, bytes);

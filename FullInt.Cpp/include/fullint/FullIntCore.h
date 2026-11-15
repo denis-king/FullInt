@@ -70,6 +70,20 @@ struct FullIntCore
         Fullint64MultWIN(a.data(), b.data(), r.data(), (int)a.size(), (int)b.size(), (int)r.size());
     }
 
+    // r = a² (r.size() == 2·a.size(), r not a): SqrAdx.asm with BMI2 + ADX (the products of
+    // different words once, then doubled), otherwise the multiplication a·a
+    static void Sqr(CSpan a, Span r) noexcept
+    {
+#if defined(_M_X64) || defined(__x86_64__)
+        if (Cpu::Has(Cpu::Bmi2 | Cpu::Adx))
+        {
+            Fullint64SqrWIN_adx(a.data(), r.data(), (int)a.size(), (int)r.size());
+            return;
+        }
+#endif
+        Mult(a, a, r);
+    }
+
     static void Div(CSpan dividend, CSpan divisor, Span quotient, Span remainder) noexcept
     {
         // DivRecip.asm; equal lengths (a quotient of 0 or 1) stay with the baseline: it decides
