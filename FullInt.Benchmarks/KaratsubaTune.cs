@@ -14,6 +14,8 @@ namespace FullInt.Benchmarks
     /// (at the current Karatsuba threshold), the variants add Toom-3 levels from T words.
     /// "kara toom4 [rounds]": the base is Karatsuba + Toom-3 (current thresholds) without Toom-4,
     /// the variants add Toom-4 levels from T words.
+    /// "kara toom6 [rounds]": the base is the current Toom levels without Toom-6, the variants
+    /// add Toom-6 levels from T words (the FFT off).
     /// "kara fft [rounds]": the base is the Toom levels without the FFT, the variants use the
     /// FFT from T words.
     /// </summary>
@@ -25,6 +27,8 @@ namespace FullInt.Benchmarks
         private static readonly int[] ToomThresholds = { 96, 128, 192, 256, 384, 512, 768 };
         private static readonly int[] Toom4Sizes = { 256, 384, 512, 768, 1024, 1536, 2048, 4096, 8192 };
         private static readonly int[] Toom4Thresholds = { 192, 256, 384, 512, 768, 1024, 1536 };
+        private static readonly int[] Toom6Sizes = { 512, 768, 1024, 1536, 2048, 3072, 4096, 6144, 8192 };
+        private static readonly int[] Toom6Thresholds = { 384, 512, 768, 1024, 1536, 2048, 3072 };
         private static readonly int[] FftSizes = { 2048, 4096, 8192, 16384, 32768, 65536, 131072 };
         private static readonly int[] FftThresholds = { 1024, 2048, 4096, 8192, 16384, 32768 };
 
@@ -32,10 +36,11 @@ namespace FullInt.Benchmarks
         {
             bool fft = args.Length > 0 && args[0] == "fft";
             bool toom4 = args.Length > 0 && args[0] == "toom4";
-            bool toom = fft || toom4 || args.Length > 0 && args[0] == "toom";
+            bool toom6 = args.Length > 0 && args[0] == "toom6";
+            bool toom = fft || toom4 || toom6 || args.Length > 0 && args[0] == "toom";
             if (toom) args = args.Skip(1).ToArray();
-            int[] sizes = fft ? FftSizes : toom4 ? Toom4Sizes : toom ? ToomSizes : Sizes;
-            int[] thresholds = fft ? FftThresholds : toom4 ? Toom4Thresholds : toom ? ToomThresholds : Thresholds;
+            int[] sizes = fft ? FftSizes : toom6 ? Toom6Sizes : toom4 ? Toom4Sizes : toom ? ToomSizes : Sizes;
+            int[] thresholds = fft ? FftThresholds : toom6 ? Toom6Thresholds : toom4 ? Toom4Thresholds : toom ? ToomThresholds : Thresholds;
             int rounds = args.Length > 0 ? int.Parse(args[0]) : 9;
             try
             {
@@ -49,6 +54,8 @@ namespace FullInt.Benchmarks
             var core = FullIntCoreFactory.Create();
             Console.WriteLine(fft
                 ? $"core={core.GetType().Name}  rounds={rounds}  (time per N×N product; ratio = with the FFT / Toom levels alone)"
+                : toom6
+                ? $"core={core.GetType().Name}  rounds={rounds}  (time per N×N product; ratio = with Toom-6 / the Toom levels up to Toom-4, no FFT)"
                 : toom4
                 ? $"core={core.GetType().Name}  rounds={rounds}  (time per N×N product; ratio = with Toom-4 / Karatsuba + Toom-3 alone)"
                 : toom
@@ -67,7 +74,8 @@ namespace FullInt.Benchmarks
                 var variants = new List<Action>
                 {
                     fft ? () => Karatsuba.Multiply(core, a, b, r, karatsuba, toom3, Karatsuba.Toom4Threshold, int.MaxValue)
-                    : toom4 ? () => Karatsuba.Multiply(core, a, b, r, karatsuba, toom3, int.MaxValue)
+                    : toom6 ? () => Karatsuba.Multiply(core, a, b, r, karatsuba, toom3, Karatsuba.Toom4Threshold, int.MaxValue, int.MaxValue)
+                    : toom4 ? () => Karatsuba.Multiply(core, a, b, r, karatsuba, toom3, int.MaxValue, int.MaxValue, int.MaxValue)
                     : toom ? () => Karatsuba.Multiply(core, a, b, r, karatsuba, int.MaxValue, int.MaxValue)
                     : () => core.Mult(a, b, r),
                 };
@@ -76,8 +84,10 @@ namespace FullInt.Benchmarks
                     int threshold = t;
                     variants.Add(fft
                         ? () => Karatsuba.Multiply(core, a, b, r, karatsuba, toom3, Karatsuba.Toom4Threshold, threshold)
+                        : toom6
+                        ? () => Karatsuba.Multiply(core, a, b, r, karatsuba, toom3, Karatsuba.Toom4Threshold, threshold, int.MaxValue)
                         : toom4
-                        ? () => Karatsuba.Multiply(core, a, b, r, karatsuba, toom3, threshold)
+                        ? () => Karatsuba.Multiply(core, a, b, r, karatsuba, toom3, threshold, int.MaxValue, int.MaxValue)
                         : toom
                         ? () => Karatsuba.Multiply(core, a, b, r, karatsuba, threshold, int.MaxValue)
                         : () => Karatsuba.Multiply(core, a, b, r, threshold, int.MaxValue, int.MaxValue));

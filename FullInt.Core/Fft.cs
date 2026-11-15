@@ -8,12 +8,12 @@ namespace FullInt.Core
         /// <summary>
         /// From this many words in the shorter operand (and when the operands are not too
         /// unbalanced), the product goes through the Schönhage–Strassen FFT (Fft.cs) instead of
-        /// Toom levels. Tuned with `FullInt.Benchmarks kara fft` (Zen 3), the FFT / the Toom levels:
-        /// x64 (the FftAdx.asm butterflies) 0.83 at 4096 words, 0.72 at 8192, 0.59 at 16384, 0.51 at
-        /// 32768, 0.43 at 65536, 0.38 at 131072; x86 (managed butterflies) 0.92 at 32768, 0.65-0.72
-        /// at 65536-131072.
+        /// Toom levels. Tuned with `FullInt.Benchmarks kara fft` (Zen 3), the FFT / the Toom levels
+        /// (with Toom-6): x64 (the FftAdx.asm butterflies) 1.05 at 4096 words, 0.83-0.92 at 8192,
+        /// 0.76 at 16384, 0.64 at 32768, 0.56 at 65536, 0.52 at 131072; x86 (managed butterflies)
+        /// 1.2 at 32768, 1.01-1.03 at 65536, 0.85 at 131072.
         /// </summary>
-        public static int FftThreshold { get; set; } = Environment.Is64BitProcess ? 4096 : 32768;
+        public static int FftThreshold { get; set; } = Environment.Is64BitProcess ? 8192 : 98304;
 
         // Schönhage–Strassen multiplication, the product r = a·b of L = la + lb words:
         //   a and b are cut into pieces of M words (piece i = the words of weight B^(M·i)),
@@ -30,7 +30,7 @@ namespace FullInt.Core
         // into a spare vector - the vectors are reached through a slot table, so the spare and
         // the shifted vector swap slots instead of a copy back.
         private static void FftMul(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> r,
-            int threshold, int toom3Threshold, int toom4Threshold, int fftThreshold, int forceK)
+            Limits lim, int forceK)
         {
             int la = a.Length, lb = b.Length, len = la + lb;
             // an instance property: a static field of the x64 core named here would be initialized
@@ -60,7 +60,7 @@ namespace FullInt.Core
                 for (int i = 0; i < K; i++)
                 {
                     Span<ulong> x = all.Slice(sa[i], n1), y = all.Slice(sb[i], n1);
-                    Mul(core, x, y, prod, rest, threshold, toom3Threshold, toom4Threshold, fftThreshold);
+                    Mul(core, x, y, prod, rest, lim);
                     ReduceProduct(core, prod, x);
                 }
 

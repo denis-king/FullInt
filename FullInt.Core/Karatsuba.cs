@@ -17,7 +17,8 @@ namespace FullInt.Core
     ///
     /// This class is the multiplication dispatcher: below <see cref="Threshold"/> the basecase,
     /// from <see cref="Toom3Threshold"/> a Toom-3 level (Toom3.cs), from <see cref="Toom4Threshold"/>
-    /// a Toom-4 level (Toom4.cs), in between a Karatsuba level;
+    /// a Toom-4 level (Toom4.cs), from <see cref="Toom6Threshold"/> a Toom-6 level (Toom6.cs),
+    /// from <see cref="FftThreshold"/> the FFT (Fft.cs), in between a Karatsuba level;
     /// every subproduct chooses again by its own size.
     /// </summary>
     public static partial class Karatsuba
@@ -61,22 +62,28 @@ namespace FullInt.Core
         {
             if (r.Length != a.Length + b.Length) throw new ArgumentException("r.Length must be a.Length + b.Length", nameof(r));
             if (k < 1 || k > 20) throw new ArgumentOutOfRangeException(nameof(k));
-            FftMul(core, a, b, r, Threshold, Toom3Threshold, Toom4Threshold, FftThreshold, k);
+            FftMul(core, a, b, r, new Limits(Threshold, Toom3Threshold, Toom4Threshold, Toom6Threshold, FftThreshold), k);
         }
 
         /// <summary>Same, with an explicit FFT threshold too (at least 8).</summary>
-        public static void Multiply(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> r, int threshold, int toom3Threshold, int toom4Threshold, int fftThreshold)
+        public static void Multiply(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> r, int threshold, int toom3Threshold, int toom4Threshold, int fftThreshold) =>
+            Multiply(core, a, b, r, threshold, toom3Threshold, toom4Threshold, Toom6Threshold, fftThreshold);
+
+        /// <summary>Same, with explicit Karatsuba (at least 2), Toom-3 (at least 3), Toom-4 (at least 4), Toom-6 (at least 6) and FFT (at least 8) thresholds.</summary>
+        public static void Multiply(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> r, int threshold, int toom3Threshold, int toom4Threshold, int toom6Threshold, int fftThreshold)
         {
             if (fftThreshold < 8) throw new ArgumentOutOfRangeException(nameof(fftThreshold));
             if (threshold < 2) throw new ArgumentOutOfRangeException(nameof(threshold));
             if (toom3Threshold < 3) throw new ArgumentOutOfRangeException(nameof(toom3Threshold));
             if (toom4Threshold < 4) throw new ArgumentOutOfRangeException(nameof(toom4Threshold));
+            if (toom6Threshold < 6) throw new ArgumentOutOfRangeException(nameof(toom6Threshold));
             if (r.Length != a.Length + b.Length) throw new ArgumentException("r.Length must be a.Length + b.Length", nameof(r));
 
+            var lim = new Limits(threshold, toom3Threshold, toom4Threshold, toom6Threshold, fftThreshold);
             ulong[] scratch = ArrayPool<ulong>.Shared.Rent(ScratchLength(a.Length, b.Length));
             try
             {
-                Mul(core, a, b, r, scratch, threshold, toom3Threshold, toom4Threshold, fftThreshold);
+                Mul(core, a, b, r, scratch, lim);
             }
             finally
             {
@@ -84,9 +91,19 @@ namespace FullInt.Core
             }
         }
 
+        // the thresholds of one Multiply call, passed down the recursion
+        private readonly struct Limits
+        {
+            public readonly int Kara, Toom3, Toom4, Toom6, Fft;
+            public Limits(int kara, int toom3, int toom4, int toom6, int fft)
+            {
+                Kara = kara; Toom3 = toom3; Toom4 = toom4; Toom6 = toom6; Fft = fft;
+            }
+        }
+
         // r = a · b, r.Length == a.Length + b.Length. The scratch is dirty on entry: everything
         // taken from it is fully written before it is read.
-        private static void Mul(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> r, Span<ulong> scratch, int threshold, int toom3Threshold, int toom4Threshold, int fftThreshold)
+        private static void Mul(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> r, Span<ulong> scratch, Limits lim)
         {
             if (a.Length < b.Length)
             {
@@ -94,7 +111,7 @@ namespace FullInt.Core
             }
             int la = a.Length, lb = b.Length;
 
-            if (lb < threshold)
+            if (lb < lim.Kara)
             {
                 core.Mult(a, b, r);   // basecase: the column multiply
                 return;
@@ -103,25 +120,31 @@ namespace FullInt.Core
             int m = (la + 1) / 2;
             if (lb <= m)
             {
-                MulUnbalanced(core, a, b, r, scratch, threshold, toom3Threshold, toom4Threshold, fftThreshold);
+                MulUnbalanced(core, a, b, r, scratch, lim);
                 return;
             }
 
-            if (lb >= fftThreshold)
+            if (lb >= lim.Fft)
             {
-                FftMul(core, a, b, r, threshold, toom3Threshold, toom4Threshold, fftThreshold, 0);
+                FftMul(core, a, b, r, lim, 0);
                 return;
             }
 
-            if (lb >= toom4Threshold && lb > 3 * ((la + 3) / 4))   // b reaches its top quarter
+            if (lb >= lim.Toom6 && lb > 5 * ((la + 5) / 6) && la >= 36)   // b reaches its top sixth
             {
-                Toom4(core, a, b, r, scratch, threshold, toom3Threshold, toom4Threshold, fftThreshold);
+                Toom6(core, a, b, r, scratch, lim);
                 return;
             }
 
-            if (lb >= toom3Threshold && lb > 2 * ((la + 2) / 3))   // b reaches its top third
+            if (lb >= lim.Toom4 && lb > 3 * ((la + 3) / 4))   // b reaches its top quarter
             {
-                Toom3(core, a, b, r, scratch, threshold, toom3Threshold, toom4Threshold, fftThreshold);
+                Toom4(core, a, b, r, scratch, lim);
+                return;
+            }
+
+            if (lb >= lim.Toom3 && lb > 2 * ((la + 2) / 3))   // b reaches its top third
+            {
+                Toom3(core, a, b, r, scratch, lim);
                 return;
             }
 
@@ -139,8 +162,8 @@ namespace FullInt.Core
             Span<ulong> mid = scratch.Slice(4 * m, 2 * m + 1);
             Span<ulong> rest = scratch.Slice(6 * m + 1);  // for the recursive calls, one at a time
 
-            Mul(core, a0, b0, z0, rest, threshold, toom3Threshold, toom4Threshold, fftThreshold);
-            Mul(core, a1, b1, z2, rest, threshold, toom3Threshold, toom4Threshold, fftThreshold);
+            Mul(core, a0, b0, z0, rest, lim);
+            Mul(core, a1, b1, z2, rest, lim);
 
             int sa = core.Sub(a1, a0, da);   // da = |a1 - a0|, sa = sign of (a1 - a0)
             int sb = core.Sub(b1, b0, db);
@@ -149,7 +172,7 @@ namespace FullInt.Core
             core.Add(z0, z2, mid);
             if (sa != 0 && sb != 0)
             {
-                Mul(core, da, db, zm, rest, threshold, toom3Threshold, toom4Threshold, fftThreshold);
+                Mul(core, da, db, zm, rest, lim);
                 if (sa == sb)
                     core.Sub(mid, zm, mid);
                 else
@@ -164,7 +187,7 @@ namespace FullInt.Core
 
         // a much longer than b (b.Length <= half of a): a is cut into chunks of b.Length words
         // from the low end, each chunk·b (balanced, so Karatsuba again) is added in at its place.
-        private static void MulUnbalanced(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> r, Span<ulong> scratch, int threshold, int toom3Threshold, int toom4Threshold, int fftThreshold)
+        private static void MulUnbalanced(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> r, Span<ulong> scratch, Limits lim)
         {
             int la = a.Length, lb = b.Length, len = la + lb;
             r.Clear();
@@ -177,7 +200,7 @@ namespace FullInt.Core
                 int c = Math.Min(lb, la - done);
                 Span<ulong> chunk = a.Slice(la - done - c, c);
                 Span<ulong> t = tmp.Slice(0, c + lb);
-                Mul(core, chunk, b, t, rest, threshold, toom3Threshold, toom4Threshold, fftThreshold);
+                Mul(core, chunk, b, t, rest, lim);
 
                 // only the c + lb words at this offset change: everything below fits there, no carry out
                 Span<ulong> target = r.Slice(len - done - c - lb, c + lb);

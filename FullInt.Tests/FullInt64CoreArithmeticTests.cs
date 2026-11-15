@@ -192,6 +192,7 @@ namespace FullInt.Tests
             int[] thresholds = { 2, 3, 4, 5, 8, 16, 32 };
             int[] toom3Thresholds = { 3, 4, 6, 9, 16, 40, int.MaxValue };
             int[] toom4Thresholds = { 4, 5, 8, 12, 24, 60, int.MaxValue };
+            int[] toom6Thresholds = { 6, 8, 12, 36, 50, 90, int.MaxValue, int.MaxValue };
 
             ulong[] Shaped(int length)
             {
@@ -217,6 +218,7 @@ namespace FullInt.Tests
                 int threshold = thresholds[rnd.Next(thresholds.Length)];
                 int toom3 = toom3Thresholds[rnd.Next(toom3Thresholds.Length)];
                 int toom4 = toom4Thresholds[rnd.Next(toom4Thresholds.Length)];
+                int toom6 = toom6Thresholds[rnd.Next(toom6Thresholds.Length)];
                 int la = rnd.Next(1, 200);
                 int lb = rnd.Next(4) == 0 ? rnd.Next(1, 20) : rnd.Next(1, 200);   // often very unbalanced
                 var a = Shaped(la);
@@ -224,8 +226,8 @@ namespace FullInt.Tests
                 var r = new ulong[la + lb];
                 r.AsSpan().Fill(0xDEAD_BEEF_DEAD_BEEFUL);   // must be fully overwritten
 
-                Karatsuba.Multiply(core, a, b, r, threshold, toom3, toom4);
-                Assert.AreEqual(ToBig(a) * ToBig(b), ToBig(r), $"[{coreName}] {la}x{lb} threshold={threshold} toom3={toom3} toom4={toom4} (iteration {it})");
+                Karatsuba.Multiply(core, a, b, r, threshold, toom3, toom4, toom6, Karatsuba.FftThreshold);
+                Assert.AreEqual(ToBig(a) * ToBig(b), ToBig(r), $"[{coreName}] {la}x{lb} threshold={threshold} toom3={toom3} toom4={toom4} toom6={toom6} (iteration {it})");
             }
 
             // larger sizes, a few, at the default thresholds and at small ones
@@ -235,17 +237,19 @@ namespace FullInt.Tests
                 var a = Shaped(la);
                 var b = Shaped(lb);
                 var r = new ulong[la + lb];
-                (int t2, int t3, int t4) = (it % 6) switch
+                (int t2, int t3, int t4, int t6) = (it % 8) switch
                 {
-                    0 => (Karatsuba.Threshold, Karatsuba.Toom3Threshold, Karatsuba.Toom4Threshold),
-                    1 => (4, int.MaxValue, int.MaxValue),
-                    2 => (4, 12, int.MaxValue),
-                    3 => (4, 12, 16),
-                    4 => (Karatsuba.Threshold, 100, 200),
-                    _ => (Karatsuba.Threshold, int.MaxValue, 100),
+                    0 => (Karatsuba.Threshold, Karatsuba.Toom3Threshold, Karatsuba.Toom4Threshold, Karatsuba.Toom6Threshold),
+                    1 => (4, int.MaxValue, int.MaxValue, int.MaxValue),
+                    2 => (4, 12, int.MaxValue, int.MaxValue),
+                    3 => (4, 12, 16, int.MaxValue),
+                    4 => (Karatsuba.Threshold, 100, 200, int.MaxValue),
+                    5 => (Karatsuba.Threshold, int.MaxValue, 100, int.MaxValue),
+                    6 => (4, 12, 16, 40),
+                    _ => (Karatsuba.Threshold, Karatsuba.Toom3Threshold, Karatsuba.Toom4Threshold, 200),
                 };
-                Karatsuba.Multiply(core, a, b, r, t2, t3, t4);
-                Assert.AreEqual(ToBig(a) * ToBig(b), ToBig(r), $"[{coreName}] {la}x{lb} large, threshold={t2} toom3={t3} toom4={t4}");
+                Karatsuba.Multiply(core, a, b, r, t2, t3, t4, t6, Karatsuba.FftThreshold);
+                Assert.AreEqual(ToBig(a) * ToBig(b), ToBig(r), $"[{coreName}] {la}x{lb} large, threshold={t2} toom3={t3} toom4={t4} toom6={t6}");
             }
         }
 
