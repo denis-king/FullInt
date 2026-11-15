@@ -50,3 +50,4 @@ Fullint64ShrWIN_avx2
 Fullint64CompareWIN_avx2
 Fullint64Div2longWIN_recip
 Fullint64DivWIN_recip
+Fullint64ToDecStringWIN_recip

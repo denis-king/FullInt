@@ -86,15 +86,17 @@ namespace FullInt.Core
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern void Fullint64Div2longWIN_recip(IntPtr a, ulong b, IntPtr q, out ulong r, int lenA);
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern void Fullint64ToDecStringWIN_recip(IntPtr value, IntPtr valueBuf, IntPtr resultBuf, int lenValue, ref int lenResult);
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern void Fullint64DivWIN_recip(IntPtr a, IntPtr b, IntPtr q, IntPtr r, int lenA, int lenB, IntPtr work);
 
         /// <summary>Which kernel versions this process uses, e.g. for a log line.</summary>
         public static string KernelVersions =>
             !DivRecip ? "all: baseline"
-            : MultAdx && LogicAvx2 ? "Mult: adx; And/Or/Xor, Shl/Shr, Compare: avx2; Div: recip; other: baseline"
-            : MultAdx ? "Mult: adx; Div: recip; other: baseline"
-            : LogicAvx2 ? "And/Or/Xor, Shl/Shr, Compare: avx2; Div: recip; other: baseline"
-            : "Div: recip; other: baseline";
+            : MultAdx && LogicAvx2 ? "Mult: adx; And/Or/Xor, Shl/Shr, Compare: avx2; Div, ToDecString: recip; other: baseline"
+            : MultAdx ? "Mult: adx; Div, ToDecString: recip; other: baseline"
+            : LogicAvx2 ? "And/Or/Xor, Shl/Shr, Compare: avx2; Div, ToDecString: recip; other: baseline"
+            : "Div, ToDecString: recip; other: baseline";
 
 #if NET5_0_OR_GREATER
         // The same entry points without the GC transition: ~10 ns less per call, which is most
@@ -226,7 +228,8 @@ namespace FullInt.Core
         
         protected override void ToDecString(IntPtr value, IntPtr valueBuf, IntPtr resultBuf, int lenValue, ref int lenResult)
         {
-            Fullint64ToDecStringWin(value, valueBuf, resultBuf, lenValue, ref lenResult);
+            if (DivRecip) Fullint64ToDecStringWIN_recip(value, valueBuf, resultBuf, lenValue, ref lenResult);   // 10^19 by its reciprocal
+            else Fullint64ToDecStringWin(value, valueBuf, resultBuf, lenValue, ref lenResult);
         }
         
         protected override void FromDecString(IntPtr value, IntPtr valueBuf, IntPtr resultBuf, int lenValue, ref int lenResult)

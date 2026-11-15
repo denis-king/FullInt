@@ -110,6 +110,13 @@ struct FullIntCore
     // valueBuf: value.size() words of scratch; lenResult in = resultBuf size, out = start index
     static void ToDecString(CSpan value, uint64_t* valueBuf, uint8_t* resultBuf, int* lenResult) noexcept
     {
+#if defined(_M_X64) || defined(__x86_64__)
+        if (Cpu::Has(Cpu::Recip))   // ToDecStringRecip.asm: 10^19 by its reciprocal
+        {
+            Fullint64ToDecStringWIN_recip(value.data(), valueBuf, resultBuf, (int)value.size(), lenResult);
+            return;
+        }
+#endif
         Fullint64ToDecStringWin(value.data(), valueBuf, resultBuf, (int)value.size(), lenResult);
     }
 

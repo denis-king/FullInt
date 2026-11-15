@@ -51,6 +51,8 @@ int  Fullint64CompareWIN_avx2(const uint64_t* a, const uint64_t* b, int lenA, in
 // work = lenA + 1 words of scratch; otherwise the contracts of the baseline Div / Div2long.
 void Fullint64Div2longWIN_recip(const uint64_t* a, uint64_t b, uint64_t* q, uint64_t* r, int lenA);
 void Fullint64DivWIN_recip(const uint64_t* a, const uint64_t* b, uint64_t* q, uint64_t* r, int lenA, int lenB, uint64_t* work);
+// ToDecString with the division by 10^19 through its reciprocal (ToDecStringRecip.asm): any x86-64
+void Fullint64ToDecStringWIN_recip(const uint64_t* value, uint64_t* valueBuf, uint8_t* resultBuf, int lenValue, int* lenResult);
 #endif
 
 }
