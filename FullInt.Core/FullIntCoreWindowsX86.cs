@@ -78,6 +78,11 @@ namespace FullInt.Core
         private static extern void Fullint64Div2longWIN_recip(IntPtr a, ulong b, IntPtr q, out ulong r, int lenA);
 
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern ulong Fullint64DivExactWIN(IntPtr a, IntPtr q, int len, ulong d);
+
+        protected override ulong DivExact(IntPtr a, IntPtr q, int len, ulong d) => Fullint64DivExactWIN(a, q, len, d);
+
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern void Fullint64ToDecStringWIN_recip(IntPtr value, IntPtr valueBuf, IntPtr resultBuf, int lenValue, ref int lenResult);
 
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
@@ -220,6 +225,7 @@ namespace FullInt.Core
             /// <summary>lenA &gt; lenB &gt;= 2; work: lenA + lenB + 2 words.</summary>
             public static void DivRecip(IntPtr a, IntPtr b, IntPtr q, IntPtr r, int lenA, int lenB, IntPtr work) => Fullint64DivWIN_recip(a, b, q, r, lenA, lenB, work);
             public static void DivByWordRecip(IntPtr a, ulong b, IntPtr q, out ulong r, int lenA) => Fullint64Div2longWIN_recip(a, b, q, out r, lenA);
+            public static ulong DivExact(IntPtr a, IntPtr q, int len, ulong d) => Fullint64DivExactWIN(a, q, len, d);
             public static int And(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => Fullint64AndWIN(a, b, r, lenA, lenB, lenR, signs);
             public static int Or(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => Fullint64OrWIN(a, b, r, lenA, lenB, lenR, signs);
             public static int Xor(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => Fullint64XorWIN(a, b, r, lenA, lenB, lenR, signs);

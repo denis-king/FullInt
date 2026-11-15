@@ -54,3 +54,4 @@ Fullint64ToDecStringWIN_recip
 Fullint64FftAddSubWIN_adx
 Fullint64FftShlModWIN_bmi2
 Fullint64DivWIN_recipadx
+Fullint64DivExactWIN

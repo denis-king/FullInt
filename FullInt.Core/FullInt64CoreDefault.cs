@@ -358,6 +358,13 @@ namespace FullInt.Core
         }
         #endregion
 
+        // the exact division: the remainder of the plain division is 0 then
+        public ulong DivExact(Span<ulong> a, ulong d, Span<ulong> q)
+        {
+            Div(a, d, q, out ulong r);
+            return r;
+        }
+
         public void ToDecString(Span<ulong> value, Span<byte> resultBuf, out int resultStartIndex)
         {
             const ulong BASE10 = 10000000000000000000UL; // 10^19

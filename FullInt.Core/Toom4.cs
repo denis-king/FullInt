@@ -85,8 +85,7 @@ namespace FullInt.Core
             // c4 = (T - 4S) / 12 -> t2;  c2 = S - c4 -> wm1
             core.ShiftLeft(wm1.Slice(1), 2, w2);
             neg |= core.Sub(wm2, w2, wm2) < 0;
-            core.ShiftRight(wm2, 2, wm2);
-            core.Div(wm2, 3UL, t2, out _);                       // exact
+            core.DivExact(wm2, 12UL, t2);                        // exact (the shift by 2 inside)
             neg |= core.Sub(wm1, t2, wm1) < 0;
             // Ho = (Wh - 64·c0 - 16·c2 - 4·c4 - c6) / 2 -> wh
             core.ShiftLeft(c0, 6, w2);
@@ -105,12 +104,12 @@ namespace FullInt.Core
             neg |= core.Sub(w2, t1, w2) < 0;
             neg |= core.Sub(w2, wh, w2) < 0;
             neg |= core.Sub(w2, w1, w2) < 0;
-            core.Div(w2, 9UL, t3, out _);                        // exact
+            core.DivExact(w2, 9UL, t3);                          // exact
             // c5 = (U - 3·c3) / 15 -> wm2
             core.Add(t3, t3, w2);
             core.Add(w2, t3, w2);
             neg |= core.Sub(w1, w2, w1) < 0;
-            core.Div(w1, 15UL, wm2, out _);                      // exact
+            core.DivExact(w1, 15UL, wm2);                        // exact
             // c1 = O1 - c3 - c5 -> t1
             neg |= core.Sub(t1, t3, t1) < 0;
             neg |= core.Sub(t1, wm2, t1) < 0;

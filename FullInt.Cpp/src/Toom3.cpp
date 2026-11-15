@@ -47,10 +47,9 @@ void Karatsuba::Toom3(CSpan a, CSpan b, Span r, Span scratch, const Limits& lim)
     Mul(a2, b2, rInf, rest, lim);
     std::memset(r.data() + (len - 4 * k), 0, 2 * k * sizeof(uint64_t));
 
-    uint64_t rem;
     // r3 = (r(-2) - r(1)) / 3                      -> u
     bool n3 = SignedAdd(rm2, nRm2, r1, true, t);
-    FullIntCore::Div(t, 3, u, &rem);                // exact
+    FullIntCore::DivExact(t, 3, u);                 // exact
     // r1 = (r(1) - r(-1)) / 2                      -> r1
     bool n1 = SignedAdd(r1, false, rm1, !nRm1, r1);
     FullIntCore::ShiftRight(r1, 1, r1);             // exact

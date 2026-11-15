@@ -194,6 +194,14 @@ struct FullIntCore
         Fullint64ShrWIN(a.data(), r.data(), (int)a.size(), (int)r.size(), shift);
     }
 
+    // exact division for the Toom-Cook interpolation (ToomOps.asm): q = a / d for a multiple
+    // of d, d = d'·2^t with d' odd and below 2^32; q may be a (same length); returns 0 when a
+    // is a multiple. ~1.55x the speed of Div by one word.
+    static uint64_t DivExact(CSpan a, uint64_t d, Span q) noexcept
+    {
+        return Fullint64DivExactWIN(a.data(), q.data(), (int)a.size(), d);
+    }
+
 private:
     static int Signs(bool negA, bool negB) noexcept { return (negA ? 1 : 0) | (negB ? 2 : 0); }
 };

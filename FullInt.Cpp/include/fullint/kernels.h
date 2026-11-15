@@ -34,6 +34,11 @@ int  Fullint64XorWIN(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA
 void Fullint64ShlWIN(const uint64_t* a, uint64_t* r, int lenA, int lenR, int shift);
 void Fullint64ShrWIN(const uint64_t* a, uint64_t* r, int lenA, int lenR, int shift);
 
+// exact division for the Toom-Cook interpolation (ToomOps.asm, baseline instructions):
+// q = a / d for a multiple of d, d = d'·2^t with d' odd and below 2^32; q may be a; returns 0
+// when a is a multiple
+uint64_t Fullint64DivExactWIN(const uint64_t* a, uint64_t* q, int len, uint64_t d);
+
 // CPU features for picking kernel versions (Cpu.asm): x64 bit 0 BMI2, bit 1 ADX, bit 2 AVX2
 // (OS-enabled); x86 bit 4 SSE2
 int Fullint64CpuFeatures(void);

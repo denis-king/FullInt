@@ -73,7 +73,6 @@ void Karatsuba::Toom4(CSpan a, CSpan b, Span r, Span scratch, const Limits& lim)
     Mul(a3, b3, c6, rest, lim);
     std::memset(r.data() + (len - 6 * k), 0, 4 * k * sizeof(uint64_t));
 
-    uint64_t rem;
     bool neg = false;
     // O1 -> t1, E1 -> wm1
     neg |= SignedAdd(w1, false, wm1, !nWm1, t1);
@@ -94,8 +93,7 @@ void Karatsuba::Toom4(CSpan a, CSpan b, Span r, Span scratch, const Limits& lim)
     // c4 = (T - 4S) / 12 -> t2;  c2 = S - c4 -> wm1
     FullIntCore::ShiftLeft(CSpan(wm1).subspan(1), 2, w2);
     neg |= FullIntCore::Sub(wm2, w2, wm2) < 0;
-    FullIntCore::ShiftRight(wm2, 2, wm2);
-    FullIntCore::Div(wm2, 3, t2, &rem);                   // exact
+    FullIntCore::DivExact(wm2, 12, t2);                   // exact (the shift by 2 inside)
     neg |= FullIntCore::Sub(wm1, t2, wm1) < 0;
     // Ho = (Wh - 64·c0 - 16·c2 - 4·c4 - c6) / 2 -> wh
     FullIntCore::ShiftLeft(c0, 6, w2);
@@ -114,12 +112,12 @@ void Karatsuba::Toom4(CSpan a, CSpan b, Span r, Span scratch, const Limits& lim)
     neg |= FullIntCore::Sub(w2, t1, w2) < 0;
     neg |= FullIntCore::Sub(w2, wh, w2) < 0;
     neg |= FullIntCore::Sub(w2, w1, w2) < 0;
-    FullIntCore::Div(w2, 9, t3, &rem);                    // exact
+    FullIntCore::DivExact(w2, 9, t3);                     // exact
     // c5 = (U - 3·c3) / 15 -> wm2
     FullIntCore::Add(t3, t3, w2);
     FullIntCore::Add(w2, t3, w2);
     neg |= FullIntCore::Sub(w1, w2, w1) < 0;
-    FullIntCore::Div(w1, 15, wm2, &rem);                  // exact
+    FullIntCore::DivExact(w1, 15, wm2);                   // exact
     // c1 = O1 - c3 - c5 -> t1
     neg |= FullIntCore::Sub(t1, t3, t1) < 0;
     neg |= FullIntCore::Sub(t1, wm2, t1) < 0;

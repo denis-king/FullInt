@@ -493,6 +493,38 @@ namespace FullInt.Tests
             }
         }
 
+        /// <summary>
+        /// The exact division (Toom-Cook interpolation): multiples of odd and even d (d = d'·2^t,
+        /// d' below 2^32), into another buffer and in place; a non-multiple returns nonzero.
+        /// </summary>
+        [DataTestMethod]
+        [DynamicData(nameof(Cores), DynamicDataSourceType.Method)]
+        public void Core_DivExact_MatchesBigInteger(string coreName)
+        {
+            var core = GetCore(coreName);
+            var rnd = new Random(3131);
+            for (int it = 0; it < 20_000; it++)
+            {
+                int len = rnd.Next(1, 40);
+                ulong d = ((ulong)rnd.Next(1, int.MaxValue) * 2 + 1) >> rnd.Next(0, 20);
+                d |= 1;
+                d <<= rnd.Next(3) == 0 ? rnd.Next(0, 31) : 0;
+                var qv = Next(rnd, len);
+                qv[0] >>= 63;                                    // q·d fits len words (d < 2^63)
+                var a = new ulong[len];
+                var prod = FromBig(ToBig(qv) * d);
+                prod.CopyTo(a, len - prod.Length);
+                bool inPlace = rnd.Next(2) == 0;
+                var q = inPlace ? a : new ulong[len];
+                ulong c = core.DivExact(a, d, q);
+                Assert.AreEqual(0UL, c, $"[{coreName}] len={len} d={d} carry");
+                Assert.AreEqual(ToBig(qv), ToBig(q), $"[{coreName}] len={len} d={d} inPlace={inPlace}");
+            }
+            // not a multiple: reported
+            var odd = new ulong[] { 5, 8 };                     // 5·2^64 + 8 = 1 mod 3 (2^64 = 1 mod 3)
+            Assert.AreNotEqual(0UL, core.DivExact(odd, 3, new ulong[2]), $"[{coreName}] non-multiple");
+        }
+
         [DataTestMethod]
         [DynamicData(nameof(Cores), DynamicDataSourceType.Method)]
         public void Core_DivByWord_MatchesBigInteger(string coreName)

@@ -55,9 +55,7 @@ void MulSmall(CSpan x, uint64_t c, Span r)
 // q = x / d, the division known to be exact
 void DivExact(CSpan x, uint64_t d, Span q)
 {
-    uint64_t rem;
-    FullIntCore::Div(x, d, q, &rem);
-    if (rem != 0) throw std::logic_error("Toom6: inexact division (internal error)");
+    if (FullIntCore::DivExact(x, d, q) != 0) throw std::logic_error("Toom6: inexact division (internal error)");
 }
 
 // plus = even + odd, minus = |even - odd|; returns true when even - odd < 0

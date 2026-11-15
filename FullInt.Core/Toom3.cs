@@ -53,7 +53,7 @@ namespace FullInt.Core
 
             // r3 = (r(-2) - r(1)) / 3                      -> u
             bool n3 = SignedAdd(core, rm2, nRm2, r1, true, t);
-            core.Div(t, 3UL, u, out _);                     // exact
+            core.DivExact(t, 3UL, u);                       // exact
             // r1 = (r(1) - r(-1)) / 2                      -> r1
             bool n1 = SignedAdd(core, r1, false, rm1, !nRm1, r1);
             core.ShiftRight(r1, 1, r1);                     // exact

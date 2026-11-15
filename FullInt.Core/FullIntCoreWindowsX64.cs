@@ -91,6 +91,10 @@ namespace FullInt.Core
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern void Fullint64Div2longWIN_recip(IntPtr a, ulong b, IntPtr q, out ulong r, int lenA);
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern ulong Fullint64DivExactWIN(IntPtr a, IntPtr q, int len, ulong d);
+
+        protected override ulong DivExact(IntPtr a, IntPtr q, int len, ulong d) => Fullint64DivExactWIN(a, q, len, d);
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern void Fullint64ToDecStringWIN_recip(IntPtr value, IntPtr valueBuf, IntPtr resultBuf, int lenValue, ref int lenResult);
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern void Fullint64DivWIN_recip(IntPtr a, IntPtr b, IntPtr q, IntPtr r, int lenA, int lenB, IntPtr work);

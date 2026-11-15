@@ -229,8 +229,7 @@ namespace FullInt.Core
         // q = x / d, the division known to be exact
         private static void DivExact(IFullIntCore core, Span<ulong> x, ulong d, Span<ulong> q)
         {
-            core.Div(x, d, q, out ulong rem);
-            if (rem != 0) throw new InvalidOperationException("Toom6: inexact division (internal error)");
+            if (core.DivExact(x, d, q) != 0) throw new InvalidOperationException("Toom6: inexact division (internal error)");
         }
 
         // the nine values of x5·X⁵ + ... + x0 (e words each, into v at i·e): p(1), p(-1), p(2), p(-2),

@@ -118,6 +118,17 @@ namespace FullInt.Core
             }
         }
 		
+		public unsafe ulong DivExact(Span<ulong> a, ulong d, Span<ulong> q)
+		{
+			fixed (ulong* pA = a)
+			fixed (ulong* pQ = q)
+			{
+				return DivExact((IntPtr)pA, (IntPtr)pQ, a.Length, d);
+			}
+		}
+
+		protected abstract ulong DivExact(IntPtr a, IntPtr q, int len, ulong d);
+
 		protected abstract void Div(IntPtr a, IntPtr b, IntPtr q, IntPtr r, int lenA, int lenB);
 		protected abstract void Div(IntPtr a, ulong b, IntPtr q, out ulong r, int lenA);
 		

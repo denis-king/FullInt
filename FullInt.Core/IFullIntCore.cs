@@ -11,6 +11,12 @@ namespace FullInt.Core
 		void Mult(Span<ulong> a, Span<ulong> b, Span<ulong> r);
 		void Div(Span<ulong> dividend, Span<ulong> divisor, Span<ulong> quotient, Span<ulong> remainder);
 		void Div(Span<ulong> dividend, ulong divisor, Span<ulong> quotient, out ulong remainder);
+
+        // q = a / d for an a known to be a multiple of d (the Toom-Cook interpolation):
+        // d = d'·2^t with d' odd and below 2^32 (t < 32); q.Length == a.Length, q may be a.
+        // Returns 0 when a is a multiple (anything else: it was not). The asm cores use the exact
+        // division by the inverse (ToomOps.asm, ~1.55x the speed of Div by one word).
+        ulong DivExact(Span<ulong> a, ulong d, Span<ulong> q);
 		
 		int Compare(Span<ulong> a, Span<ulong> b);
         void ToDecString(Span<ulong> value, Span<byte> resultBuf, out int resultStartIndex);
