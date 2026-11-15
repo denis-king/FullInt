@@ -8,9 +8,12 @@ namespace fullint {
 
 struct BurnikelZiegler
 {
-    // Inside the recursion, blocks below this many words (or odd) go to the kernel Div.
+    // Inside the recursion, blocks below this many words go to the kernel Div.
     // The engine uses Burnikel–Ziegler from 2·Threshold words of divisor and of quotient.
-    static inline int Threshold = 96;
+    // C# keeps 96 (each kernel call costs it more: Burnikel–Ziegler loses up to 128 words there);
+    // here 40..48 are best (x64, Zen 3, a % b and a / b at 2N / N and 3N / N, of 96: 0.84-0.89
+    // at 96 words, 0.78-0.83 at 128, 0.85-0.96 at 256-1024; mean 0.935).
+    static inline int Threshold = 48;
 
     // The kernel Div contract: a and b without leading zero words, a.size() >= b.size();
     // q: a.size() - b.size() + 1 words, r: b.size() + 2 words (the value right-aligned).
