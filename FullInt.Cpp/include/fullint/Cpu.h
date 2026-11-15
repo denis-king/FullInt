@@ -30,6 +30,16 @@ struct Cpu
     static inline const int Features = Detect();
 
     static bool Has(int features) noexcept { return (Features & features) == features; }
+
+    // which kernel versions this process uses (FullIntCore picks by the same rules)
+    static const char* Describe() noexcept
+    {
+        bool adx = Has(Bmi2 | Adx), avx2 = Has(Avx2);
+        return adx && avx2 ? "Mult: adx; And/Or/Xor: avx2; other: baseline"
+             : adx         ? "Mult: adx; other: baseline"
+             : avx2        ? "And/Or/Xor: avx2; other: baseline"
+                           : "all: baseline";
+    }
 };
 
 }  // namespace fullint

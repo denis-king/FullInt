@@ -1,7 +1,7 @@
 // Port of FullInt.Core/IFullIntCore.cs + FullIntCoreBase.cs: the span-level kernel calls.
 //
 // Kernel versions: the baseline kernels run on any x86-64; where the CPU has more (Cpu.h),
-// the newer versions are called instead (so far: Mult with BMI2 + ADX).
+// the newer versions are called instead (Mult: BMI2 + ADX; And / Or / Xor: AVX2).
 //
 // In .NET the core is an interface (asm on win-x64/x86, managed elsewhere) and every call
 // pins the spans and crosses into the DLL. Here the asm kernels are linked into the same
@@ -79,16 +79,28 @@ struct FullIntCore
 
     static int And(CSpan a, bool negA, CSpan b, bool negB, Span r) noexcept
     {
+#if defined(_M_X64) || defined(__x86_64__)
+        if (Cpu::Has(Cpu::Avx2))   // LogicAvx2.asm (negative operands: it falls back to the baseline)
+            return Fullint64AndWIN_avx2(a.data(), b.data(), r.data(), (int)a.size(), (int)b.size(), (int)r.size(), Signs(negA, negB));
+#endif
         return Fullint64AndWIN(a.data(), b.data(), r.data(), (int)a.size(), (int)b.size(), (int)r.size(), Signs(negA, negB));
     }
 
     static int Or(CSpan a, bool negA, CSpan b, bool negB, Span r) noexcept
     {
+#if defined(_M_X64) || defined(__x86_64__)
+        if (Cpu::Has(Cpu::Avx2))   // LogicAvx2.asm (negative operands: it falls back to the baseline)
+            return Fullint64OrWIN_avx2(a.data(), b.data(), r.data(), (int)a.size(), (int)b.size(), (int)r.size(), Signs(negA, negB));
+#endif
         return Fullint64OrWIN(a.data(), b.data(), r.data(), (int)a.size(), (int)b.size(), (int)r.size(), Signs(negA, negB));
     }
 
     static int Xor(CSpan a, bool negA, CSpan b, bool negB, Span r) noexcept
     {
+#if defined(_M_X64) || defined(__x86_64__)
+        if (Cpu::Has(Cpu::Avx2))   // LogicAvx2.asm (negative operands: it falls back to the baseline)
+            return Fullint64XorWIN_avx2(a.data(), b.data(), r.data(), (int)a.size(), (int)b.size(), (int)r.size(), Signs(negA, negB));
+#endif
         return Fullint64XorWIN(a.data(), b.data(), r.data(), (int)a.size(), (int)b.size(), (int)r.size(), Signs(negA, negB));
     }
 

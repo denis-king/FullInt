@@ -57,6 +57,23 @@ namespace FullInt.Core
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern void Fullint64MultWIN_adx(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR);
 
+        // vpand / vpor / vpxor (LogicAvx2.asm): AVX2; negative operands fall back to the baseline inside
+        private static readonly bool LogicAvx2 = (CpuFeatures & 4) == 4;
+
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern int Fullint64AndWIN_avx2(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs);
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern int Fullint64OrWIN_avx2(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs);
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern int Fullint64XorWIN_avx2(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs);
+
+        /// <summary>Which kernel versions this process uses, e.g. for a log line.</summary>
+        public static string KernelVersions =>
+            MultAdx && LogicAvx2 ? "Mult: adx; And/Or/Xor: avx2; other: baseline"
+            : MultAdx ? "Mult: adx; other: baseline"
+            : LogicAvx2 ? "And/Or/Xor: avx2; other: baseline"
+            : "all: baseline";
+
 #if NET5_0_OR_GREATER
         // The same entry points without the GC transition: ~10 ns less per call, which is most
         // of the cost of a small call. Only for calls that finish within a few microseconds:
@@ -75,6 +92,13 @@ namespace FullInt.Core
 
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "Fullint64MultWIN_adx"), SuppressGCTransition]
         private static extern void Fullint64MultWIN_adx_Fast(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR);
+
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "Fullint64AndWIN_avx2"), SuppressGCTransition]
+        private static extern int Fullint64AndWIN_avx2_Fast(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs);
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "Fullint64OrWIN_avx2"), SuppressGCTransition]
+        private static extern int Fullint64OrWIN_avx2_Fast(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs);
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "Fullint64XorWIN_avx2"), SuppressGCTransition]
+        private static extern int Fullint64XorWIN_avx2_Fast(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs);
 
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "Fullint64CompareWIN"), SuppressGCTransition]
         private static extern int Fullint64CompareWIN_Fast(IntPtr a, IntPtr b, int lenA, int lenB);
@@ -173,25 +197,28 @@ namespace FullInt.Core
         protected override int And(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs)
         {
 #if NET5_0_OR_GREATER
-            if (Short(lenA, lenB, lenR)) return Fullint64AndWIN_Fast(a, b, r, lenA, lenB, lenR, signs);
+            if (Short(lenA, lenB, lenR))
+                return LogicAvx2 ? Fullint64AndWIN_avx2_Fast(a, b, r, lenA, lenB, lenR, signs) : Fullint64AndWIN_Fast(a, b, r, lenA, lenB, lenR, signs);
 #endif
-            return Fullint64AndWIN(a, b, r, lenA, lenB, lenR, signs);
+            return LogicAvx2 ? Fullint64AndWIN_avx2(a, b, r, lenA, lenB, lenR, signs) : Fullint64AndWIN(a, b, r, lenA, lenB, lenR, signs);
         }
 
         protected override int Or(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs)
         {
 #if NET5_0_OR_GREATER
-            if (Short(lenA, lenB, lenR)) return Fullint64OrWIN_Fast(a, b, r, lenA, lenB, lenR, signs);
+            if (Short(lenA, lenB, lenR))
+                return LogicAvx2 ? Fullint64OrWIN_avx2_Fast(a, b, r, lenA, lenB, lenR, signs) : Fullint64OrWIN_Fast(a, b, r, lenA, lenB, lenR, signs);
 #endif
-            return Fullint64OrWIN(a, b, r, lenA, lenB, lenR, signs);
+            return LogicAvx2 ? Fullint64OrWIN_avx2(a, b, r, lenA, lenB, lenR, signs) : Fullint64OrWIN(a, b, r, lenA, lenB, lenR, signs);
         }
 
         protected override int Xor(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs)
         {
 #if NET5_0_OR_GREATER
-            if (Short(lenA, lenB, lenR)) return Fullint64XorWIN_Fast(a, b, r, lenA, lenB, lenR, signs);
+            if (Short(lenA, lenB, lenR))
+                return LogicAvx2 ? Fullint64XorWIN_avx2_Fast(a, b, r, lenA, lenB, lenR, signs) : Fullint64XorWIN_Fast(a, b, r, lenA, lenB, lenR, signs);
 #endif
-            return Fullint64XorWIN(a, b, r, lenA, lenB, lenR, signs);
+            return LogicAvx2 ? Fullint64XorWIN_avx2(a, b, r, lenA, lenB, lenR, signs) : Fullint64XorWIN(a, b, r, lenA, lenB, lenR, signs);
         }
 
         protected override void ShiftLeft(IntPtr a, IntPtr r, int lenA, int lenR, int shift)

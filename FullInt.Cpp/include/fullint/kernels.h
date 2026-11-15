@@ -40,6 +40,9 @@ void Fullint64ShrWIN(const uint64_t* a, uint64_t* r, int lenA, int lenR, int shi
 int Fullint64CpuFeatures(void);
 
 void Fullint64MultWIN_adx(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR);   // BMI2 + ADX
+int  Fullint64AndWIN_avx2(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR, int signs);   // AVX2
+int  Fullint64OrWIN_avx2(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR, int signs);
+int  Fullint64XorWIN_avx2(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR, int signs);
 #endif
 
 }

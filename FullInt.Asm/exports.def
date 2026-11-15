@@ -42,3 +42,6 @@ Fullint64ShrWIN
 Fullint64CpuFeatures
 Fullint64Mult_adx
 Fullint64MultWIN_adx
+Fullint64AndWIN_avx2
+Fullint64OrWIN_avx2
+Fullint64XorWIN_avx2
