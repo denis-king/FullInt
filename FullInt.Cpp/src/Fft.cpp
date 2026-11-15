@@ -27,6 +27,45 @@ namespace fullint {
 
 namespace {
 
+// The work buffer of one FFT product, kept per thread and reused: a fresh one of a megabyte or
+// more each time came as new pages from the OS, every 4 KB page faulting on its first write
+// (16384 words: the split 0.009 -> 0.15 ms, 32768: 0.34 ms, more in the transforms). A nested
+// FFT (a pointwise product long enough for one) takes a buffer of its own.
+struct FftBuffer
+{
+    uint64_t* data;
+    explicit FftBuffer(size_t words)
+    {
+        if (!busy && capacity >= words) { data = kept.get(); busy = owner = true; return; }
+        if (!busy)
+        {
+            kept = std::make_unique_for_overwrite<uint64_t[]>(words);
+            capacity = words;
+            data = kept.get();
+            busy = owner = true;
+            return;
+        }
+        own = std::make_unique_for_overwrite<uint64_t[]>(words);
+        data = own.get();
+    }
+    ~FftBuffer()
+    {
+        if (owner) busy = false;
+    }
+    FftBuffer(const FftBuffer&) = delete;
+    FftBuffer& operator=(const FftBuffer&) = delete;
+
+private:
+    bool owner = false;
+    std::unique_ptr<uint64_t[]> own;
+    static thread_local std::unique_ptr<uint64_t[]> kept;
+    static thread_local size_t capacity;
+    static thread_local bool busy;
+};
+thread_local std::unique_ptr<uint64_t[]> FftBuffer::kept;
+thread_local size_t FftBuffer::capacity = 0;
+thread_local bool FftBuffer::busy = false;
+
 bool NativeKernels() noexcept
 {
 #if defined(_M_X64) || defined(__x86_64__)
@@ -344,8 +383,8 @@ void Karatsuba::Convolve(CSpan a, CSpan b, Span r, int k, size_t m, int nBits, c
     // vectors: K for a, K for b, one spare each; then the product and the scratch
     size_t vectors = 2 * (size_t)K + 2;
     size_t words = vectors * n1 + 2 * n1 + ScratchLength(n1, n1);
-    std::unique_ptr<uint64_t[]> buf = std::make_unique_for_overwrite<uint64_t[]>(words);
-    uint64_t* all = buf.get();
+    FftBuffer buf(words);
+    uint64_t* all = buf.data;
     std::vector<size_t> slotTable(vectors);
     for (size_t i = 0; i < vectors; i++) slotTable[i] = i * n1;
     size_t* sa = slotTable.data();
