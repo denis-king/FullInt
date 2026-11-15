@@ -429,6 +429,10 @@ std::string FullInt64Engine::ToDecString(const FullInt64& value)
         p = std::to_chars(p, text + sizeof(text), w[0]).ptr;
         return std::string(text, p);
     }
+    if (w.size() > (size_t)DecimalConversion::ToStringThreshold)   // long: by halves (FullInt64Engine.Decimal.cpp)
+    {
+        return ToDecStringRecursive(value);
+    }
 
     // small: stack buffers (as C# stackalloc), large: heap
     int resultBytes = (int)(w.size() * 1.014 + 1) * 19 + 1;
@@ -540,28 +544,9 @@ FullInt64 FullInt64Engine::ToFullInt64(std::string_view value)
     FullInt64 result;
     if (base == 10)
     {
-        // small: stack buffers (as C# stackalloc), large: heap; both zeroed
-        int resultWords = (int)(value.size() / 19 + 1);
-        uint64_t stackWords[2][96];
-        std::unique_ptr<uint64_t[]> heap;
-        uint64_t* valueBuf = stackWords[0];
-        uint64_t* resultBuf = stackWords[1];
-        if (resultWords > 96)
-        {
-            heap = std::make_unique<uint64_t[]>(2 * (size_t)resultWords);
-            valueBuf = heap.get();
-            resultBuf = heap.get() + resultWords;
-        }
-        else
-        {
-            std::memset(valueBuf, 0, resultWords * sizeof(uint64_t));
-            std::memset(resultBuf, 0, resultWords * sizeof(uint64_t));
-        }
-        int start = resultWords;
-        FullIntCore::FromDecString((const uint8_t*)value.data(), (int)value.size(), valueBuf, resultBuf, &start);
-        uint32_t n = (uint32_t)(resultWords - start);
-        if (n == 0) return result;
-        std::memcpy(result.Prepare(n), resultBuf + start, n * sizeof(uint64_t));
+        result = value.size() > (size_t)DecimalConversion::ParseThreshold
+            ? ParseDecimal(value)          // long text: by halves (FullInt64Engine.Decimal.cpp)
+            : ParseDecimalLeaf(value);
     }
     else   // 16 and 8: the digits are bit groups (C#: 16-digit chunks for hex, mult/add per digit for octal)
     {

@@ -32,6 +32,13 @@ namespace fullint {
 
 class FullInt64Engine;
 
+// Thresholds of the decimal conversion by halves (C# DecimalConversion)
+struct DecimalConversion
+{
+    static inline int ToStringThreshold = 48;      // words; below: the ToDecString kernel
+    static inline int ParseThreshold = 48 * 19;    // digits; below: the FromDecString kernel
+};
+
 // Word buffers for the heap-stored numbers. Freed buffers are kept per thread by size class
 // (powers of two up to CachedWordsMax words) and handed to the next result: "r = a + b" in a
 // loop gives r's old buffer to the new value instead of a heap allocation and free per
@@ -346,6 +353,14 @@ private:
     static FullInt64 shiftLeftGeneral(const FullInt64& value, int shift);
     static FullInt64 shiftRightGeneral(const FullInt64& value, int shift);
     static std::string ToDecString(const FullInt64& value);
+
+    // decimal text by halves (FullInt64Engine.Decimal.cpp)
+    static const FullInt64& DecimalPower(int k);
+    static std::string ToDecStringRecursive(const FullInt64& value);
+    static size_t WriteDecimal(const FullInt64& x, char* text, size_t end, ptrdiff_t width);
+    static size_t WriteDecimalLeaf(CSpan w, char* text, size_t end);
+    static FullInt64 ParseDecimal(std::string_view digits);
+    static FullInt64 ParseDecimalLeaf(std::string_view digits);
 
     friend class FullInt64;
 };

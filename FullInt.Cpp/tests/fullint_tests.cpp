@@ -318,6 +318,50 @@ void InPlaceApi()
     CHECK(acc == expect + FullInt64(1000), "++ x1000");
 }
 
+// decimal text by halves against GMP: powers of ten and neighbours, zero runs, random
+// digits; default and tiny thresholds (deep recursion)
+void DecimalByHalves()
+{
+    std::vector<std::string> texts;
+    for (int e : { 19, 38, 76, 152, 304, 608, 1216, 2432, 4864, 9728, 20000 })
+    {
+        std::string p = "1" + std::string(e, '0');
+        texts.push_back(p);                          // 10^e
+        texts.push_back(std::string(e, '9'));        // 10^e - 1
+        texts.push_back("1" + std::string(e - 1, '0') + "1");   // 10^e + 1
+    }
+    for (int i = 0; i < 30; i++)
+    {
+        size_t digits = 20 + rng() % (i < 25 ? 3000 : 30000);
+        std::string t(1, (char)('1' + rng() % 9));
+        while (t.size() < digits)
+            t += (rng() % 10 == 0) ? std::string(1 + rng() % 120, '0') : std::string(1, (char)('0' + rng() % 10));
+        texts.push_back(t);
+    }
+
+    int savedTo = fullint::DecimalConversion::ToStringThreshold, savedParse = fullint::DecimalConversion::ParseThreshold;
+    for (auto [to, parse] : { std::pair{ savedTo, savedParse }, std::pair{ 2, 20 }, std::pair{ 3, 39 }, std::pair{ 5, 100 } })
+    {
+        fullint::DecimalConversion::ToStringThreshold = to;
+        fullint::DecimalConversion::ParseThreshold = parse;
+        for (auto& t : texts)
+        {
+            if (to != savedTo && t.size() > 5000) continue;
+            for (const std::string& text : { t, "-" + t })
+            {
+                FullInt64 x = FullInt64::Parse(text);
+                Mpz e, got;
+                mpz_set_str(e.v, text.c_str(), 10);
+                ToMpz(x, got.v);
+                CHECK(mpz_cmp(e.v, got.v) == 0, "Parse by halves " + std::to_string(text.size()) + " chars, thresholds " + std::to_string(to));
+                CHECK(x.ToString() == text, "ToString by halves " + std::to_string(text.size()) + " chars, thresholds " + std::to_string(to));
+            }
+        }
+    }
+    fullint::DecimalConversion::ToStringThreshold = savedTo;
+    fullint::DecimalConversion::ParseThreshold = savedParse;
+}
+
 }  // namespace
 
 int main()
@@ -328,6 +372,7 @@ int main()
     MultiplyThresholds();
     DivideThresholds();
     InPlaceApi();
+    DecimalByHalves();
 
     for (int sa : sizes)
         for (int sb : sizes)
