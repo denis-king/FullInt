@@ -397,17 +397,50 @@ void Karatsuba::Convolve(CSpan a, CSpan b, Span r, int k, size_t m, int nBits, c
     Split(a, m, K, n1, all, sa);
     if (!square) Split(b, m, K, n1, all, sb);
 
-    ForwardDif(native, all, sa, K, n1, nBits);
-    if (!square) ForwardDif(native, all, sb, K, n1, nBits);
-
-    for (int i = 0; i < K; i++)
-    {
-        Span x(all + sa[i], n1), y = square ? x : Span(all + sb[i], n1);
-        Mul(x, y, prod, rest, lim);
-        ReduceProduct(prod, x);
-    }
-
-    InverseDit(native, all, sa, K, n1, nBits);
+    // forward DIF, pointwise products, inverse DIT in one depth-first walk: a block's top
+    // level (a and b), its two halves recursively, a leaf's product, then the block's inverse
+    // top level - the same butterflies with the same twiddles as level by level, each subtree
+    // done while its vectors are in the cache
+    auto forwardLevel = [&](size_t* slots, int start, int half) {
+        int step = nBits / half;                         // w_(2·half) = 2^(N / half)
+        for (int j = 0; j < half; j++)
+        {
+            int iu = start + j, ix = start + j + half;
+            AddSub(native, Span(all + slots[iu], n1), Span(all + slots[ix], n1));
+            if (j == 0) continue;
+            ShlMod(native, CSpan(all + slots[ix], n1), j * step, Span(all + slots[K], n1));
+            std::swap(slots[ix], slots[K]);
+        }
+    };
+    auto inverseLevel = [&](size_t* slots, int start, int half) {
+        int step = nBits / half;
+        for (int j = 0; j < half; j++)
+        {
+            int iu = start + j, ix = start + j + half;
+            if (j != 0)
+            {
+                ShlMod(native, CSpan(all + slots[ix], n1), 2 * nBits - j * step, Span(all + slots[K], n1));
+                std::swap(slots[ix], slots[K]);
+            }
+            AddSub(native, Span(all + slots[iu], n1), Span(all + slots[ix], n1));
+        }
+    };
+    auto walk = [&](auto& self, int start, int size) -> void {
+        if (size == 1)
+        {
+            Span x(all + sa[start], n1), y = square ? x : Span(all + sb[start], n1);
+            Mul(x, y, prod, rest, lim);
+            ReduceProduct(prod, x);
+            return;
+        }
+        int half = size / 2;
+        forwardLevel(sa, start, half);
+        if (!square) forwardLevel(sb, start, half);
+        self(self, start, half);
+        self(self, start + half, half);
+        inverseLevel(sa, start, half);
+    };
+    walk(walk, 0, K);
 
     // r = sum (c_i / K)·B^(M·i)
     std::memset(r.data(), 0, r.size_bytes());

@@ -177,17 +177,7 @@ namespace FullInt.Core
                 Split(a, m, K, n1, all, sa);
                 if (!square) Split(b, m, K, n1, all, sb);
 
-                ForwardDif(native, all, sa, K, n1, nBits);
-                if (!square) ForwardDif(native, all, sb, K, n1, nBits);
-
-                for (int i = 0; i < K; i++)
-                {
-                    Span<ulong> x = all.Slice(sa[i], n1), y = square ? x : all.Slice(sb[i], n1);
-                    Mul(core, x, y, prod, rest, lim);
-                    ReduceProduct(core, prod, x);
-                }
-
-                InverseDit(native, all, sa, K, n1, nBits);
+                Walk(core, native, all, sa, sb, square, K, n1, nBits, prod, rest, lim, 0, K);
 
                 // r = sum (c_i / K)·B^(M·i)
                 r.Clear();
@@ -285,42 +275,56 @@ namespace FullInt.Core
             x[0] = add;                                                       // x = 1: the result is 2^N
         }
 
-        // decimation in frequency, natural order in, bit-reversed out
-        private static void ForwardDif(bool native, Span<ulong> all, Span<int> slots, int K, int n1, int nBits)
+        // forward DIF, pointwise products, inverse DIT in one depth-first walk: a block's top
+        // level (a and b), its two halves recursively, a leaf's product, then the block's inverse
+        // top level - the same butterflies with the same twiddles as level by level, each subtree
+        // done while its vectors are in the cache (C++: -3..-4% at 32768-65536 words)
+        private static void Walk(IFullIntCore core, bool native, Span<ulong> all, Span<int> sa, Span<int> sb, bool square,
+            int K, int n1, int nBits, Span<ulong> prod, Span<ulong> rest, Limits lim, int start, int size)
         {
-            for (int half = K / 2; half >= 1; half /= 2)
+            if (size == 1)
             {
-                int step = nBits / half;                                    // w_(2·half) = 2^(N / half)
-                for (int start = 0; start < K; start += 2 * half)
-                    for (int j = 0; j < half; j++)
-                    {
-                        int iu = start + j, ix = start + j + half;
-                        Span<ulong> u = all.Slice(slots[iu], n1), x = all.Slice(slots[ix], n1);
-                        FftOps.AddSub(native, u, x);
-                        if (j == 0) continue;
-                        FftOps.ShlMod(native, x, j * step, all.Slice(slots[K], n1));
-                        (slots[ix], slots[K]) = (slots[K], slots[ix]);
-                    }
+                Span<ulong> x = all.Slice(sa[start], n1), y = square ? x : all.Slice(sb[start], n1);
+                Mul(core, x, y, prod, rest, lim);
+                ReduceProduct(core, prod, x);
+                return;
+            }
+            int half = size / 2;
+            ForwardLevel(native, all, sa, K, n1, nBits, start, half);
+            if (!square) ForwardLevel(native, all, sb, K, n1, nBits, start, half);
+            Walk(core, native, all, sa, sb, square, K, n1, nBits, prod, rest, lim, start, half);
+            Walk(core, native, all, sa, sb, square, K, n1, nBits, prod, rest, lim, start + half, half);
+            InverseLevel(native, all, sa, K, n1, nBits, start, half);
+        }
+
+        // one level of the decimation in frequency on the block [start, start + 2·half)
+        private static void ForwardLevel(bool native, Span<ulong> all, Span<int> slots, int K, int n1, int nBits, int start, int half)
+        {
+            int step = nBits / half;                                        // w_(2·half) = 2^(N / half)
+            for (int j = 0; j < half; j++)
+            {
+                int iu = start + j, ix = start + j + half;
+                Span<ulong> u = all.Slice(slots[iu], n1), x = all.Slice(slots[ix], n1);
+                FftOps.AddSub(native, u, x);
+                if (j == 0) continue;
+                FftOps.ShlMod(native, x, j * step, all.Slice(slots[K], n1));
+                (slots[ix], slots[K]) = (slots[K], slots[ix]);
             }
         }
 
-        // decimation in time with w^-1, bit-reversed order in, natural out (without the 1/K)
-        private static void InverseDit(bool native, Span<ulong> all, Span<int> slots, int K, int n1, int nBits)
+        // one level of the decimation in time with w^-1 on the block (without the 1/K)
+        private static void InverseLevel(bool native, Span<ulong> all, Span<int> slots, int K, int n1, int nBits, int start, int half)
         {
-            for (int half = 1; half < K; half *= 2)
+            int step = nBits / half;
+            for (int j = 0; j < half; j++)
             {
-                int step = nBits / half;
-                for (int start = 0; start < K; start += 2 * half)
-                    for (int j = 0; j < half; j++)
-                    {
-                        int iu = start + j, ix = start + j + half;
-                        if (j != 0)
-                        {
-                            FftOps.ShlMod(native, all.Slice(slots[ix], n1), 2 * nBits - j * step, all.Slice(slots[K], n1));
-                            (slots[ix], slots[K]) = (slots[K], slots[ix]);
-                        }
-                        FftOps.AddSub(native, all.Slice(slots[iu], n1), all.Slice(slots[ix], n1));
-                    }
+                int iu = start + j, ix = start + j + half;
+                if (j != 0)
+                {
+                    FftOps.ShlMod(native, all.Slice(slots[ix], n1), 2 * nBits - j * step, all.Slice(slots[K], n1));
+                    (slots[ix], slots[K]) = (slots[K], slots[ix]);
+                }
+                FftOps.AddSub(native, all.Slice(slots[iu], n1), all.Slice(slots[ix], n1));
             }
         }
     }
