@@ -406,7 +406,10 @@ namespace FullInt.Tests
                 if (a.Length < b.Length) continue;
                 var q = new ulong[a.Length - b.Length + 1];
                 q.AsSpan().Fill(0xDEAD_BEEF_DEAD_BEEFUL);
-                BurnikelZiegler.Quotient(core, a, b, q, threshold);
+                int savedSplit = BurnikelZiegler.QuotientSplitFrom;
+                if (it % 2 == 1) BurnikelZiegler.QuotientSplitFrom = rnd.Next(2, 42);   // splits on small numbers
+                try { BurnikelZiegler.Quotient(core, a, b, q, threshold); }
+                finally { BurnikelZiegler.QuotientSplitFrom = savedSplit; }
                 Assert.AreEqual(ToBig(a) / ToBig(b), ToBig(q), $"[{coreName}] {a.Length}/{lb} threshold={threshold} kind={kind} (iteration {it})");
             }
         }

@@ -34,6 +34,12 @@ if (args.Length > 0 && args[0] == "decprep")
     return BzTune.RunDecimalPrepared(args.Skip(1).ToArray());
 }
 
+// quotsmall [rounds]                        → small quotients: the split threshold (see BzTune.RunQuotientSmall)
+if (args.Length > 0 && args[0] == "quotsmall")
+{
+    return BzTune.RunQuotientSmall(args.Skip(1).ToArray());
+}
+
 // quot [rounds]                             → the quotient alone against the full division (see BzTune.RunQuotient)
 if (args.Length > 0 && args[0] == "quot")
 {

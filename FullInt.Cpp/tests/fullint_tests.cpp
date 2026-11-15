@@ -431,7 +431,10 @@ void QuotientOnly()
         }
         if (a.size() < b.size()) continue;
         std::vector<uint64_t> q(a.size() - b.size() + 1, 0xDEADBEEFDEADBEEFull);
+        int savedSplit = fullint::BurnikelZiegler::QuotientSplitFrom;
+        if (round % 2) fullint::BurnikelZiegler::QuotientSplitFrom = 2 + (int)(rng() % 40);   // splits on small numbers
         fullint::BurnikelZiegler::Quotient(a, b, q, threshold);
+        fullint::BurnikelZiegler::QuotientSplitFrom = savedSplit;
         mpz_tdiv_q(mq.v, ma.v, mb.v);
         mpz_import(got.v, q.size(), 1, 8, 0, 0, q.data());
         CHECK(mpz_cmp(mq.v, got.v) == 0, "quotient alone threshold " + std::to_string(threshold) + " kind " + std::to_string(kind) +

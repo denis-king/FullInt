@@ -38,6 +38,23 @@ int CompareEqualLength(CSpan x, CSpan y)
 
 void Clear(Span s) { std::memset(s.data(), 0, s.size_bytes()); }
 
+// work words of the quotient path: on the stack up to 160 words (the small divisions, where an
+// allocation per buffer cost more than the split saved), the heap above; not cleared
+struct LocalWords
+{
+    explicit LocalWords(size_t n) : n_(n)
+    {
+        if (n > std::size(inline_)) heap_ = std::make_unique_for_overwrite<uint64_t[]>(n);
+    }
+    Span span() { return Span(heap_ ? heap_.get() : inline_, n_); }
+    uint64_t* data() { return heap_ ? heap_.get() : inline_; }
+
+private:
+    uint64_t inline_[160];
+    std::unique_ptr<uint64_t[]> heap_;
+    size_t n_;
+};
+
 }  // namespace
 
 void BurnikelZiegler::DivRem(CSpan a, CSpan b, Span q, Span r)
@@ -174,24 +191,25 @@ void BurnikelZiegler::Quotient(CSpan a, CSpan b, Span q, int threshold)
 {
     if (threshold < 2) throw std::out_of_range("threshold");
     size_t la = a.size(), n = b.size();
-    Words rTmp(n + 2);
-    if (la - n + 2 < 4 * (size_t)threshold && n <= la - n + 4)
+    LocalWords rTmp(n + 2);
+    if (la - n + 2 < (size_t)QuotientSplitFrom && n <= la - n + 4)
     {
         // neither split nor cut below (see Approx): the exact division directly
-        Exact(a, b, q, rTmp, threshold);
+        Exact(a, b, q, rTmp.span(), threshold);
         return;
     }
-    Words ae(la + 1);                                                // A·β
-    std::copy(a.begin(), a.end(), ae.begin());
-    Words qa(la - n + 2);
-    int err = Approx(ae, b, qa, threshold);
-    uint64_t low = qa.back();
+    LocalWords ae(la + 1);                                           // A·β
+    std::copy(a.begin(), a.end(), ae.data());
+    ae.data()[la] = 0;
+    LocalWords qa(la - n + 2);
+    int err = Approx(ae.span(), b, qa.span(), threshold);
+    uint64_t low = qa.data()[la - n + 1];
     if (low >= (uint64_t)err && low <= ~0ull - (uint64_t)err)
     {
-        std::copy(qa.begin(), qa.end() - 1, q.begin());
+        std::copy(qa.data(), qa.data() + (la - n + 1), q.begin());
         return;
     }
-    Exact(a, b, q, rTmp, threshold);
+    Exact(a, b, q, rTmp.span(), threshold);
 }
 
 // Q̃ ~ floor(A / B), returns E with |Q̃ - floor(A / B)| <= E, Q̃ >= 0. A may have leading zero
@@ -213,23 +231,25 @@ int BurnikelZiegler::Approx(CSpan a, CSpan b, Span q, int threshold)
         size_t d = n - (qn + 2);
         return Approx(a.subspan(0, la - d), b.subspan(0, n - d), q, threshold) + 1;
     }
-    if (qn < 4 * (size_t)threshold)   // below: the split costs more than it saves
+    // below: the split costs more than it saves (and from 4 on only does the low half get
+    // shorter: qn = 2 would split into a low half of 2 again, for ever)
+    if (qn < (size_t)std::max(4, QuotientSplitFrom))
     {
-        Words rTmp(n + 2);
-        Exact(a, b, q, rTmp, threshold);
+        LocalWords rTmp(n + 2);
+        Exact(a, b, q, rTmp.span(), threshold);
         return 0;
     }
 
     size_t k = qn / 2;
     Span qq = q.subspan(q.size() - qn);
-    Words rem(n + 2);
-    Exact(a.subspan(0, la - k), b, qq.subspan(0, qn - k), rem, threshold);
-    Words x(n + k);                                                  // [R, the low k words of A]
-    std::copy(rem.begin() + 2, rem.end(), x.begin());
-    std::copy(a.end() - k, a.end(), x.begin() + n);
-    Words ql(k + 1);
-    int e = Approx(x, b, ql, threshold);
-    FullIntCore::Add(qq, ql, qq);                                    // the low k words are zero; a carry goes up
+    LocalWords rem(n + 2);
+    Exact(a.subspan(0, la - k), b, qq.subspan(0, qn - k), rem.span(), threshold);
+    LocalWords x(n + k);                                             // [R, the low k words of A]
+    std::copy(rem.data() + 2, rem.data() + n + 2, x.data());
+    std::copy(a.end() - k, a.end(), x.data() + n);
+    LocalWords ql(k + 1);
+    int e = Approx(x.span(), b, ql.span(), threshold);
+    FullIntCore::Add(qq, ql.span(), qq);                             // the low k words are zero; a carry goes up
     return e;
 }
 

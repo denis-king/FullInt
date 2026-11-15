@@ -26,6 +26,13 @@ struct BurnikelZiegler
     // Q̃ / β exactly, otherwise (a chance of about 2E / 2^64) the full division.
     // a and b without leading zero words, a.size() >= b.size(); q: a.size() - b.size() + 1 words.
     static void Quotient(CSpan a, CSpan b, Span q);
+
+    // Quotient splits (the top half exact, the low half approximately) from this many quotient
+    // words; the engine sends a / b here from QuotientFrom words of divisor (shorter: the kernel).
+    // x64, Zen 3, 2N / N, of the kernel division: 0.93 at 48 words, 0.85 at 64, 0.76-0.78 at
+    // 96-128, 0.57 at 192 (GMP mpz_tdiv_q: 0.74 / 0.69 / 0.59 / 0.55); 24-32 words 1.02-1.07.
+    static inline int QuotientSplitFrom = 32;
+    static inline int QuotientFrom = 48;
     static void Quotient(CSpan a, CSpan b, Span q, int threshold);
 
 private:

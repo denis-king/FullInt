@@ -669,7 +669,7 @@ namespace FullInt.Core
             }
             // the quotient alone (a / b): an approximate quotient with a guard word, no remainder;
             // a long divisor with a short quotient is cut down to the quotient's length there
-            if (Base == toBase.hex && quotientOnly && divisor.Length >= 2 * BurnikelZiegler.Threshold)
+            if (Base == toBase.hex && quotientOnly && divisor.Length >= BurnikelZiegler.QuotientFrom)
             {
                 BurnikelZiegler.Quotient(_core, dividend, divisor, result);
                 return;

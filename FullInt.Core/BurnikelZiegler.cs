@@ -205,30 +205,48 @@ namespace FullInt.Core
         public static void Quotient(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> q) =>
             Quotient(core, a, b, q, Threshold);
 
+        /// <summary>
+        /// <see cref="Quotient(IFullIntCore, Span{ulong}, Span{ulong}, Span{ulong})"/> splits (the top
+        /// half exact, the low half approximately) from this many quotient words (at least 4: below,
+        /// the low half would not get shorter). Tuned with `FullInt.Benchmarks quotsmall` (x64,
+        /// Zen 3, 2N / N, of the core's Div): 0.87 at 64 words, 0.81 at 96, 0.79 at 128, 0.75 at
+        /// 192 (16..48 within noise; 96 or more: 1.0 up to that size).
+        /// </summary>
+        public static int QuotientSplitFrom { get; set; } = 32;
+
+        /// <summary>
+        /// The engine sends a / b to the quotient path from this many divisor words (shorter: the
+        /// core's Div; at 32 words the path is 0.95-0.99 of it, within noise).
+        /// </summary>
+        public static int QuotientFrom { get; set; } = 48;
+
         /// <summary>Same, with an explicit threshold (tests and tuning; at least 2).</summary>
         public static void Quotient(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> q, int threshold)
         {
             if (threshold < 2) throw new ArgumentOutOfRangeException(nameof(threshold));
             int la = a.Length, n = b.Length;
-            if (la - n + 2 < 4 * threshold && n <= la - n + 4)
+            // work words on the stack up to Local words (an allocation each cost more than the
+            // split saved on the small divisions), the heap above
+            Span<ulong> rTmp = n + 2 <= Local ? stackalloc ulong[n + 2] : new ulong[n + 2];
+            if (la - n + 2 < QuotientSplitFrom && n <= la - n + 4)
             {
                 // neither split nor cut below (see Approx): the exact division directly
-                Exact(core, a, b, q, new ulong[n + 2], threshold);
+                Exact(core, a, b, q, rTmp, threshold);
                 return;
             }
-            var ae = new ulong[la + 1];                                    // A·β
+            Span<ulong> ae = la + 1 <= Local ? stackalloc ulong[la + 1] : new ulong[la + 1];   // A·β
             a.CopyTo(ae);
-            var qa = new ulong[la - n + 2];
+            ae[la] = 0;
+            Span<ulong> qa = la - n + 2 <= Local ? stackalloc ulong[la - n + 2] : new ulong[la - n + 2];
             int err = Approx(core, ae, b, qa, threshold);
             ulong low = qa[qa.Length - 1];
             if (low >= (ulong)err && low <= ulong.MaxValue - (ulong)err)
             {
-                qa.AsSpan(0, qa.Length - 1).CopyTo(q);
+                qa.Slice(0, qa.Length - 1).CopyTo(q);
                 return;
             }
-            var r = new ulong[n + 2];
             q.Clear();
-            Exact(core, a, b, q, r, threshold);
+            Exact(core, a, b, q, rTmp, threshold);
         }
 
         // Q̃ ≈ floor(A / B), returns E with |Q̃ - floor(A / B)| <= E, Q̃ >= 0. A may have leading
@@ -250,20 +268,23 @@ namespace FullInt.Core
                 int d = n - (qn + 2);
                 return Approx(core, a.Slice(0, la - d), b.Slice(0, n - d), q, threshold) + 1;
             }
-            if (qn < 4 * threshold)   // below: the split costs more than it saves (256 words 1.2x, 512 0.95)
+            // below: the split costs more than it saves (and from 4 on only does the low half get
+            // shorter: qn = 2 would split into a low half of 2 again, for ever)
+            if (qn < Math.Max(4, QuotientSplitFrom))
             {
-                Exact(core, a, b, q, new ulong[n + 2], threshold);
+                Span<ulong> rTmp = n + 2 <= Local ? stackalloc ulong[n + 2] : new ulong[n + 2];
+                Exact(core, a, b, q, rTmp, threshold);
                 return 0;
             }
 
             int k = qn / 2;
             Span<ulong> qq = q.Slice(q.Length - qn);
-            var rem = new ulong[n + 2];
+            Span<ulong> rem = n + 2 <= Local ? stackalloc ulong[n + 2] : new ulong[n + 2];
             Exact(core, a.Slice(0, la - k), b, qq.Slice(0, qn - k), rem, threshold);
-            var x = new ulong[n + k];                                      // [R, the low k words of A]
-            rem.AsSpan(2).CopyTo(x);
-            a.Slice(la - k).CopyTo(x.AsSpan(n));
-            var ql = new ulong[k + 1];
+            Span<ulong> x = n + k <= Local ? stackalloc ulong[n + k] : new ulong[n + k];   // [R, the low k words of A]
+            rem.Slice(2).CopyTo(x);
+            a.Slice(la - k).CopyTo(x.Slice(n));
+            Span<ulong> ql = k + 1 <= Local ? stackalloc ulong[k + 1] : new ulong[k + 1];
             int e = Approx(core, x, b, ql, threshold);
             core.Add(qq, ql, qq);                                          // the low k words are zero; a carry goes up
             return e;
@@ -286,6 +307,8 @@ namespace FullInt.Core
             if (n >= 2 * threshold && la - n >= 2 * threshold) DivRem(core, a, b, qb, r, threshold);
             else core.Div(a, b, qb, r);
         }
+
+        private const int Local = 160;   // stack words per work buffer of the quotient path
 
         private static int CompareEqualLength(Span<ulong> x, Span<ulong> y)
         {

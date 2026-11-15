@@ -355,7 +355,7 @@ void FullInt64Engine::divRem(const FullInt64& value1, const FullInt64& value2, F
         NewtonDivision::DivRem(dividend, divisor, Span(pq, lq), Span(pr, lb + 2));
     // the quotient alone (a / b): an approximate quotient with a guard word, no remainder;
     // a long divisor with a short quotient is cut down to the quotient's length there
-    else if (!remainder && lb >= 2 * (uint32_t)BurnikelZiegler::Threshold)
+    else if (!remainder && lb >= (uint32_t)BurnikelZiegler::QuotientFrom)
         BurnikelZiegler::Quotient(dividend, divisor, Span(pq, lq));
     else if (lb >= 2 * (uint32_t)BurnikelZiegler::Threshold && la - lb >= 2 * (uint32_t)BurnikelZiegler::Threshold)
         BurnikelZiegler::DivRem(dividend, divisor, Span(pq, lq), Span(pr, lb + 2));
