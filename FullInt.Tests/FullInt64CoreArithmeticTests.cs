@@ -330,6 +330,35 @@ namespace FullInt.Tests
         }
 
         /// <summary>
+        /// Products modulo β^m - 1 (the cyclic FFT without zero padding, and the folded full
+        /// product), against BigInteger: the cyclic path forced from small sizes, operands up to
+        /// m words, all-ones operands (the β^m - 1 = 0 representation), m of any K·M shape.
+        /// </summary>
+        [DataTestMethod]
+        [DynamicData(nameof(Cores), DynamicDataSourceType.Method)]
+        public void MultiplyMod_MatchesBigInteger(string coreName)
+        {
+            var core = GetCore(coreName);
+            var rnd = new Random(4343);
+            for (int it = 0; it < 300; it++)
+            {
+                int minWords = rnd.Next(8, 400);
+                int cyclicFrom = rnd.Next(3) == 0 ? int.MaxValue : 8;
+                int m = Karatsuba.MulModLength(core, minWords, cyclicFrom);
+                Assert.IsTrue(m >= minWords);
+                var a = Next(rnd, rnd.Next(1, m + 1));
+                var b = Next(rnd, rnd.Next(1, m + 1));
+                if (rnd.Next(5) == 0) a.AsSpan().Fill(ulong.MaxValue);
+                if (rnd.Next(5) == 0) b.AsSpan().Fill(ulong.MaxValue);
+                var r = new ulong[m];
+                r.AsSpan().Fill(0xDEAD_BEEF_DEAD_BEEFUL);
+                Karatsuba.MultiplyMod(core, a, b, r, cyclicFrom);
+                var mod = (BigInteger.One << (64 * m)) - 1;
+                Assert.AreEqual(ToBig(a) * ToBig(b) % mod, ToBig(r), $"[{coreName}] {a.Length}x{b.Length} mod β^{m} - 1 (min {minWords}, cyclic from {cyclicFrom}, iteration {it})");
+            }
+        }
+
+        /// <summary>
         /// The quotient alone (an approximate quotient with a guard word), against BigInteger:
         /// small thresholds make the approximation recurse on small numbers; long divisors with
         /// short quotients (cut down); exact multiples A = B·Q put the guard word at the boundary
@@ -414,13 +443,13 @@ namespace FullInt.Tests
                 return w;
             }
 
-            void Check(ulong[] a, ulong[] b, int split, int inverseBase, string ctx)
+            void Check(ulong[] a, ulong[] b, int split, int inverseBase, string ctx, int cyclicFrom = 0)
             {
                 var q = new ulong[a.Length - b.Length + 1];
                 var r = new ulong[b.Length + 2];
                 q.AsSpan().Fill(0xDEAD_BEEF_DEAD_BEEFUL);   // must be fully overwritten
                 r.AsSpan().Fill(0xDEAD_BEEF_DEAD_BEEFUL);
-                NewtonDivision.DivRem(core, a, b, q, r, split, inverseBase);
+                NewtonDivision.DivRem(core, a, b, q, r, split, inverseBase, cyclicFrom);
                 var expectedQ = BigInteger.DivRem(ToBig(a), ToBig(b), out var expectedR);
                 Assert.AreEqual(expectedQ, ToBig(q), "quotient " + ctx);
                 Assert.AreEqual(expectedR, ToBig(r), "remainder " + ctx);
@@ -435,7 +464,8 @@ namespace FullInt.Tests
                 var b = Shaped(lb);
                 var a = Shaped(la);
                 if (rnd.Next(4) == 0) b.CopyTo(a, 0);   // top of a equal to b
-                Check(a, b, split, inverseBase, $"[{coreName}] {la}/{lb} split={split} base={inverseBase} (iteration {it})");
+                int cyclicFrom = rnd.Next(2) == 0 ? 0 : rnd.Next(8, 64);   // the products modulo β^m - 1 on small numbers
+                Check(a, b, split, inverseBase, $"[{coreName}] {la}/{lb} split={split} base={inverseBase} cyclic={cyclicFrom} (iteration {it})", cyclicFrom);
             }
 
             for (int it = 0; it < 8; it++)
@@ -456,7 +486,7 @@ namespace FullInt.Tests
                 int s = rnd.Next(1, 200);
                 var d = Shaped(s);
                 d[0] |= 1UL << 63;
-                var inv = NewtonDivision.Inverse(core, d, bases[rnd.Next(bases.Length)]);
+                var inv = NewtonDivision.Inverse(core, d, bases[rnd.Next(bases.Length)], rnd.Next(2) == 0 ? int.MaxValue : rnd.Next(8, 64));
                 var exact = (BigInteger.One << (128 * s)) / ToBig(d);
                 var diff = BigInteger.Abs(ToBig(inv) - exact);
                 Assert.IsTrue(diff <= 4, $"[{coreName}] inverse s={s}: off by {diff}");

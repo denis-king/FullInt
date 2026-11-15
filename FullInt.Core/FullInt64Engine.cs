@@ -656,7 +656,7 @@ namespace FullInt.Core
             // long divisor and long quotient: Burnikel–Ziegler (recursion in C#, leaves in the core);
             // the same contract as the core's Div, so the buffers above stay as they are;
             // longer still: the Newton reciprocal
-            if (Base == toBase.hex && NewtonDivision.Use(dividend.Length, divisor.Length))
+            if (Base == toBase.hex && NewtonDivision.Use(dividend.Length, divisor.Length, quotientOnly))
             {
                 NewtonDivision.DivRem(_core, dividend, divisor, result, remainder);
                 return;

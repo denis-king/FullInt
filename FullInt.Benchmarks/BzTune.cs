@@ -79,10 +79,11 @@ namespace FullInt.Benchmarks
 
             var core = FullIntCoreFactory.Create();
             var rnd = new Random(1);
-            var configs = new (int split, int inverseBase)[] { (1, 64), (2, 64), (3, 64), (1, 256), (2, 256) };
-            Console.WriteLine($"core={core.GetType().Name} rounds={rounds}; {ratio}N / N; ratio = Newton (split/base) / Burnikel–Ziegler");
+            int fft = Karatsuba.FftThreshold;
+            var configs = new (int split, int inverseBase, int cyclic)[] { (1, 64, fft), (2, 64, fft), (1, 64, 4096), (2, 64, 4096), (1, 64, 2048), (2, 64, 2048), (1, 64, 1024), (2, 64, 1024) };
+            Console.WriteLine($"core={core.GetType().Name} rounds={rounds}; {ratio}N / N; ratio = Newton (split/cyclic from) / Burnikel–Ziegler");
             Console.Write($"{"N",6} {"BZ",12}");
-            foreach (var c in configs) Console.Write($" {c.split + "/" + c.inverseBase,7}");
+            foreach (var c in configs) Console.Write($" {c.split + "/" + (c.cyclic == fft ? "fft" : c.cyclic.ToString()),7}");
             Console.WriteLine();
 
             foreach (int n in new[] { 1024, 2048, 4096, 8192, 16384, 32768, 65536 })
@@ -96,7 +97,7 @@ namespace FullInt.Benchmarks
                 var r = new ulong[n + 2];
 
                 var variants = new List<Action> { () => BurnikelZiegler.DivRem(core, a, b, q, r) };
-                foreach (var c in configs) variants.Add(() => NewtonDivision.DivRem(core, a, b, q, r, c.split, c.inverseBase));
+                foreach (var c in configs) variants.Add(() => NewtonDivision.DivRem(core, a, b, q, r, c.split, c.inverseBase, c.cyclic));
 
                 var best = new double[variants.Count];
                 Array.Fill(best, double.MaxValue);

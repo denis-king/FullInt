@@ -32,11 +32,132 @@ namespace FullInt.Core
         private static void FftMul(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> r,
             Limits lim, int forceK)
         {
-            int la = a.Length, lb = b.Length, len = la + lb;
-            // an instance property: a static field of the x64 core named here would be initialized
-            // when this method is compiled - in a 32-bit process too, loading the x64 DLL
-            bool native = core is FullIntCoreWindowsX64 x64 && x64.HasFftKernels;
-            ChooseFft(la, lb, forceK, native, out int k, out int m, out int nBits);
+            bool native = NativeFft(core);
+            ChooseFft(a.Length, b.Length, forceK, native, out int k, out int m, out int nBits);
+            Convolve(core, a, b, r, k, m, nBits, lim, native);
+        }
+
+        // an instance property: a static field of the x64 core named here would be initialized
+        // when this method is compiled - in a 32-bit process too, loading the x64 DLL
+        private static bool NativeFft(IFullIntCore core) => core is FullIntCoreWindowsX64 x64 && x64.HasFftKernels;
+
+        /// <summary>
+        /// The words of a product modulo β^m - 1 that <see cref="MultiplyMod"/> takes for at least
+        /// <paramref name="minWords"/> words: through the cyclic FFT (no zero padding, about half
+        /// the transform of the full product) from <see cref="FftThreshold"/> words, otherwise
+        /// minWords itself (the full product, folded).
+        /// </summary>
+        public static int MulModLength(IFullIntCore core, int minWords) => MulModLength(core, minWords, FftThreshold);
+
+        /// <summary>Same, cyclic from cyclicFrom words (tests: the cyclic FFT on small numbers).</summary>
+        public static int MulModLength(IFullIntCore core, int minWords, int cyclicFrom)
+        {
+            if (minWords < cyclicFrom) return minWords;
+            ChooseFftCyclic(minWords, false, NativeFft(core), out int k, out int m, out _);
+            return m << k;
+        }
+
+        /// <summary>
+        /// r = a·b mod (β^m - 1), m = r.Length (from <see cref="MulModLength"/>), in [0, β^m - 1)
+        /// (β^m - 1 itself, the other zero, is written as 0); a and b at most m words.
+        ///   cyclic: K = 2^k pieces of M words, K·M = m, the convolution without zero padding wraps
+        ///   (c_i = sum over j + l = i mod K), so sum c_i·β^(M·i) = a·b mod β^(KM) - 1.
+        /// </summary>
+        public static void MultiplyMod(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> r) =>
+            MultiplyMod(core, a, b, r, FftThreshold);
+
+        /// <summary>Same, cyclic from cyclicFrom words (tests).</summary>
+        public static void MultiplyMod(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> r, int cyclicFrom)
+        {
+            int m = r.Length;
+            var lim = new Limits(Threshold, Toom3Threshold, Toom4Threshold, Toom6Threshold, FftThreshold);
+            if (m >= cyclicFrom)
+            {
+                bool native = NativeFft(core);
+                ChooseFftCyclic(m, true, native, out int k, out int pm, out int nBits);
+                if (pm << k == m)
+                {
+                    int n1 = nBits / 64 + 1;
+                    ulong[] acc = ArrayPool<ulong>.Shared.Rent(m + n1 + 1);
+                    try
+                    {
+                        Span<ulong> accs = acc.AsSpan(0, m + n1 + 1);
+                        Convolve(core, a, b, accs, k, pm, nBits, lim, native);
+                        FoldMod(core, accs, r);
+                    }
+                    finally
+                    {
+                        ArrayPool<ulong>.Shared.Return(acc);
+                    }
+                    return;
+                }
+            }
+            ulong[] prod = ArrayPool<ulong>.Shared.Rent(a.Length + b.Length);
+            try
+            {
+                Span<ulong> p = prod.AsSpan(0, a.Length + b.Length);
+                Multiply(core, a, b, p);
+                FoldMod(core, p, r);
+            }
+            finally
+            {
+                ArrayPool<ulong>.Shared.Return(prod);
+            }
+        }
+
+        /// <summary>r = x mod (β^m - 1), m = r.Length, in [0, β^m - 1): the m-word chunks of x added with the end-around carry.</summary>
+        public static void FoldMod(IFullIntCore core, Span<ulong> x, Span<ulong> r)
+        {
+            int m = r.Length;
+            r.Clear();
+            for (int end = x.Length; end > 0; end -= m)
+            {
+                int start = Math.Max(0, end - m);
+                Span<ulong> chunk = FullHelper.DeleteZeros(x.Slice(start, end - start));
+                ulong c = core.Add(r, chunk, r);
+                while (c != 0)                                              // β^m = 1
+                {
+                    c = 1;
+                    for (int i = m - 1; i >= 0 && c != 0; i--) c = ++r[i] == 0 ? 1UL : 0UL;
+                }
+            }
+            foreach (ulong w in r) if (w != ulong.MaxValue) return;
+            r.Clear();                                                      // β^m - 1 = 0
+        }
+
+        // k, M, N for a cyclic product modulo β^(K·M) - 1 of at least mMin words (exact: K·M = mMin,
+        // only the K that divide it)
+        private static void ChooseFftCyclic(int mMin, bool exact, bool native, out int k, out int m, out int nBits)
+        {
+            double best = double.MaxValue;
+            k = 0; m = 0; nBits = 0;
+            for (int kk = 3; kk <= 20; kk++)
+            {
+                int K = 1 << kk;
+                if (exact && mMin % K != 0) continue;
+                int mm = (mMin + K - 1) / K;
+                int unit = Math.Max(64, K / 2);
+                long bits = 128L * mm + kk + 1;
+                long nb = (bits + unit - 1) / unit * unit;
+                if (nb > int.MaxValue / 4) continue;
+                double n1 = nb / 64 + 1;
+                double mulCost = n1 < 32 ? 0.5 * n1 * n1 : 2.6 * Math.Pow(n1, 1.55);
+                double bfly = native ? 30 + 1.0 * n1 : 20 + 6.0 * n1;
+                double cost = K * mulCost + 3.0 * K * kk * bfly;
+                if (cost < best)
+                {
+                    best = cost; k = kk; m = mm; nBits = (int)nb;
+                }
+                if (mm == 1) break;
+            }
+        }
+
+        // acc = sum c_i·β^(M·i) of the convolution of a and b in K = 2^k pieces of M words mod 2^N + 1
+        // (acc: the words the coefficients land on, cleared here; a coefficient beyond it is zero)
+        private static void Convolve(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> r,
+            int k, int m, int nBits, Limits lim, bool native)
+        {
+            int len = r.Length;
             int K = 1 << k, n1 = nBits / 64 + 1;
 
             // vectors: K for a, K for b, one spare each; then the product and the scratch

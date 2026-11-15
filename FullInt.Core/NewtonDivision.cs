@@ -23,24 +23,41 @@ namespace FullInt.Core
     {
         /// <summary>
         /// The engine divides through the Newton reciprocal from this many words of divisor and
-        /// of quotient. Tuned with `FullInt.Benchmarks newton` (Zen 3, x64), Newton / Burnikel–Ziegler
-        /// at 2N / N: 1.0 at 16384 words, 0.82 at 32768, 0.73 at 65536.
+        /// of quotient. Tuned with `FullInt.Benchmarks newton` (Zen 3), Newton / Burnikel–Ziegler at
+        /// 2N / N with the cyclic products (<see cref="CyclicFrom"/>): x64 0.87 at 4096 words, 0.81 at
+        /// 8192, 0.67 at 16384, 0.51 at 32768; x86 0.91 at 16384, 0.82 at 32768, 0.68 at 65536.
         /// </summary>
-        public static int Threshold { get; set; } = Environment.Is64BitProcess ? 16384 : 65536;   // x86: 0.92 at 65536, 1.04 at 32768
+        public static int Threshold { get; set; } = Environment.Is64BitProcess ? 4096 : 16384;
 
         /// <summary>
         /// Same, when the quotient is at least twice the divisor (the reciprocal serves several
-        /// blocks): 4N / N 0.88-0.92 at 8192 words, 0.71 at 16384, 0.51-0.56 at 65536.
+        /// blocks): 4N / N x64 0.70 at 4096 words (2048: 0.93), 0.60 at 8192, 0.41 at 65536;
+        /// x86 0.83 at 8192, 0.76 at 16384, 0.61 at 65536.
         /// </summary>
-        public static int LongQuotientThreshold { get; set; } = 8192;   // x86: 0.88 at 8192, 0.8 at 32768-65536
+        public static int LongQuotientThreshold { get; set; } = Environment.Is64BitProcess ? 4096 : 8192;
 
-        /// <summary>Whether the engine should divide a by b (lengths in words) through the Newton reciprocal.</summary>
-        public static bool Use(int dividendLength, int divisorLength)
+        /// <summary>
+        /// Whether the engine should divide a by b (lengths in words) through the Newton reciprocal;
+        /// quotientOnly (a / b): below 2·Threshold words of divisor and a quotient shorter than two
+        /// divisors, BurnikelZiegler.Quotient is as fast (2N / N x64: 0.80-0.82 of the full division
+        /// at 4096-8192 words, Newton 0.75-0.87) and stays.
+        /// </summary>
+        public static bool Use(int dividendLength, int divisorLength, bool quotientOnly = false)
         {
             int qn = dividendLength - divisorLength;
+            if (quotientOnly && divisorLength < 2 * Threshold && qn < 2 * divisorLength) return false;
             return divisorLength >= Threshold && qn >= Threshold
                 || divisorLength >= LongQuotientThreshold && qn >= 2 * divisorLength;
         }
+
+        /// <summary>
+        /// The products whose low part alone is needed (q̂·B', D·Ih) go modulo β^m - 1 through the
+        /// cyclic FFT from this many words (below: the full product). x64 (Zen 3), Newton / Burnikel–Ziegler
+        /// with it from 2048: 2N / N 0.87 at 4096 words (without: 1.14), 0.75-0.81 at 8192,
+        /// 0.67 at 16384, 0.51 at 32768; 4N / N 0.70 at 4096 (0.97), 0.60 at 8192, 0.41 at 65536.
+        /// x86 (managed butterflies): from 4096 (2N / N at 65536: 0.69, with the FFT threshold 0.93).
+        /// </summary>
+        public static int CyclicFrom { get; set; } = Environment.Is64BitProcess ? 2048 : 4096;
 
         /// <summary>Reciprocals of at most this many words are one division (at least 2).</summary>
         public static int InverseBase { get; set; } = 64;
@@ -53,8 +70,9 @@ namespace FullInt.Core
         public static int Split { get; set; } = 0;
 
         /// <summary>
-        /// The automatic split halves the blocks from this many divisor words (2N / N, x64: split 2
-        /// 0.98 / 0.84 / 0.73 of Burnikel–Ziegler at 16384 / 32768 / 65536, split 1 1.21 / 0.90 / 0.84).
+        /// The automatic split halves the blocks from this many divisor words (2N / N, x64, of
+        /// Burnikel–Ziegler: split 2 0.87 / 0.81 / 0.67 / 0.51 at 4096 / 8192 / 16384 / 32768, split 1
+        /// 1.12 / 0.75 / 0.82 / 0.66).
         /// </summary>
         public static int SplitFrom { get; set; } = 0;
 
@@ -63,11 +81,19 @@ namespace FullInt.Core
         /// q: a.Length - b.Length + 1 words, r: b.Length + 2 words (the value right-aligned).
         /// </summary>
         public static void DivRem(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> q, Span<ulong> r) =>
-            DivRem(core, a, b, q, r, Split, InverseBase);
+            DivRem(core, a, b, q, r, Split, InverseBase, 0);
 
         /// <summary>Same, with explicit block split (0: automatic) and reciprocal base (at least 2): tests and tuning.</summary>
-        public static void DivRem(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> q, Span<ulong> r, int split, int inverseBase)
+        public static void DivRem(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> q, Span<ulong> r, int split, int inverseBase) =>
+            DivRem(core, a, b, q, r, split, inverseBase, 0);
+
+        /// <summary>
+        /// Same, with the products modulo β^m - 1 (the cyclic FFT) from cyclicFrom words (0: from
+        /// <see cref="CyclicFrom"/>; tests: small values put the wraparound on small numbers).
+        /// </summary>
+        public static void DivRem(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> q, Span<ulong> r, int split, int inverseBase, int cyclicFrom)
         {
+            if (cyclicFrom <= 0) cyclicFrom = CyclicFrom;
             if (split < 0) throw new ArgumentOutOfRangeException(nameof(split));
             if (inverseBase < 2) throw new ArgumentOutOfRangeException(nameof(inverseBase));
             int la = a.Length, n = b.Length;
@@ -104,12 +130,18 @@ namespace FullInt.Core
                 if (split == 0) split = qn >= 2 * n || n < SplitFrom ? 1 : 2;
                 int blocks = Math.Max(1, (qn + n - 1) / n) * split;
                 int s = Math.Min(n, (qn + blocks - 1) / blocks);
-                ulong[] inv = Inverse(core, bn.Slice(0, s), inverseBase);    // s + 1 words
+                ulong[] inv = Inverse(core, bn.Slice(0, s), inverseBase, cyclicFrom);   // s + 1 words
 
                 int t = qn - (qn - 1) / s * s;                            // the first block: 1..s words
                 var x = new ulong[n + s];
                 var prod = new ulong[2 * s + 1];
                 var tb = new ulong[n + s];
+                // long: T = q̂·B' only modulo β^m - 1 (m >= n + 2, the cyclic FFT, about half the
+                // product): R = X - T is below 8·B' < β^m / 2 in size, so its residue gives it back
+                bool wrap = n + 2 >= cyclicFrom;
+                int mw = wrap ? Karatsuba.MulModLength(core, n + 2, cyclicFrom) : 0;
+                var xm = new ulong[mw];
+                var tm = new ulong[mw];
                 for (int pos = n; pos < at.Length; pos += t, t = s)
                 {
                     // X = [R, next t words]
@@ -123,6 +155,26 @@ namespace FullInt.Core
                     Karatsuba.Multiply(core, xs.Slice(0, t), inv.AsSpan(0, t + 1), p);
                     if (p[0] != 0) qb.Fill(ulong.MaxValue);
                     else p.Slice(1, t).CopyTo(qb);
+
+                    if (wrap)
+                    {
+                        Karatsuba.FoldMod(core, xs, xm);
+                        Karatsuba.MultiplyMod(core, bn, qb, tm, cyclicFrom);
+                        bool negative = SignedResidue(core, xm, tm);   // R = X - T, |R| in xm
+                        // R < 0: R += B', q̂ -= 1 (|R| > B' stays negative: |R| - B'; else B' - |R|)
+                        while (negative)
+                        {
+                            Decrement(qb);
+                            negative = core.Sub(xm, bn, xm) > 0;
+                        }
+                        while (!IsZero(xm.AsSpan(0, mw - n)) || CompareEqualLength(xm.AsSpan(mw - n), bn) >= 0)
+                        {
+                            core.Sub(xm, bn, xm);
+                            Increment(qb);
+                        }
+                        xm.AsSpan(mw - n).CopyTo(rem);
+                        continue;
+                    }
 
                     // T = q̂·B';  q̂ -= 1 while T > X;  R = X - T;  q̂ += 1 while R >= B'
                     Span<ulong> tt = tb.AsSpan(0, n + t);
@@ -152,7 +204,11 @@ namespace FullInt.Core
         /// I ≈ β^(2s)/D for D of s words with its top bit set: s + 1 words, within a few units
         /// of the floor (tests).
         /// </summary>
-        public static ulong[] Inverse(IFullIntCore core, Span<ulong> d, int inverseBase)
+        public static ulong[] Inverse(IFullIntCore core, Span<ulong> d, int inverseBase) =>
+            Inverse(core, d, inverseBase, CyclicFrom);
+
+        /// <summary>Same, with the products modulo β^m - 1 from cyclicFrom words (tests).</summary>
+        public static ulong[] Inverse(IFullIntCore core, Span<ulong> d, int inverseBase, int cyclicFrom)
         {
             int s = d.Length;
             if (s <= inverseBase || s < 4)
@@ -167,16 +223,34 @@ namespace FullInt.Core
             }
 
             int h = s / 2 + 1;
-            ulong[] ih = Inverse(core, d.Slice(0, h), inverseBase);      // h + 1 words
+            ulong[] ih = Inverse(core, d.Slice(0, h), inverseBase, cyclicFrom);   // h + 1 words
 
             // e = β^(s+h) - D·Ih  (|e| < β^(s+2))
-            var p = new ulong[s + h + 1];
-            Karatsuba.Multiply(core, d, ih, p);
-            bool eNegative = p[0] != 0;
-            if (eNegative) p[0]--;                                        // |e| = P - β^(s+h)
-            else NegateLow(p.AsSpan(1));                                  // |e| = β^(s+h) - P
-            // Ih·e/β^(2h): e without its low h - 1 words (the error that drops is below 2/β)
-            Span<ulong> et = FullHelper.DeleteZeros(p.AsSpan(0, s + 2));
+            bool eNegative;
+            Span<ulong> et;
+            if (s + 3 >= cyclicFrom)
+            {
+                // long: D·Ih only modulo β^m - 1 (m >= s + 3): e = β^((s+h) mod m) - P̃ there, and
+                // |e| < β^m / 2 gives it back
+                int m = Karatsuba.MulModLength(core, s + 3, cyclicFrom);
+                var pm = new ulong[m];
+                Karatsuba.MultiplyMod(core, d, ih, pm, cyclicFrom);
+                var em = new ulong[m];
+                em[m - 1 - (s + h) % m] = 1;
+                eNegative = SignedResidue(core, em, pm);
+                // Ih·e/β^(2h): e without its low h - 1 words (the error that drops is below 2/β)
+                et = FullHelper.DeleteZeros(em.AsSpan(0, m - (h - 1)));
+            }
+            else
+            {
+                var p = new ulong[s + h + 1];
+                Karatsuba.Multiply(core, d, ih, p);
+                eNegative = p[0] != 0;
+                if (eNegative) p[0]--;                                    // |e| = P - β^(s+h)
+                else NegateLow(p.AsSpan(1));                              // |e| = β^(s+h) - P
+                // Ih·e/β^(2h): e without its low h - 1 words (the error that drops is below 2/β)
+                et = FullHelper.DeleteZeros(p.AsSpan(0, s + 2));
+            }
 
             var inv = new ulong[s + 1];
             ih.CopyTo(inv, 0);
@@ -188,6 +262,20 @@ namespace FullInt.Core
             if (eNegative) core.Sub(inv, cs, inv);
             else core.Add(inv, cs, inv);
             return inv;
+        }
+
+        // x = |x - y| for the value v ≡ x - y mod β^m - 1 (x, y: m-word residues) with |v| < β^m / 2;
+        // returns v < 0. x - y is v or v ± (β^m - 1): above β^m / 2 in size it is the latter,
+        // and (β^m - 1) - |x - y| is the complement of its words.
+        private static bool SignedResidue(IFullIntCore core, Span<ulong> x, Span<ulong> y)
+        {
+            bool negative = core.Sub(x, y, x) < 0;
+            if ((x[0] >> 63) != 0)
+            {
+                for (int i = 0; i < x.Length; i++) x[i] = ~x[i];
+                negative = !negative;
+            }
+            return negative && !IsZero(x);
         }
 
         // r = R >> sigma: n words, right-aligned in r
