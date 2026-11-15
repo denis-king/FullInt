@@ -79,6 +79,16 @@ struct FullIntCore
             size_t words = dividend.size() + divisor.size() + 2;
             uint64_t stackWork[96];   // small: no thread_local lookup (a few ns at 3 words)
             uint64_t* work = words <= std::size(stackWork) ? stackWork : DivWork(words);
+#if defined(_M_X64) || defined(__x86_64__)
+            // the multiply-subtract pass on mulx / adcx / adox: 1.06-1.10x from 64-word divisors
+            // (the Burnikel–Ziegler leaves), even at 16..32, slower below (its set-up per step)
+            if (divisor.size() >= 16 && Cpu::Has(Cpu::Bmi2 | Cpu::Adx))
+            {
+                Fullint64DivWIN_recipadx(dividend.data(), divisor.data(), quotient.data(), remainder.data(),
+                                         (int)dividend.size(), (int)divisor.size(), work);
+                return;
+            }
+#endif
             Fullint64DivWIN_recip(dividend.data(), divisor.data(), quotient.data(), remainder.data(),
                                   (int)dividend.size(), (int)divisor.size(), work);
             return;

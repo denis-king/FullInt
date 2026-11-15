@@ -72,6 +72,8 @@ namespace FullInt.Core
             // A' to whole blocks with its top bit clear instead: an extra, nearly empty block that
             // costs a whole Div2n1n (half of all numbers; 4096 / 2048 words ~2x, 8192 / 4096 more).
             var ri = new ulong[n];
+            // one work buffer for the whole recursion (was a few arrays per node): 8n + 64 words
+            ulong[] scratch = System.Buffers.ArrayPool<ulong>.Shared.Rent(8 * n + 64);
             var tt = at.Slice(0, n + h).ToArray();
             Span<ulong> topN = tt.AsSpan(0, n);
             if (CompareEqualLength(topN, bn) >= 0)
@@ -80,7 +82,7 @@ namespace FullInt.Core
                 quotient[0] = 1;
             }
             if (h == 0) topN.CopyTo(ri);
-            else Div3n2n(core, tt, bn, quotient.AsSpan(1, h), ri, threshold);
+            else Div3n2n(core, tt, bn, quotient.AsSpan(1, h), ri, threshold, scratch);
 
             // then from the top: Z = [R, next block], one n-word quotient block per step
             var zz = new ulong[2 * n];
@@ -88,7 +90,7 @@ namespace FullInt.Core
             {
                 ri.CopyTo(zz);
                 at.Slice(n + h + p * n, n).CopyTo(zz.AsSpan(n));
-                Div2n1n(core, zz, bn, quotient.AsSpan(1 + h + p * n, n), ri, threshold);
+                Div2n1n(core, zz, bn, quotient.AsSpan(1 + h + p * n, n), ri, threshold, scratch);
             }
 
             // q: the low q.Length words (the quotient fits; any words above are zero)
@@ -99,27 +101,30 @@ namespace FullInt.Core
             // r = R' >> sigma: lb words, right-aligned in r
             r.Clear();
             core.ShiftRight(ri, sigma, r.Slice(r.Length - lb));
+            System.Buffers.ArrayPool<ulong>.Shared.Return(scratch);
         }
 
         // A (2n) < B·β^n, B (n) with its top bit set -> Q (n), R (n)
-        private static void Div2n1n(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> q, Span<ulong> r, int threshold)
+        // scratch: Div2n1n(n) takes 3n/2 + Div3n2n, which takes 2n + 1 + Div2n1n(n/2); a leaf 2n + 3
+        private static void Div2n1n(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> q, Span<ulong> r, int threshold, Span<ulong> scratch)
         {
             int n = b.Length;
             if ((n & 1) != 0 || n < threshold)
             {
-                Basecase(core, a, b, q, r);
+                Basecase(core, a, b, q, r, scratch);
                 return;
             }
 
             int k = n / 2;
-            var r1 = new ulong[3 * k];   // [R, A4] for the second step
-            Div3n2n(core, a.Slice(0, 3 * k), b, q.Slice(0, k), r1.AsSpan(0, n), threshold);
-            a.Slice(3 * k, k).CopyTo(r1.AsSpan(n));
-            Div3n2n(core, r1, b, q.Slice(k, k), r, threshold);
+            Span<ulong> r1 = scratch.Slice(0, 3 * k);   // [R, A4] for the second step (fully written)
+            Span<ulong> rest = scratch.Slice(3 * k);
+            Div3n2n(core, a.Slice(0, 3 * k), b, q.Slice(0, k), r1.Slice(0, n), threshold, rest);
+            a.Slice(3 * k, k).CopyTo(r1.Slice(n));
+            Div3n2n(core, r1, b, q.Slice(k, k), r, threshold, rest);
         }
 
         // A (n + k) < B·β^k, B = [B1 B2] (n, top bit set; B1 k words) -> Q (k), R (n)
-        private static void Div3n2n(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> q, Span<ulong> r, int threshold)
+        private static void Div3n2n(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> q, Span<ulong> r, int threshold, Span<ulong> scratch)
         {
             // k = q.Length: n / 2 inside the recursion; any 1 <= k < n for the top part of DivRem
             // (A: n + k words, B1: the top k words of B, B2: the other n - k)
@@ -128,11 +133,12 @@ namespace FullInt.Core
             Span<ulong> b1 = b.Slice(0, k), b2 = b.Slice(k, n - k);
 
             // X = [R1, A3] in n + 1 words (R1 can take k + 1 words)
-            var x = new ulong[n + 1];
-            Span<ulong> r1 = x.AsSpan(0, k + 1);
+            Span<ulong> x = scratch.Slice(0, n + 1), d = scratch.Slice(n + 1, n), rest = scratch.Slice(2 * n + 1);
+            Span<ulong> r1 = x.Slice(0, k + 1);
             if (CompareEqualLength(a1, b1) < 0)
             {
-                Div2n1n(core, a.Slice(0, 2 * k), b1, q, r1.Slice(1), threshold);
+                x[0] = 0;
+                Div2n1n(core, a.Slice(0, 2 * k), b1, q, r1.Slice(1), threshold, rest);
             }
             else
             {
@@ -140,11 +146,10 @@ namespace FullInt.Core
                 q.Fill(ulong.MaxValue);
                 core.Add(a2, b1, r1);
             }
-            a3.CopyTo(x.AsSpan(k + 1));
+            a3.CopyTo(x.Slice(k + 1));
 
             // R̂ = X - Q̂·B2, sign-magnitude in x
-            var d = new ulong[n];
-            Karatsuba.Multiply(core, q, b2, d);
+            Karatsuba.Multiply(core, q, b2, d);   // writes all of d
             bool negative = core.Sub(x, d, x) < 0;
 
             // R̂ < 0: R̂ += B, Q̂ -= 1. With |R̂| in x: |R̂| > B stays negative (|R̂| - B),
@@ -156,11 +161,11 @@ namespace FullInt.Core
                 negative = core.Sub(x, b, x) > 0;
             }
 
-            x.AsSpan(1).CopyTo(r);   // R < B: the top word is zero
+            x.Slice(1).CopyTo(r);   // R < B: the top word is zero
         }
 
         // the core's division on one block: A (2n) < B·β^n -> Q (n), R (n)
-        private static void Basecase(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> q, Span<ulong> r)
+        private static void Basecase(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> q, Span<ulong> r, Span<ulong> scratch)
         {
             int n = b.Length;
             Span<ulong> dividend = FullHelper.DeleteZeros(a);   // the kernels expect no leading zeros
@@ -172,14 +177,15 @@ namespace FullInt.Core
                 return;
             }
 
-            var qb = new ulong[dividend.Length - n + 1];
-            var rb = new ulong[n + 2];
+            Span<ulong> qb = scratch.Slice(0, dividend.Length - n + 1), rb = scratch.Slice(qb.Length, n + 2);
+            qb.Clear();
+            rb.Clear();
             core.Div(dividend, b, qb, rb);
 
             // the quotient fits n words (A < B·β^n): any word above is zero
             if (qb.Length <= n) qb.CopyTo(q.Slice(n - qb.Length));
-            else qb.AsSpan(qb.Length - n).CopyTo(q);
-            rb.AsSpan(2).CopyTo(r);
+            else qb.Slice(qb.Length - n).CopyTo(q);
+            rb.Slice(2).CopyTo(r);
         }
 
         private static int CompareEqualLength(Span<ulong> x, Span<ulong> y)

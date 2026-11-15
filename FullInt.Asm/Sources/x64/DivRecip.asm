@@ -125,8 +125,10 @@ Fullint64Div2longWIN_recip:
 ;  rbx q^; rax / rdx / rbp / r11 / r15 scratch. R's address waits in the home slot of r9.
 ; =============================================================================
 
-global Fullint64DivWIN_recip
-Fullint64DivWIN_recip:
+; the long division; %1 the name, %2 = 1: the multiply-subtract pass with mulx / adcx / adox
+%macro DIV_RECIP_LONG 2
+global %1
+%1:
 	push rbx
 	push rbp
 	push rsi
@@ -250,6 +252,51 @@ Fullint64DivWIN_recip:
 .submul:                        ; W -= q^ * B, from the low end
 	test rbx, rbx
 	jz .stored                  ; q^ = 0 (the top word of a normalized divisor's quotient): W stays
+%if %2
+	; mulx / adcx / adox: the product q^·B[i] + the previous high half on the CF chain, then
+	; W[i] + ~that + 1 on the OF chain (a subtraction as an add); loop control by lea / jrcxz
+	mov rdx, rbx
+	mov rcx, r9                 ; index (rcx free here: sh reloaded per step)
+	xor r11d, r11d              ; the previous high half; OF = 1 (the + 1), CF = 0 set below
+	test ecx, 1                 ; (flags: only OF / CF matter from here, and test clears both:
+	jz .submulAdxPairs          ;  set them again below)
+	mov al, 7Fh
+	add al, 1
+	mulx r15, rax, [rsi + rcx*8 - 8]   ; an odd count: one word first
+	adcx rax, r11
+	mov r11, r15
+	not rax
+	adox rax, [rdi + rcx*8]
+	mov [rdi + rcx*8], rax
+	lea rcx, [rcx - 1]
+	jmp .submulAdxPairs2
+.submulAdxPairs:
+	mov al, 7Fh
+	add al, 1
+.submulAdxPairs2:               ; two words a pass
+	mulx r15, rax, [rsi + rcx*8 - 8]
+	adcx rax, r11
+	not rax
+	adox rax, [rdi + rcx*8]
+	mov [rdi + rcx*8], rax
+	mulx r11, rax, [rsi + rcx*8 - 16]
+	adcx rax, r15
+	not rax
+	adox rax, [rdi + rcx*8 - 8]
+	mov [rdi + rcx*8 - 8], rax
+	lea rcx, [rcx - 2]
+	jrcxz .submulAdxTop
+	jmp .submulAdxPairs2
+.submulAdxTop:
+	adcx r11, rcx               ; the top of the product (+ CF; rcx = 0)
+	not r11
+	mov rax, [rdi]
+	adox rax, r11
+	mov [rdi], rax
+	seto al                     ; 0: a borrow out of the top - W < 0
+	test al, al
+	jz .addBack
+%else
 	mov rbp, r9
 	xor r11d, r11d              ; carry
 	test ebp, 1
@@ -279,6 +326,7 @@ Fullint64DivWIN_recip:
 	jnz .submulPairs
 	sub [rdi], r11
 	jc .addBack                 ; rare: q^ was one too many
+%endif
 .stored:
 	mov [r8], rbx
 	add r8, 8
@@ -337,3 +385,7 @@ Fullint64DivWIN_recip:
 	adc qword [rdi], 0
 	jnc .addBack
 	jmp .stored
+%endmacro
+
+DIV_RECIP_LONG Fullint64DivWIN_recip, 0
+DIV_RECIP_LONG Fullint64DivWIN_recipadx, 1     ; BMI2 + ADX

@@ -74,6 +74,8 @@ void BurnikelZiegler::DivRem(CSpan a, CSpan b, Span q, Span r, int threshold)
     // A' to whole blocks with its top bit clear instead: an extra, nearly empty block that
     // costs a whole Div2n1n (half of all numbers; 4096 / 2048 words ~2x, 8192 / 4096 more).
     Words ri(n), tt(at.begin(), at.begin() + n + h);
+    // one work buffer for the whole recursion (was a few vectors per node): ScratchWords(n)
+    Words scratch(ScratchWords(n));
     Span topN = Span(tt).subspan(0, n);
     if (CompareEqualLength(topN, bn) >= 0)
     {
@@ -81,7 +83,7 @@ void BurnikelZiegler::DivRem(CSpan a, CSpan b, Span q, Span r, int threshold)
         quotient[0] = 1;
     }
     if (h == 0) std::copy(topN.begin(), topN.end(), ri.begin());
-    else Div3n2n(tt, bn, Span(quotient).subspan(1, h), ri, threshold);
+    else Div3n2n(tt, bn, Span(quotient).subspan(1, h), ri, threshold, scratch);
 
     // then from the top: Z = [R, next block], one n-word quotient block per step
     Words zz(2 * n);
@@ -89,7 +91,7 @@ void BurnikelZiegler::DivRem(CSpan a, CSpan b, Span q, Span r, int threshold)
     {
         std::copy(ri.begin(), ri.end(), zz.begin());
         std::copy(at.begin() + n + h + p * n, at.begin() + n + h + (p + 1) * n, zz.begin() + n);
-        Div2n1n(zz, bn, Span(quotient).subspan(1 + h + p * n, n), ri, threshold);
+        Div2n1n(zz, bn, Span(quotient).subspan(1 + h + p * n, n), ri, threshold, scratch);
     }
 
     // q: the low q.size() words (the quotient fits; any words above are zero)
@@ -103,24 +105,25 @@ void BurnikelZiegler::DivRem(CSpan a, CSpan b, Span q, Span r, int threshold)
 }
 
 // A (2n) < B·β^n, B (n) with its top bit set -> Q (n), R (n)
-void BurnikelZiegler::Div2n1n(CSpan a, CSpan b, Span q, Span r, int threshold)
+void BurnikelZiegler::Div2n1n(CSpan a, CSpan b, Span q, Span r, int threshold, Span scratch)
 {
     size_t n = b.size();
     if ((n & 1) != 0 || n < (size_t)threshold)
     {
-        Basecase(a, b, q, r);
+        Basecase(a, b, q, r, scratch);
         return;
     }
 
     size_t k = n / 2;
-    Words r1(3 * k);   // [R, A4] for the second step
-    Div3n2n(a.subspan(0, 3 * k), b, q.subspan(0, k), Span(r1).subspan(0, n), threshold);
+    Span r1 = scratch.subspan(0, 3 * k);   // [R, A4] for the second step (fully written)
+    Span rest = scratch.subspan(3 * k);
+    Div3n2n(a.subspan(0, 3 * k), b, q.subspan(0, k), r1.subspan(0, n), threshold, rest);
     std::copy(a.begin() + 3 * k, a.begin() + 4 * k, r1.begin() + n);
-    Div3n2n(r1, b, q.subspan(k, k), r, threshold);
+    Div3n2n(r1, b, q.subspan(k, k), r, threshold, rest);
 }
 
 // A (n + k) < B·β^k, B = [B1 B2] (n, top bit set; B1 k words) -> Q (k), R (n)
-void BurnikelZiegler::Div3n2n(CSpan a, CSpan b, Span q, Span r, int threshold)
+void BurnikelZiegler::Div3n2n(CSpan a, CSpan b, Span q, Span r, int threshold, Span scratch)
 {
     // k = q.size(): n / 2 inside the recursion; any 1 <= k < n for the top part of DivRem
     // (A: n + k words, B1: the top k words of B, B2: the other n - k)
@@ -129,11 +132,12 @@ void BurnikelZiegler::Div3n2n(CSpan a, CSpan b, Span q, Span r, int threshold)
     CSpan b1 = b.subspan(0, k), b2 = b.subspan(k, n - k);
 
     // X = [R1, A3] in n + 1 words (R1 can take k + 1 words)
-    Words x(n + 1);
-    Span r1 = Span(x).subspan(0, k + 1);
+    Span x = scratch.subspan(0, n + 1), d = scratch.subspan(n + 1, n), rest = scratch.subspan(2 * n + 1);
+    Span r1 = x.subspan(0, k + 1);
     if (CompareEqualLength(a1, b1) < 0)
     {
-        Div2n1n(a.subspan(0, 2 * k), b1, q, r1.subspan(1), threshold);
+        x[0] = 0;
+        Div2n1n(a.subspan(0, 2 * k), b1, q, r1.subspan(1), threshold, rest);
     }
     else
     {
@@ -144,8 +148,7 @@ void BurnikelZiegler::Div3n2n(CSpan a, CSpan b, Span q, Span r, int threshold)
     std::copy(a3.begin(), a3.end(), x.begin() + k + 1);
 
     // R̂ = X - Q̂·B2, sign-magnitude in x
-    Words d(n);
-    Karatsuba::Multiply(q, b2, d);
+    Karatsuba::Multiply(q, b2, d);   // writes all of d
     bool negative = FullIntCore::Sub(x, d, x) < 0;
 
     // R̂ < 0: R̂ += B, Q̂ -= 1. With |R̂| in x: |R̂| > B stays negative (|R̂| - B),
@@ -161,7 +164,7 @@ void BurnikelZiegler::Div3n2n(CSpan a, CSpan b, Span q, Span r, int threshold)
 }
 
 // the kernel division on one block: A (2n) < B·β^n -> Q (n), R (n)
-void BurnikelZiegler::Basecase(CSpan a, CSpan b, Span q, Span r)
+void BurnikelZiegler::Basecase(CSpan a, CSpan b, Span q, Span r, Span scratch)
 {
     size_t n = b.size();
     CSpan dividend = DeleteZeros(a);   // the kernels expect no leading zeros
@@ -173,7 +176,9 @@ void BurnikelZiegler::Basecase(CSpan a, CSpan b, Span q, Span r)
         return;
     }
 
-    Words qb(dividend.size() - n + 1), rb(n + 2);
+    Span qb = scratch.subspan(0, dividend.size() - n + 1), rb = scratch.subspan(qb.size(), n + 2);
+    Clear(qb);
+    Clear(rb);
     FullIntCore::Div(dividend, b, qb, rb);
 
     // the quotient fits n words (A < B·β^n): any word above is zero

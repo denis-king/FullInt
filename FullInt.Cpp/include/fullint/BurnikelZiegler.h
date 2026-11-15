@@ -18,9 +18,12 @@ struct BurnikelZiegler
     static void DivRem(CSpan a, CSpan b, Span q, Span r, int threshold);
 
 private:
-    static void Div2n1n(CSpan a, CSpan b, Span q, Span r, int threshold);
-    static void Div3n2n(CSpan a, CSpan b, Span q, Span r, int threshold);
-    static void Basecase(CSpan a, CSpan b, Span q, Span r);
+    static void Div2n1n(CSpan a, CSpan b, Span q, Span r, int threshold, Span scratch);
+    static void Div3n2n(CSpan a, CSpan b, Span q, Span r, int threshold, Span scratch);
+    static void Basecase(CSpan a, CSpan b, Span q, Span r, Span scratch);
+    // the recursion's work words for a block of n: Div2n1n(n) takes 3n/2 + Div3n2n, which takes
+    // 2n + 1 + Div2n1n(n/2); a leaf 2n + 3 (its quotient and remainder)
+    static size_t ScratchWords(size_t n) { return 8 * n + 64; }
 };
 
 }  // namespace fullint

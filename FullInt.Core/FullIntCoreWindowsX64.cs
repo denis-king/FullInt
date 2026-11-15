@@ -94,6 +94,16 @@ namespace FullInt.Core
         private static extern void Fullint64ToDecStringWIN_recip(IntPtr value, IntPtr valueBuf, IntPtr resultBuf, int lenValue, ref int lenResult);
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern void Fullint64DivWIN_recip(IntPtr a, IntPtr b, IntPtr q, IntPtr r, int lenA, int lenB, IntPtr work);
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern void Fullint64DivWIN_recipadx(IntPtr a, IntPtr b, IntPtr q, IntPtr r, int lenA, int lenB, IntPtr work);
+
+        private static void DivRecipKernel(IntPtr a, IntPtr b, IntPtr q, IntPtr r, int lenA, int lenB, IntPtr work)
+        {
+            // the multiply-subtract pass on mulx / adcx / adox: 1.06-1.10x from 64-word divisors,
+            // even at 16..32, slower below
+            if (MultAdx && lenB >= 16) Fullint64DivWIN_recipadx(a, b, q, r, lenA, lenB, work);
+            else Fullint64DivWIN_recip(a, b, q, r, lenA, lenB, work);
+        }
 
         /// <summary>Which kernel versions this process uses, e.g. for a log line.</summary>
         public static string KernelVersions =>
@@ -203,12 +213,12 @@ namespace FullInt.Core
             if (lenA < FullHelper.StackAllocLimitWords)
             {
                 ulong* work = stackalloc ulong[lenA + 1];
-                Fullint64DivWIN_recip(a, b, q, r, lenA, lenB, (IntPtr)work);
+                DivRecipKernel(a, b, q, r, lenA, lenB, (IntPtr)work);
                 return;
             }
             var rented = System.Buffers.ArrayPool<ulong>.Shared.Rent(lenA + 1);
             fixed (ulong* work = rented)
-                Fullint64DivWIN_recip(a, b, q, r, lenA, lenB, (IntPtr)work);
+                DivRecipKernel(a, b, q, r, lenA, lenB, (IntPtr)work);
             System.Buffers.ArrayPool<ulong>.Shared.Return(rented);
         }
 		
