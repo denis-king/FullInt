@@ -53,7 +53,7 @@ struct WordBuffers
 class FullInt64
 {
 public:
-    static constexpr uint32_t InlineWords = 4;
+    static constexpr uint32_t InlineWords = 8;
 
     FullInt64() noexcept { inl_[0] = 0; }
 
