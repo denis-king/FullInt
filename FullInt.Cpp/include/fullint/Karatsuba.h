@@ -92,6 +92,12 @@ struct Karatsuba
     // r = x mod (β^m - 1), m = r.size(), in [0, β^m - 1)
     static void FoldMod(CSpan x, Span r);
 
+    // r = a·b mod β^n, n = r.size() (the low half; Mulders: the low k = 0.7n words multiplied in
+    // full, the two cross terms of the rest short again; the MulLoAdx.asm kernel below
+    // MulLoThreshold words, the full product without BMI2 + ADX)
+    static void MultiplyLow(CSpan a, CSpan b, Span r);
+    static inline int MulLoThreshold = 96;
+
 private:
     // the thresholds of one Multiply call, passed down the recursion
     struct Limits

@@ -60,6 +60,16 @@ namespace FullInt.Core
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern void Fullint64SqrWIN(IntPtr a, IntPtr r, int lenA, int lenR);
 
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern void Fullint64MulLoWIN_adx(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int n);
+
+        // MulLoAdx.asm (BMI2 + ADX), otherwise the full product's low words
+        protected override void MultLow(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int n)
+        {
+            if (MultAdx) Fullint64MulLoWIN_adx(a, b, r, lenA, lenB, n);
+            else base.MultLow(a, b, r, lenA, lenB, n);
+        }
+
         // SqrAdx.asm (BMI2 + ADX), otherwise Sqr.asm (mul / adc)
         protected override void Sqr(IntPtr a, IntPtr r, int lenA, int lenR)
         {

@@ -360,6 +360,32 @@ void SquaresCheck()
     }
 }
 
+// the low half of a product (MulLoAdx.asm and Mulders' recursion), against GMP mod β^n
+void MultiplyLowCheck()
+{
+    int saved = fullint::Karatsuba::MulLoThreshold;
+    for (int round = 0; round < 1500; round++)
+    {
+        size_t la = 1 + rng() % 599, lb = 1 + rng() % 599;
+        size_t n = rng() % 3 == 0 ? la + rng() % 3 : 1 + rng() % (la + lb);
+        std::vector<uint64_t> a(la), b(lb), r(n, 0xDEADBEEFDEADBEEFull);
+        for (auto& x : a) x = rng();
+        for (auto& x : b) x = rng();
+        if (round % 5 == 0) std::fill(a.begin(), a.end(), ~0ull);
+        if (round % 7 == 0) std::fill(b.begin(), b.end(), ~0ull);
+        fullint::Karatsuba::MulLoThreshold = round % 2 == 0 ? saved : 4 + (int)(rng() % 60);
+        fullint::Karatsuba::MultiplyLow(a, b, r);
+        Mpz ma, mb, e, got;
+        mpz_import(ma.v, la, 1, 8, 0, 0, a.data());
+        mpz_import(mb.v, lb, 1, 8, 0, 0, b.data());
+        mpz_mul(e.v, ma.v, mb.v);
+        mpz_tdiv_r_2exp(e.v, e.v, 64 * n);
+        mpz_import(got.v, n, 1, 8, 0, 0, r.data());
+        CHECK(mpz_cmp(e.v, got.v) == 0, "MultiplyLow " + std::to_string(la) + "x" + std::to_string(lb) + " n " + std::to_string(n));
+    }
+    fullint::Karatsuba::MulLoThreshold = saved;
+}
+
 // products modulo β^m - 1: the cyclic FFT forced from small sizes and the folded full product;
 // all-ones operands (the β^m - 1 = 0 representation)
 void MultiplyModCheck()
@@ -611,6 +637,7 @@ int main()
     QuotientOnly();
     MultiplyModCheck();
     SquaresCheck();
+    MultiplyLowCheck();
     InPlaceApi();
     DecimalByHalves();
 

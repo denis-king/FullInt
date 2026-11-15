@@ -57,3 +57,4 @@ Fullint64DivWIN_recipadx
 Fullint64DivExactWIN
 Fullint64SqrWIN_adx
 Fullint64SqrWIN
+Fullint64MulLoWIN_adx

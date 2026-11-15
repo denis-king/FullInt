@@ -587,6 +587,41 @@ namespace FullInt.Tests
         }
 
         /// <summary>
+        /// The low half of a product (the core's MultLow and Mulders' recursion over it), against
+        /// BigInteger mod β^n: any lengths and n, small recursion thresholds, all-ones operands.
+        /// </summary>
+        [DataTestMethod]
+        [DynamicData(nameof(Cores), DynamicDataSourceType.Method)]
+        public void MultiplyLow_MatchesBigInteger(string coreName)
+        {
+            var core = GetCore(coreName);
+            var rnd = new Random(8383);
+            int saved = Karatsuba.MulLoThreshold;
+            try
+            {
+                for (int it = 0; it < 1_500; it++)
+                {
+                    int la = rnd.Next(1, 600), lb = rnd.Next(1, 600);
+                    int n = rnd.Next(3) == 0 ? la + rnd.Next(0, 3) : rnd.Next(1, la + lb + 1);
+                    var a = Next(rnd, la);
+                    var b = Next(rnd, lb);
+                    if (it % 5 == 0) a.AsSpan().Fill(ulong.MaxValue);
+                    if (it % 7 == 0) b.AsSpan().Fill(ulong.MaxValue);
+                    Karatsuba.MulLoThreshold = it % 2 == 0 ? saved : rnd.Next(4, 64);
+                    var r = new ulong[n];
+                    r.AsSpan().Fill(0xDEAD_BEEF_DEAD_BEEFUL);
+                    Karatsuba.MultiplyLow(core, a, b, r);
+                    var mod = BigInteger.One << (64 * n);
+                    Assert.AreEqual(ToBig(a) * ToBig(b) % mod, ToBig(r), $"[{coreName}] {la}x{lb} n={n} threshold={Karatsuba.MulLoThreshold}");
+                }
+            }
+            finally
+            {
+                Karatsuba.MulLoThreshold = saved;
+            }
+        }
+
+        /// <summary>
         /// The exact division (Toom-Cook interpolation): multiples of odd and even d (d = d'·2^t,
         /// d' below 2^32), into another buffer and in place; a non-multiple returns nonzero.
         /// </summary>

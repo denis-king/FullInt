@@ -13,6 +13,10 @@ namespace FullInt.Core
 		// the products of different words once, then doubled: ~0.55 of the multiply from 64 words),
 		// the others multiply a·a
 		void Sqr(Span<ulong> a, Span<ulong> r);
+		// r = a·b mod β^n, n = r.Length <= a.Length + b.Length (the low half; the x64 core with
+		// BMI2 + ADX: MulLoAdx.asm, the triangle of the column multiply; the others multiply in
+		// full and keep the low words)
+		void MultLow(Span<ulong> a, Span<ulong> b, Span<ulong> r);
 		void Div(Span<ulong> dividend, Span<ulong> divisor, Span<ulong> quotient, Span<ulong> remainder);
 		void Div(Span<ulong> dividend, ulong divisor, Span<ulong> quotient, out ulong remainder);
 

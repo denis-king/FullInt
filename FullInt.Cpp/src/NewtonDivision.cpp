@@ -76,6 +76,21 @@ bool SignedResidue(Span x, CSpan y)
     return negative && !IsZero(x);
 }
 
+// x = |x - y| for the value v = x - y mod β^m (x, y: m-word low parts) with |v| < β^m / 2;
+// returns v < 0. x - y is v or v ± β^m: above β^m / 2 in size it is the latter, and β^m - |x - y|
+// is its two's complement.
+bool SignedLow(Span x, CSpan y)
+{
+    bool negative = FullIntCore::Sub(x, y, x) < 0;
+    if ((x[0] >> 63) != 0)
+    {
+        for (auto& w : x) w = ~w;
+        Increment(x);
+        negative = !negative;
+    }
+    return negative && !IsZero(x);
+}
+
 // r = R >> sigma: n words, right-aligned in r
 void Finish(CSpan rem, int sigma, Span r)
 {
@@ -211,6 +226,29 @@ void NewtonDivision::Run(CSpan a, CSpan bn, int sigma, const std::vector<uint64_
                     Increment(qb);
                 }
                 std::copy(xm.end() - n, xm.end(), rem.begin());
+                continue;
+            }
+
+            if (t >= 2)
+            {
+                // T = q̂·B' only modulo β^(n+2) (the low half of the product, Mulders): R = X - T
+                // is below 8·B' < β^(n+2) / 2 in size, its low n + 2 words give it back
+                size_t ml = n + 2;
+                Span tl = Span(tb).subspan(0, ml), xl = Span(x).subspan(0, ml);
+                Karatsuba::MultiplyLow(bn, qb, tl);
+                std::copy(xs.end() - ml, xs.end(), xl.begin());   // (xs starts at x: overlapping copy forward)
+                bool negative = SignedLow(xl, tl);                // R = X - T, |R| in xl
+                while (negative)
+                {
+                    Decrement(qb);
+                    negative = FullIntCore::Sub(xl, bn, xl) > 0;
+                }
+                while (!IsZero(CSpan(xl).subspan(0, 2)) || CompareEqualLength(CSpan(xl).subspan(2), bn) >= 0)
+                {
+                    FullIntCore::Sub(xl, bn, xl);
+                    Increment(qb);
+                }
+                std::copy(xl.end() - n, xl.end(), rem.begin());
                 continue;
             }
 

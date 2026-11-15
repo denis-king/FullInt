@@ -399,6 +399,13 @@ namespace FullInt.Core
 
         public void Sqr(Span<ulong> a, Span<ulong> r) => Mult(a, a, r);
 
+        public void MultLow(Span<ulong> a, Span<ulong> b, Span<ulong> r)
+        {
+            var full = new ulong[a.Length + b.Length];
+            Mult(a, b, full);
+            full.AsSpan(full.Length - r.Length).CopyTo(r);
+        }
+
         public void Mult(Span<ulong> value1, Span<ulong> value2, Span<ulong> result)
         {
             ulong multA, multB = 0;

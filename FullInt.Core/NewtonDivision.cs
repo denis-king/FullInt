@@ -226,6 +226,29 @@ namespace FullInt.Core
                         continue;
                     }
 
+                    if (t >= 2)
+                    {
+                        // T = q̂·B' only modulo β^(n+2) (the low half of the product, Mulders): R =
+                        // X - T is below 8·B' < β^(n+2) / 2 in size, its low n + 2 words give it back
+                        int ml = n + 2;
+                        Span<ulong> tl = tb.AsSpan(0, ml), xl = x.AsSpan(0, ml);
+                        Karatsuba.MultiplyLow(core, bn, qb, tl);
+                        xs.Slice(xs.Length - ml).CopyTo(xl);       // (xl starts where xs does: a forward copy)
+                        bool negative = SignedLow(core, xl, tl);   // R = X - T, |R| in xl
+                        while (negative)
+                        {
+                            Decrement(qb);
+                            negative = core.Sub(xl, bn, xl) > 0;
+                        }
+                        while (!IsZero(xl.Slice(0, 2)) || CompareEqualLength(xl.Slice(2), bn) >= 0)
+                        {
+                            core.Sub(xl, bn, xl);
+                            Increment(qb);
+                        }
+                        xl.Slice(2).CopyTo(rem);
+                        continue;
+                    }
+
                     // T = q̂·B';  q̂ -= 1 while T > X;  R = X - T;  q̂ += 1 while R >= B'
                     Span<ulong> tt = tb.AsSpan(0, n + t);
                     Karatsuba.Multiply(core, bn, qb, tt);
@@ -323,6 +346,21 @@ namespace FullInt.Core
             if ((x[0] >> 63) != 0)
             {
                 for (int i = 0; i < x.Length; i++) x[i] = ~x[i];
+                negative = !negative;
+            }
+            return negative && !IsZero(x);
+        }
+
+        // x = |x - y| for the value v = x - y mod β^m (x, y: m-word low parts) with |v| < β^m / 2;
+        // returns v < 0. x - y is v or v ± β^m: above β^m / 2 in size it is the latter, and
+        // β^m - |x - y| is its two's complement.
+        private static bool SignedLow(IFullIntCore core, Span<ulong> x, Span<ulong> y)
+        {
+            bool negative = core.Sub(x, y, x) < 0;
+            if ((x[0] >> 63) != 0)
+            {
+                for (int i = 0; i < x.Length; i++) x[i] = ~x[i];
+                Increment(x);
                 negative = !negative;
             }
             return negative && !IsZero(x);

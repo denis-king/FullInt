@@ -87,6 +87,27 @@ namespace FullInt.Core
 			}
 		}
 
+		public unsafe void MultLow(Span<ulong> a, Span<ulong> b, Span<ulong> r)
+		{
+			fixed (ulong* pA = a)
+			fixed (ulong* pB = b)
+			fixed (ulong* pR = r)
+			{
+				MultLow((IntPtr)pA, (IntPtr)pB, (IntPtr)pR, a.Length, b.Length, r.Length);
+			}
+		}
+
+		// a low-half kernel where there is one; otherwise the full product, its low words kept
+		protected virtual unsafe void MultLow(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int n)
+		{
+			ulong[] full = new ulong[lenA + lenB];
+			fixed (ulong* pF = full)
+			{
+				Mult(a, b, (IntPtr)pF, lenA, lenB, lenA + lenB);
+			}
+			new Span<ulong>(full, lenA + lenB - n, n).CopyTo(new Span<ulong>((void*)r, n));
+		}
+
 		// a square kernel where there is one; the multiplication a·a otherwise
 		protected virtual void Sqr(IntPtr a, IntPtr r, int lenA, int lenR) => Mult(a, a, r, lenA, lenA, lenR);
 		

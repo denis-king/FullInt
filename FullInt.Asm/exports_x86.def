@@ -22,3 +22,4 @@ Fullint64XorWIN_sse2
 Fullint64MultWIN_adx
 Fullint64DivExactWIN
 Fullint64SqrWIN_adx
+Fullint64MulLoWIN_adx

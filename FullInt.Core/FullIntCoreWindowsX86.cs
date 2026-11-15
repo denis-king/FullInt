@@ -64,6 +64,16 @@ namespace FullInt.Core
             else Mult(a, a, r, lenA, lenA, lenR);
         }
 
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern void Fullint64MulLoWIN_adx(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int n);
+
+        // x86/MulLoAdx.asm (BMI2 + ADX, 32-bit digits), otherwise the full product's low words
+        protected override void MultLow(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int n)
+        {
+            if (MultAdx) Fullint64MulLoWIN_adx(a, b, r, lenA, lenB, n);
+            else base.MultLow(a, b, r, lenA, lenB, n);
+        }
+
         private static int DetectCpuFeatures()
         {
             if (!DivRecip) return 0;   // FULLINT_CPU=baseline

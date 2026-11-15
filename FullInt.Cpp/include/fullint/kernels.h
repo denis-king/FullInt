@@ -43,6 +43,10 @@ uint64_t Fullint64DivExactWIN(const uint64_t* a, uint64_t* q, int len, uint64_t 
 // 2·lenA zero
 void Fullint64SqrWIN_adx(const uint64_t* a, uint64_t* r, int lenA, int lenR);
 
+// the low half of a product (MulLoAdx.asm, BMI2 + ADX; x64 and x86): R = A·B mod β^n
+// (n words, n <= lenA + lenB)
+void Fullint64MulLoWIN_adx(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int n);
+
 // CPU features for picking kernel versions (Cpu.asm): x64 bit 0 BMI2, bit 1 ADX, bit 2 AVX2
 // (OS-enabled); x86 bit 4 SSE2
 int Fullint64CpuFeatures(void);
