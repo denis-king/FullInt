@@ -72,8 +72,10 @@ namespace FullInt.Core
             // A' to whole blocks with its top bit clear instead: an extra, nearly empty block that
             // costs a whole Div2n1n (half of all numbers; 4096 / 2048 words ~2x, 8192 / 4096 more).
             var ri = new ulong[n];
-            // one work buffer for the whole recursion (was a few arrays per node): 8n + 64 words
-            ulong[] scratch = System.Buffers.ArrayPool<ulong>.Shared.Rent(8 * n + 64);
+            // one work buffer for the whole recursion (was a few arrays per node): Div2n1n(n) takes
+            // n + n/2 + Div3n2n, which takes 2n + 1 + Div2n1n(ceil(n/2)): <= 7n + O(log n) + a leaf
+            // (2·threshold + 3); the top part Div3n2n(k = h < n) 2n + 1 more
+            ulong[] scratch = System.Buffers.ArrayPool<ulong>.Shared.Rent(10 * n + 2 * threshold + 128);
             var tt = at.Slice(0, n + h).ToArray();
             Span<ulong> topN = tt.AsSpan(0, n);
             if (CompareEqualLength(topN, bn) >= 0)
@@ -109,18 +111,21 @@ namespace FullInt.Core
         private static void Div2n1n(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> q, Span<ulong> r, int threshold, Span<ulong> scratch)
         {
             int n = b.Length;
-            if ((n & 1) != 0 || n < threshold)
+            if (n < threshold)
             {
                 Basecase(core, a, b, q, r, scratch);
                 return;
             }
 
-            int k = n / 2;
-            Span<ulong> r1 = scratch.Slice(0, 3 * k);   // [R, A4] for the second step (fully written)
-            Span<ulong> rest = scratch.Slice(3 * k);
-            Div3n2n(core, a.Slice(0, 3 * k), b, q.Slice(0, k), r1.Slice(0, n), threshold, rest);
-            a.Slice(3 * k, k).CopyTo(r1.Slice(n));
-            Div3n2n(core, r1, b, q.Slice(k, k), r, threshold, rest);
+            // an odd n splits into k1 = ceil(n/2) and k2 = floor(n/2) quotient words (was: the
+            // kernel on the whole block, quadratic: a top part of 513 words took 1.2x the time of
+            // the whole 2048 / 1024 division)
+            int k1 = (n + 1) / 2, k2 = n / 2;
+            Span<ulong> r1 = scratch.Slice(0, n + k2);   // [R, A4] for the second step (fully written)
+            Span<ulong> rest = scratch.Slice(n + k2);
+            Div3n2n(core, a.Slice(0, n + k1), b, q.Slice(0, k1), r1.Slice(0, n), threshold, rest);
+            a.Slice(n + k1, k2).CopyTo(r1.Slice(n));
+            Div3n2n(core, r1, b, q.Slice(k1, k2), r, threshold, rest);
         }
 
         // A (n + k) < B·β^k, B = [B1 B2] (n, top bit set; B1 k words) -> Q (k), R (n)
@@ -186,6 +191,100 @@ namespace FullInt.Core
             if (qb.Length <= n) qb.CopyTo(q.Slice(n - qb.Length));
             else qb.Slice(qb.Length - n).CopyTo(q);
             rb.Slice(2).CopyTo(r);
+        }
+
+        /// <summary>
+        /// The quotient alone (a / b without the remainder), about a fifth cheaper than
+        /// <see cref="DivRem(IFullIntCore, Span{ulong}, Span{ulong}, Span{ulong}, Span{ulong})"/>
+        /// (GMP's mpn_div_q does the same):
+        ///   Q̃ ≈ floor(A·β / B) within a known error E (see Approx), one guard word below the
+        ///   quotient; when that word is in [E, β - 1 - E], floor(A / B) = Q̃ / β exactly,
+        ///   otherwise (a chance of about 2E / 2^64) the full division.
+        /// a and b without leading zero words, a.Length &gt;= b.Length; q: a.Length - b.Length + 1 words.
+        /// </summary>
+        public static void Quotient(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> q) =>
+            Quotient(core, a, b, q, Threshold);
+
+        /// <summary>Same, with an explicit threshold (tests and tuning; at least 2).</summary>
+        public static void Quotient(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> q, int threshold)
+        {
+            if (threshold < 2) throw new ArgumentOutOfRangeException(nameof(threshold));
+            int la = a.Length, n = b.Length;
+            if (la - n + 2 < 4 * threshold && n <= la - n + 4)
+            {
+                // neither split nor cut below (see Approx): the exact division directly
+                Exact(core, a, b, q, new ulong[n + 2], threshold);
+                return;
+            }
+            var ae = new ulong[la + 1];                                    // A·β
+            a.CopyTo(ae);
+            var qa = new ulong[la - n + 2];
+            int err = Approx(core, ae, b, qa, threshold);
+            ulong low = qa[qa.Length - 1];
+            if (low >= (ulong)err && low <= ulong.MaxValue - (ulong)err)
+            {
+                qa.AsSpan(0, qa.Length - 1).CopyTo(q);
+                return;
+            }
+            var r = new ulong[n + 2];
+            q.Clear();
+            Exact(core, a, b, q, r, threshold);
+        }
+
+        // Q̃ ≈ floor(A / B), returns E with |Q̃ - floor(A / B)| <= E, Q̃ >= 0. A may have leading
+        // zero words, B not; q: at least the quotient's length, right-aligned, fully written.
+        //   B longer than the quotient + 2 words: both cut down to that (the dropped words change
+        //   the quotient by at most 1: B_t >= β^(qn+1), A/B >= A_t/(B_t + 1) >= A_t/B_t - 1/β).
+        //   Otherwise the top half of the quotient exactly (with its remainder R), the low half
+        //   approximately from [R, the low words of A] (which is then cut down again).
+        private static int Approx(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> q, int threshold)
+        {
+            q.Clear();
+            a = FullHelper.DeleteZeros(a);
+            int la = a.Length, n = b.Length;
+            if (la < n || la == n && CompareEqualLength(a, b) < 0) return 0;
+            int qn = la - n + 1;
+
+            if (n > qn + 2)
+            {
+                int d = n - (qn + 2);
+                return Approx(core, a.Slice(0, la - d), b.Slice(0, n - d), q, threshold) + 1;
+            }
+            if (qn < 4 * threshold)   // below: the split costs more than it saves (256 words 1.2x, 512 0.95)
+            {
+                Exact(core, a, b, q, new ulong[n + 2], threshold);
+                return 0;
+            }
+
+            int k = qn / 2;
+            Span<ulong> qq = q.Slice(q.Length - qn);
+            var rem = new ulong[n + 2];
+            Exact(core, a.Slice(0, la - k), b, qq.Slice(0, qn - k), rem, threshold);
+            var x = new ulong[n + k];                                      // [R, the low k words of A]
+            rem.AsSpan(2).CopyTo(x);
+            a.Slice(la - k).CopyTo(x.AsSpan(n));
+            var ql = new ulong[k + 1];
+            int e = Approx(core, x, b, ql, threshold);
+            core.Add(qq, ql, qq);                                          // the low k words are zero; a carry goes up
+            return e;
+        }
+
+        // exact: q (right-aligned, at least the quotient's length) = A / B, r (n + 2 words) the
+        // remainder right-aligned; A may have leading zero words, B not
+        private static void Exact(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> q, Span<ulong> r, int threshold)
+        {
+            q.Clear();
+            r.Clear();
+            a = FullHelper.DeleteZeros(a);
+            int la = a.Length, n = b.Length;
+            if (la < n || la == n && CompareEqualLength(a, b) < 0)
+            {
+                a.CopyTo(r.Slice(r.Length - la));
+                return;
+            }
+            Span<ulong> qb = q.Slice(q.Length - (la - n + 1));
+            if (n >= 2 * threshold && la - n >= 2 * threshold) DivRem(core, a, b, qb, r, threshold);
+            else core.Div(a, b, qb, r);
         }
 
         private static int CompareEqualLength(Span<ulong> x, Span<ulong> y)

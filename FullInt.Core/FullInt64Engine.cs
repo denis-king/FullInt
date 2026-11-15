@@ -631,7 +631,7 @@ namespace FullInt.Core
                     ? stackalloc ulong[resultLenght]
                     : FullHelper.RentZeroed(resultLenght, out resultRented));
 
-            div_internal(dividend, divisor, resultBuf, remainderBuf, Base);
+            div_internal(dividend, divisor, resultBuf, remainderBuf, Base, quotientOnly: !wantRemainder);
 
             remainder = wantRemainder ? new FullInt64(value1.Sing, FullHelper.DeleteZeros(remainderBuf).ToArray(), Base) : null;
             FullHelper.Return(remainderRented);
@@ -651,7 +651,7 @@ namespace FullInt.Core
             return new FullInt64(sign, FullHelper.ResultArray(resultBuf, resultHeap), Base);
         }
 		
-        public void div_internal(Span<ulong> dividend, Span<ulong> divisor, Span<ulong> result, Span<ulong> remainder, toBase Base)
+        public void div_internal(Span<ulong> dividend, Span<ulong> divisor, Span<ulong> result, Span<ulong> remainder, toBase Base, bool quotientOnly = false)
         {
             // long divisor and long quotient: Burnikel–Ziegler (recursion in C#, leaves in the core);
             // the same contract as the core's Div, so the buffers above stay as they are;
@@ -659,6 +659,13 @@ namespace FullInt.Core
             if (Base == toBase.hex && NewtonDivision.Use(dividend.Length, divisor.Length))
             {
                 NewtonDivision.DivRem(_core, dividend, divisor, result, remainder);
+                return;
+            }
+            // the quotient alone (a / b): an approximate quotient with a guard word, no remainder;
+            // a long divisor with a short quotient is cut down to the quotient's length there
+            if (Base == toBase.hex && quotientOnly && divisor.Length >= 2 * BurnikelZiegler.Threshold)
+            {
+                BurnikelZiegler.Quotient(_core, dividend, divisor, result);
                 return;
             }
             if (Base == toBase.hex && divisor.Length >= 2 * BurnikelZiegler.Threshold

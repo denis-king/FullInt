@@ -24,6 +24,12 @@ if (args.Length > 0 && args[0] == "newton")
     return BzTune.RunNewton(args.Skip(1).ToArray());
 }
 
+// quot [rounds]                             → the quotient alone against the full division (see BzTune.RunQuotient)
+if (args.Length > 0 && args[0] == "quot")
+{
+    return BzTune.RunQuotient(args.Skip(1).ToArray());
+}
+
 // bz [rounds]                                → Burnikel–Ziegler threshold tuning (see BzTune)
 if (args.Length > 0 && args[0] == "bz")
 {

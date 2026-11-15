@@ -35,6 +35,20 @@ namespace FullInt.Tests
             return BigCompat.FromUnsignedLittleEndian(bytes);
         }
 
+        // big-endian words of a non-negative value, without leading zero words
+        private static ulong[] FromBig(BigInteger v)
+        {
+            var words = new System.Collections.Generic.List<ulong>();
+            var mask = (BigInteger)ulong.MaxValue;
+            do
+            {
+                words.Add((ulong)(v & mask));
+                v >>= 64;
+            } while (v > 0);
+            words.Reverse();
+            return words.ToArray();
+        }
+
         private static ulong[] Next(Random rnd, int length, bool nonZeroTop = false)
         {
             var r = new ulong[length];
@@ -312,6 +326,59 @@ namespace FullInt.Tests
             {
                 int lb = rnd.Next(100, 1200), la = lb + rnd.Next(100, 2000);
                 Check(Shaped(la), Shaped(lb), BurnikelZiegler.Threshold, $"[{coreName}] {la}/{lb} large");
+            }
+        }
+
+        /// <summary>
+        /// The quotient alone (an approximate quotient with a guard word), against BigInteger:
+        /// small thresholds make the approximation recurse on small numbers; long divisors with
+        /// short quotients (cut down); exact multiples A = B·Q put the guard word at the boundary
+        /// (the fallback to the full division).
+        /// </summary>
+        [DataTestMethod]
+        [DynamicData(nameof(Cores), DynamicDataSourceType.Method)]
+        public void BurnikelZieglerQuotient_MatchesBigInteger(string coreName)
+        {
+            var core = GetCore(coreName);
+            var rnd = new Random(5151);
+            int[] thresholds = { 2, 3, 4, 5, 8, 16, 33, 96 };
+
+            ulong[] Shaped(int length)
+            {
+                var w = Next(rnd, length, nonZeroTop: true);
+                switch (rnd.Next(5))
+                {
+                    case 0: w.AsSpan().Fill(ulong.MaxValue); break;
+                    case 1: w[0] = (ulong)rnd.Next(1, 16); break;
+                }
+                return w;
+            }
+
+            for (int it = 0; it < 3_000; it++)
+            {
+                int threshold = thresholds[rnd.Next(thresholds.Length)];
+                int lb = rnd.Next(1, 150);
+                int la = lb + (rnd.Next(3) == 0 ? rnd.Next(0, 8) : rnd.Next(0, 250));
+                var b = Shaped(lb);
+                ulong[] a;
+                int kind = rnd.Next(6);
+                if (kind == 0)
+                {
+                    // A = B·Q (+ a small remainder): the guard word at the boundary
+                    var qv = Shaped(Math.Max(1, la - lb));
+                    var prod = ToBig(b) * ToBig(qv) + (rnd.Next(2) == 0 ? BigInteger.Zero : BigInteger.One);
+                    a = FromBig(prod);
+                }
+                else
+                {
+                    a = Shaped(la);
+                    if (kind == 1) b.CopyTo(a, 0);
+                }
+                if (a.Length < b.Length) continue;
+                var q = new ulong[a.Length - b.Length + 1];
+                q.AsSpan().Fill(0xDEAD_BEEF_DEAD_BEEFUL);
+                BurnikelZiegler.Quotient(core, a, b, q, threshold);
+                Assert.AreEqual(ToBig(a) / ToBig(b), ToBig(q), $"[{coreName}] {a.Length}/{lb} threshold={threshold} kind={kind} (iteration {it})");
             }
         }
 

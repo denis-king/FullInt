@@ -119,6 +119,44 @@ namespace FullInt.Benchmarks
             return 0;
         }
 
+        /// <summary>
+        /// "quot [rounds]": the quotient alone (BurnikelZiegler.Quotient) against the full division
+        /// the engine used before: 2N / N against DivRem, (N + 40) / N against the core Div.
+        /// </summary>
+        public static int RunQuotient(string[] args)
+        {
+            int rounds = args.Length > 0 ? int.Parse(args[0]) : 5;
+            var core = FullIntCoreFactory.Create();
+            var rnd = new Random(1);
+            Console.WriteLine($"core={core.GetType().Name} rounds={rounds}; us; ratio = Quotient / before");
+            Console.WriteLine($"{"N",6} {"2N/N DivRem",12} {"Quotient",9} {"ratio",6} | {"(N+40)/N Div",13} {"Quotient",9} {"ratio",6}");
+            foreach (int n in new[] { 256, 512, 1024, 2048, 4096, 8192 })
+            {
+                ulong[] Rand(int len) { var w = new ulong[len]; for (int i = 0; i < len; i++) w[i] = (ulong)rnd.NextInt64() ^ ((ulong)rnd.Next(2) << 63); w[0] |= 1; return w; }
+                var a = Rand(2 * n); var b = Rand(n); var a2 = Rand(n + 40);
+                var q = new ulong[n + 1]; var r = new ulong[n + 2]; var q2 = new ulong[41];
+                double Best(Action f)
+                {
+                    f();
+                    double best = double.MaxValue;
+                    for (int round = 0; round < rounds; round++)
+                    {
+                        int it = 0;
+                        var sw = Stopwatch.StartNew();
+                        do { f(); it++; } while (sw.ElapsedMilliseconds < 30);
+                        best = Math.Min(best, sw.Elapsed.TotalMilliseconds * 1e3 / it);
+                    }
+                    return best;
+                }
+                double full = Best(() => BurnikelZiegler.DivRem(core, a, b, q, r));
+                double quot = Best(() => BurnikelZiegler.Quotient(core, a, b, q));
+                double kern = Best(() => { q2.AsSpan().Clear(); r.AsSpan().Clear(); core.Div(a2, b, q2, r); });
+                double quot2 = Best(() => BurnikelZiegler.Quotient(core, a2, b, q2));
+                Console.WriteLine($"{n,6} {full,12:F1} {quot,9:F1} {quot / full,6:F3} | {kern,13:F1} {quot2,9:F1} {quot2 / kern,6:F3}");
+            }
+            return 0;
+        }
+
         public static int Run(string[] args)
         {
             int rounds = args.Length > 0 ? int.Parse(args[0]) : 5;
