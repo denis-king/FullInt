@@ -8,6 +8,10 @@ if (args.Length > 0 && args[0] == "ab")
     return AbCompare.Run(args.Skip(1).ToArray());
 }
 // kara [rounds]                              → Karatsuba threshold tuning (see KaratsubaTune)
+if (args.Length > 1 && args[0] == "kara" && args[1] == "sqr")
+{
+    return KaratsubaTune.RunSqr(args.Skip(2).ToArray());
+}
 if (args.Length > 0 && args[0] == "kara")
 {
     return KaratsubaTune.Run(args.Skip(1).ToArray());

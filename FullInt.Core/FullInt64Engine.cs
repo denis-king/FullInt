@@ -210,7 +210,9 @@ namespace FullInt.Core
             ulong[] r = result.WritableBuffer(len, mustBeNew: aliased);
             Span<ulong> low = r.AsSpan(r.Length - len);
             r.AsSpan(0, r.Length - len).Clear();
-            if (Math.Min(a.Length, b.Length) >= Karatsuba.Threshold)
+            if (a == b && a.Length < Karatsuba.SqrThreshold)
+                _core.Sqr(a, low);                                       // x·x: the square kernel
+            else if (Math.Min(a.Length, b.Length) >= Karatsuba.Threshold || a == b)
                 Karatsuba.Multiply(_core, a, b, low);
             else
                 _core.Mult(a, b, low);
@@ -292,7 +294,11 @@ namespace FullInt.Core
             var heap = lenth <= FullHelper.StackAllocLimitWords ? null : new ulong[lenth];
             Span<ulong> bytes = heap ?? stackalloc ulong[lenth];
 
-            if (Base == toBase.hex && Math.Min(value1.value.Length, value2.value.Length) >= Karatsuba.Threshold)
+            if (Base == toBase.hex && value1.value == value2.value && value1.value.Length < Karatsuba.SqrThreshold)
+            {
+                _core.Sqr(value1.value, bytes);                          // x·x: the square kernel
+            }
+            else if (Base == toBase.hex && (Math.Min(value1.value.Length, value2.value.Length) >= Karatsuba.Threshold || value1.value == value2.value))
             {
                 Karatsuba.Multiply(_core, value1.value, value2.value, bytes);   // recursion in C#, leaves in the core
             }

@@ -62,7 +62,7 @@ namespace FullInt.Core
         {
             if (r.Length != a.Length + b.Length) throw new ArgumentException("r.Length must be a.Length + b.Length", nameof(r));
             if (k < 1 || k > 20) throw new ArgumentOutOfRangeException(nameof(k));
-            FftMul(core, a, b, r, new Limits(Threshold, Toom3Threshold, Toom4Threshold, Toom6Threshold, FftThreshold), k);
+            FftMul(core, a, b, r, new Limits(Threshold, Toom3Threshold, Toom4Threshold, Toom6Threshold, FftThreshold, SqrThreshold), k);
         }
 
         /// <summary>Same, with an explicit FFT threshold too (at least 8).</summary>
@@ -79,7 +79,8 @@ namespace FullInt.Core
             if (toom6Threshold < 6) throw new ArgumentOutOfRangeException(nameof(toom6Threshold));
             if (r.Length != a.Length + b.Length) throw new ArgumentException("r.Length must be a.Length + b.Length", nameof(r));
 
-            var lim = new Limits(threshold, toom3Threshold, toom4Threshold, toom6Threshold, fftThreshold);
+            var lim = new Limits(threshold, toom3Threshold, toom4Threshold, toom6Threshold, fftThreshold,
+                threshold == Threshold ? SqrThreshold : threshold);
             ulong[] scratch = ArrayPool<ulong>.Shared.Rent(ScratchLength(a.Length, b.Length));
             try
             {
@@ -94,12 +95,24 @@ namespace FullInt.Core
         // the thresholds of one Multiply call, passed down the recursion
         private readonly struct Limits
         {
-            public readonly int Kara, Toom3, Toom4, Toom6, Fft;
-            public Limits(int kara, int toom3, int toom4, int toom6, int fft)
+            public readonly int Kara, Toom3, Toom4, Toom6, Fft, SqrKara;
+            public Limits(int kara, int toom3, int toom4, int toom6, int fft, int sqrKara)
             {
-                Kara = kara; Toom3 = toom3; Toom4 = toom4; Toom6 = toom6; Fft = fft;
+                Kara = kara; Toom3 = toom3; Toom4 = toom4; Toom6 = toom6; Fft = fft; SqrKara = sqrKara;
             }
         }
+
+        /// <summary>
+        /// Squares (a·a with a and b the same span) below this many words go to the core's Sqr
+        /// (SqrAdx.asm), from it a Karatsuba square level: the square kernel is about half the
+        /// multiply, so this level pays off later than for products. Tuned with
+        /// `FullInt.Benchmarks kara sqr` (Zen 3, x64): 64..128 within noise, 96 best at 96..192
+        /// words (0.95 / 0.90 / 0.78 of the kernel alone); a whole square is 0.63-0.75 of a
+        /// product of the same size at 64..16384 words. x86: no square kernel yet (the multiply),
+        /// the Karatsuba threshold. A Multiply call with an explicit Karatsuba threshold other
+        /// than <see cref="Threshold"/> (tests, tuning) uses that one for squares too.
+        /// </summary>
+        public static int SqrThreshold { get; set; } = Environment.Is64BitProcess ? 96 : 32;
 
         // r = a · b, r.Length == a.Length + b.Length. The scratch is dirty on entry: everything
         // taken from it is fully written before it is read.
@@ -110,10 +123,14 @@ namespace FullInt.Core
                 var t = a; a = b; b = t;
             }
             int la = a.Length, lb = b.Length;
+            // a square (the same span twice, as the Toom and FFT levels pass their values of a
+            // square): one evaluation, every subproduct a square again, the square kernel below
+            bool square = a == b;
 
-            if (lb < lim.Kara)
+            if (square ? lb < lim.SqrKara : lb < lim.Kara)
             {
-                core.Mult(a, b, r);   // basecase: the column multiply
+                if (square) core.Sqr(a, r);
+                else core.Mult(a, b, r);   // basecase: the column multiply
                 return;
             }
 
@@ -157,7 +174,7 @@ namespace FullInt.Core
             Span<ulong> z2 = r.Slice(0, len - 2 * m);     // (la - m) + (lb - m) words
 
             Span<ulong> da = scratch.Slice(0, m);
-            Span<ulong> db = scratch.Slice(m, m);
+            Span<ulong> db = square ? da : scratch.Slice(m, m);
             Span<ulong> zm = scratch.Slice(2 * m, 2 * m);
             Span<ulong> mid = scratch.Slice(4 * m, 2 * m + 1);
             Span<ulong> rest = scratch.Slice(6 * m + 1);  // for the recursive calls, one at a time
@@ -166,7 +183,7 @@ namespace FullInt.Core
             Mul(core, a1, b1, z2, rest, lim);
 
             int sa = core.Sub(a1, a0, da);   // da = |a1 - a0|, sa = sign of (a1 - a0)
-            int sb = core.Sub(b1, b0, db);
+            int sb = square ? sa : core.Sub(b1, b0, db);   // a square: (a1 - a0)², subtracted
 
             // mid = z0 + z2 - (a1 - a0)(b1 - b0) = a1·b0 + a0·b1  (never negative, fits 2m + 1 words)
             core.Add(z0, z2, mid);

@@ -70,7 +70,7 @@ namespace FullInt.Core
         public static void MultiplyMod(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> r, int cyclicFrom)
         {
             int m = r.Length;
-            var lim = new Limits(Threshold, Toom3Threshold, Toom4Threshold, Toom6Threshold, FftThreshold);
+            var lim = new Limits(Threshold, Toom3Threshold, Toom4Threshold, Toom6Threshold, FftThreshold, SqrThreshold);
             if (m >= cyclicFrom)
             {
                 bool native = NativeFft(core);
@@ -172,15 +172,17 @@ namespace FullInt.Core
                 Span<ulong> prod = all.Slice(vectors * n1, 2 * n1);
                 Span<ulong> rest = all.Slice(vectors * n1 + 2 * n1);
 
+                // a square: one transform, the pointwise products squares
+                bool square = a == b;
                 Split(a, m, K, n1, all, sa);
-                Split(b, m, K, n1, all, sb);
+                if (!square) Split(b, m, K, n1, all, sb);
 
                 ForwardDif(native, all, sa, K, n1, nBits);
-                ForwardDif(native, all, sb, K, n1, nBits);
+                if (!square) ForwardDif(native, all, sb, K, n1, nBits);
 
                 for (int i = 0; i < K; i++)
                 {
-                    Span<ulong> x = all.Slice(sa[i], n1), y = all.Slice(sb[i], n1);
+                    Span<ulong> x = all.Slice(sa[i], n1), y = square ? x : all.Slice(sb[i], n1);
                     Mul(core, x, y, prod, rest, lim);
                     ReduceProduct(core, prod, x);
                 }

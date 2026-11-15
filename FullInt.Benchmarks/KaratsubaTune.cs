@@ -32,6 +32,55 @@ namespace FullInt.Benchmarks
         private static readonly int[] FftSizes = { 2048, 4096, 8192, 16384, 32768, 65536, 131072 };
         private static readonly int[] FftThresholds = { 1024, 2048, 4096, 8192, 16384, 32768 };
 
+        /// <summary>
+        /// "kara sqr [rounds]": squares a·a (the same array), the core's Sqr alone against Karatsuba
+        /// squares from T words; the last column: a full square / a product of two different numbers
+        /// of the same size (all levels at their defaults).
+        /// </summary>
+        public static int RunSqr(string[] args)
+        {
+            int rounds = args.Length > 0 ? int.Parse(args[0]) : 7;
+            var core = FullIntCoreFactory.Create();
+            int[] thresholds = { 48, 64, 96, 128, 160, 192, 256 };
+            Console.WriteLine($"core={core.GetType().Name} rounds={rounds}; ratio = Karatsuba squares from T / the Sqr kernel alone; sq/mul = square / product");
+            Console.Write($"{"N",6} {"Sqr",10}");
+            foreach (int t in thresholds) Console.Write($" {"T=" + t,7}");
+            Console.WriteLine($" {"sq/mul",7}");
+            foreach (int n in new[] { 64, 96, 128, 192, 256, 384, 512, 1024, 2048, 4096, 8192, 16384 })
+            {
+                ulong[] a = Data.Limbs(n, 1), b = Data.Limbs(n, 2);
+                var r = new ulong[2 * n];
+                double Best(Action f)
+                {
+                    f();
+                    double best = double.MaxValue;
+                    for (int round = 0; round < rounds; round++)
+                    {
+                        int it = 0;
+                        var sw = Stopwatch.StartNew();
+                        do { f(); it++; } while (sw.ElapsedMilliseconds < 20);
+                        best = Math.Min(best, sw.Elapsed.TotalMilliseconds * 1e6 / it);
+                    }
+                    return best;
+                }
+                double kernel = n <= 1024 ? Best(() => core.Sqr(a, r)) : double.NaN;
+                Console.Write($"{n,6} {Format(kernel),10}");
+                foreach (int t in thresholds)
+                {
+                    int th = t;
+                    int saved = Karatsuba.SqrThreshold;
+                    Karatsuba.SqrThreshold = th;
+                    double v = n <= 1024 ? Best(() => Karatsuba.Multiply(core, a, a, r)) : double.NaN;
+                    Karatsuba.SqrThreshold = saved;
+                    Console.Write($" {v / kernel,7:F3}");
+                }
+                double sq = Best(() => Karatsuba.Multiply(core, a, a, r));
+                double mul = Best(() => Karatsuba.Multiply(core, a, b, r));
+                Console.WriteLine($" {sq / mul,7:F3}");
+            }
+            return 0;
+        }
+
         public static int Run(string[] args)
         {
             bool fft = args.Length > 0 && args[0] == "fft";

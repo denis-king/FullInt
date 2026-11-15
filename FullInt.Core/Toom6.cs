@@ -63,7 +63,9 @@ namespace FullInt.Core
 
             // values: [0] 1, [1] -1, [2] 2, [3] -2, [4] 4, [5] -4, [6] 32·(1/2), [7] 32·(-1/2), [8] 1024·(1/4)
             int na = Evaluate6(core, a0, a1, a2, a3, a4, a5, pa, e, tmp);
-            int nb = Evaluate6(core, b0, b1, b2, b3, b4, b5, pb, e, tmp);
+            int nb = na;
+            if (a == b) pb = pa;                                          // a square: one evaluation
+            else nb = Evaluate6(core, b0, b1, b2, b3, b4, b5, pb, e, tmp);
             int ns = na ^ nb;       // bit i: the product at the negative point i is negative
 
             Mul(core, pa.Slice(0, e), pb.Slice(0, e), w1, rest, lim);

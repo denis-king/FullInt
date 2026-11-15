@@ -77,6 +77,18 @@ namespace FullInt.Core
         }
 		
 		protected abstract void Mult(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR);
+
+		public unsafe void Sqr(Span<ulong> a, Span<ulong> r)
+		{
+			fixed (ulong* pA = a)
+			fixed (ulong* pR = r)
+			{
+				Sqr((IntPtr)pA, (IntPtr)pR, a.Length, r.Length);
+			}
+		}
+
+		// a square kernel where there is one; the multiplication a·a otherwise
+		protected virtual void Sqr(IntPtr a, IntPtr r, int lenA, int lenR) => Mult(a, a, r, lenA, lenA, lenR);
 		
 		public void Div(Span<ulong> dividend, Span<ulong> divisor, Span<ulong> quotient, Span<ulong> remainder)
         {

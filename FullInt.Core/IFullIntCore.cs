@@ -9,6 +9,10 @@ namespace FullInt.Core
         ulong Add(Span<ulong> a, Span<ulong> b, Span<ulong> r);
         int Sub(Span<ulong> a, Span<ulong> b, Span<ulong> r);
 		void Mult(Span<ulong> a, Span<ulong> b, Span<ulong> r);
+		// r = a² (r.Length == 2·a.Length, r not a): the x64 core with BMI2 + ADX squares (SqrAdx.asm,
+		// the products of different words once, then doubled: ~0.55 of the multiply from 64 words),
+		// the others multiply a·a
+		void Sqr(Span<ulong> a, Span<ulong> r);
 		void Div(Span<ulong> dividend, Span<ulong> divisor, Span<ulong> quotient, Span<ulong> remainder);
 		void Div(Span<ulong> dividend, ulong divisor, Span<ulong> quotient, out ulong remainder);
 

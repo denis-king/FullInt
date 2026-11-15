@@ -397,6 +397,8 @@ namespace FullInt.Core
             resultStartIndex = pos;
         }
 
+        public void Sqr(Span<ulong> a, Span<ulong> r) => Mult(a, a, r);
+
         public void Mult(Span<ulong> value1, Span<ulong> value2, Span<ulong> result)
         {
             ulong multA, multB = 0;

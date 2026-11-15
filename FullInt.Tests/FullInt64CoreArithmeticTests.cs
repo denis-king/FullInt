@@ -494,6 +494,65 @@ namespace FullInt.Tests
         }
 
         /// <summary>
+        /// Squares (the same span as both operands): the square kernel, Karatsuba / Toom-3 / 4 / 6
+        /// levels with one evaluation and the FFT with one transform, against BigInteger. Small
+        /// thresholds put every level on small numbers; all-ones and equal halves (a1 - a0 = 0).
+        /// </summary>
+        [DataTestMethod]
+        [DynamicData(nameof(Cores), DynamicDataSourceType.Method)]
+        public void Squares_MatchBigInteger(string coreName)
+        {
+            var core = GetCore(coreName);
+            var rnd = new Random(6262);
+            ulong[] Shaped(int length)
+            {
+                var w = Next(rnd, length);
+                switch (rnd.Next(5))
+                {
+                    case 0: w.AsSpan().Fill(ulong.MaxValue); break;
+                    case 1:
+                        var h = Next(rnd, (length + 1) / 2);
+                        var eq = new ulong[length];
+                        h.AsSpan(h.Length - length / 2).CopyTo(eq);
+                        h.CopyTo(eq.AsSpan(length / 2));
+                        return eq;
+                }
+                return w;
+            }
+            for (int it = 0; it < 2_000; it++)
+            {
+                int n = rnd.Next(1, 260);
+                var a = Shaped(n);
+                var r = new ulong[2 * n];
+                r.AsSpan().Fill(0xDEAD_BEEF_DEAD_BEEFUL);
+                int t2 = rnd.Next(2, 20), t3 = rnd.Next(3, 60), t4 = rnd.Next(4, 90), t6 = rnd.Next(6, 120);
+                if (rnd.Next(3) == 0) { t3 = t4 = t6 = int.MaxValue; }
+                int fft = rnd.Next(4) == 0 ? rnd.Next(8, 64) : Karatsuba.FftThreshold;
+                Karatsuba.Multiply(core, a, a, r, t2, t3, t4, t6, fft);
+                Assert.AreEqual(ToBig(a) * ToBig(a), ToBig(r), $"[{coreName}] {n}² thresholds {t2}/{t3}/{t4}/{t6}/{fft} (iteration {it})");
+            }
+            for (int it = 0; it < 60; it++)
+            {
+                int n = rnd.Next(1, 200);
+                var a = Shaped(n);
+                var r = new ulong[2 * n];
+                Karatsuba.FftMultiply(core, a, a, r, rnd.Next(1, 6));
+                Assert.AreEqual(ToBig(a) * ToBig(a), ToBig(r), $"[{coreName}] FFT {n}²");
+                core.Sqr(a, r);
+                Assert.AreEqual(ToBig(a) * ToBig(a), ToBig(r), $"[{coreName}] Sqr {n}²");
+            }
+            // the engine: x * x of the same object
+            for (int it = 0; it < 40; it++)
+            {
+                var w = Shaped(rnd.Next(1, 600));
+                w[0] |= 1;
+                var x = new FullInt64(rnd.Next(2) == 0, w);
+                var big = BigInteger.Parse(x.ToString(10));
+                Assert.AreEqual((big * big).ToString(), (x * x).ToString(10), $"engine x*x {w.Length} words");
+            }
+        }
+
+        /// <summary>
         /// The exact division (Toom-Cook interpolation): multiples of odd and even d (d = d'·2^t,
         /// d' below 2^32), into another buffer and in place; a non-multiple returns nonzero.
         /// </summary>

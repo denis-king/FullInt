@@ -49,7 +49,9 @@ namespace FullInt.Core
             Span<ulong> rest = scratch.Slice(o + 8 * l);
 
             Evaluate4(core, a0, a1, a2, a3, p1, pm1, p2, pm2, ph, e1, e2, out bool nPm1, out bool nPm2);
-            Evaluate4(core, b0, b1, b2, b3, q1, qm1, q2, qm2, qh, e1, e2, out bool nQm1, out bool nQm2);
+            bool nQm1 = nPm1, nQm2 = nPm2;
+            if (a == b) { q1 = p1; qm1 = pm1; q2 = p2; qm2 = pm2; qh = ph; }   // a square: one evaluation
+            else Evaluate4(core, b0, b1, b2, b3, q1, qm1, q2, qm2, qh, e1, e2, out nQm1, out nQm2);
 
             Mul(core, p1, q1, w1, rest, lim);
             Mul(core, pm1, qm1, wm1, rest, lim);
