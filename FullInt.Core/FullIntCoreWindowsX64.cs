@@ -57,12 +57,14 @@ namespace FullInt.Core
 
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern void Fullint64SqrWIN_adx(IntPtr a, IntPtr r, int lenA, int lenR);
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern void Fullint64SqrWIN(IntPtr a, IntPtr r, int lenA, int lenR);
 
-        // SqrAdx.asm (BMI2 + ADX), otherwise the multiplication a·a
+        // SqrAdx.asm (BMI2 + ADX), otherwise Sqr.asm (mul / adc)
         protected override void Sqr(IntPtr a, IntPtr r, int lenA, int lenR)
         {
             if (MultAdx) Fullint64SqrWIN_adx(a, r, lenA, lenR);
-            else Mult(a, a, r, lenA, lenA, lenR);
+            else Fullint64SqrWIN(a, r, lenA, lenR);
         }
 
         // the FFT butterfly halves (FftAdx.asm): BMI2 + ADX; Fft.cs uses managed code without them

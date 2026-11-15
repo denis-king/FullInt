@@ -61,7 +61,7 @@ struct Karatsuba
 #if defined(_M_X64) || defined(__x86_64__)
     static inline int SqrThreshold = 64;
 #else
-    static inline int SqrThreshold = 20;   // no square kernel yet: the multiply, as Threshold
+    static inline int SqrThreshold = 32;   // x86/SqrAdx.asm: 32..48 equal, a square 0.64-0.75 of a product
 #endif
 
     // a and b the same words: a square (one evaluation / transform, the square kernel below)

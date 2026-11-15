@@ -56,3 +56,4 @@ Fullint64FftShlModWIN_bmi2
 Fullint64DivWIN_recipadx
 Fullint64DivExactWIN
 Fullint64SqrWIN_adx
+Fullint64SqrWIN

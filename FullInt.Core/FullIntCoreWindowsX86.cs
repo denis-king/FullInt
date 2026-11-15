@@ -54,6 +54,16 @@ namespace FullInt.Core
         // Mult with mulx / adcx / adox in 32-bit digits (x86/MultAdx.asm): BMI2 + ADX
         private static readonly bool MultAdx = (CpuFeatures & 3) == 3;
 
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern void Fullint64SqrWIN_adx(IntPtr a, IntPtr r, int lenA, int lenR);
+
+        // x86/SqrAdx.asm (BMI2 + ADX, 32-bit digits), otherwise the multiplication a·a
+        protected override void Sqr(IntPtr a, IntPtr r, int lenA, int lenR)
+        {
+            if (MultAdx) Fullint64SqrWIN_adx(a, r, lenA, lenR);
+            else Mult(a, a, r, lenA, lenA, lenR);
+        }
+
         private static int DetectCpuFeatures()
         {
             if (!DivRecip) return 0;   // FULLINT_CPU=baseline
@@ -231,6 +241,7 @@ namespace FullInt.Core
             public static int Xor(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => Fullint64XorWIN(a, b, r, lenA, lenB, lenR, signs);
             public static int CpuFeatures() => Fullint64CpuFeatures();
             public static void MultAdx(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR) => Fullint64MultWIN_adx(a, b, r, lenA, lenB, lenR);
+            public static void SqrAdx(IntPtr a, IntPtr r, int lenA, int lenR) => Fullint64SqrWIN_adx(a, r, lenA, lenR);
             public static int AndSse2(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => Fullint64AndWIN_sse2(a, b, r, lenA, lenB, lenR, signs);
             public static int OrSse2(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => Fullint64OrWIN_sse2(a, b, r, lenA, lenB, lenR, signs);
             public static int XorSse2(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => Fullint64XorWIN_sse2(a, b, r, lenA, lenB, lenR, signs);

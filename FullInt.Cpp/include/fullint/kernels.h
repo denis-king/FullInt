@@ -39,6 +39,10 @@ void Fullint64ShrWIN(const uint64_t* a, uint64_t* r, int lenA, int lenR, int shi
 // when a is a multiple
 uint64_t Fullint64DivExactWIN(const uint64_t* a, uint64_t* q, int len, uint64_t d);
 
+// R = A² (SqrAdx.asm, BMI2 + ADX; x64 and x86): lenR >= 2·lenA, R != A, the words above
+// 2·lenA zero
+void Fullint64SqrWIN_adx(const uint64_t* a, uint64_t* r, int lenA, int lenR);
+
 // CPU features for picking kernel versions (Cpu.asm): x64 bit 0 BMI2, bit 1 ADX, bit 2 AVX2
 // (OS-enabled); x86 bit 4 SSE2
 int Fullint64CpuFeatures(void);
@@ -58,8 +62,8 @@ void Fullint64FftAddSubWIN_adx(uint64_t* u, uint64_t* v, int n1);
 // DivRecip.asm's long division with the multiply-subtract pass on mulx / adcx / adox (BMI2 + ADX)
 void Fullint64DivWIN_recipadx(const uint64_t* a, const uint64_t* b, uint64_t* q, uint64_t* r, int lenA, int lenB, uint64_t* work);
 void Fullint64FftShlModWIN_bmi2(const uint64_t* x, uint64_t* dst, int n1, int s);
-// R = A² (SqrAdx.asm, BMI2 + ADX): lenR >= 2·lenA, R != A, the words above 2·lenA zero
-void Fullint64SqrWIN_adx(const uint64_t* a, uint64_t* r, int lenA, int lenR);
+// R = A² without BMI2 / ADX (Sqr.asm, mul / adc), the same contract as Fullint64SqrWIN_adx
+void Fullint64SqrWIN(const uint64_t* a, uint64_t* r, int lenA, int lenR);
 #else
 void Fullint64MultWIN_adx(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR);   // x86 BMI2 + ADX
 int  Fullint64AndWIN_sse2(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR, int signs);   // x86 SSE2

@@ -108,11 +108,12 @@ namespace FullInt.Core
         /// multiply, so this level pays off later than for products. Tuned with
         /// `FullInt.Benchmarks kara sqr` (Zen 3, x64): 64..128 within noise, 96 best at 96..192
         /// words (0.95 / 0.90 / 0.78 of the kernel alone); a whole square is 0.63-0.75 of a
-        /// product of the same size at 64..16384 words. x86: no square kernel yet (the multiply),
-        /// the Karatsuba threshold. A Multiply call with an explicit Karatsuba threshold other
-        /// than <see cref="Threshold"/> (tests, tuning) uses that one for squares too.
+        /// product of the same size at 64..16384 words. x86 (x86/SqrAdx.asm): 48 best (0.94 / 0.77
+        /// / 0.73 of the kernel alone at 64 / 96 / 128 words), a square 0.57-0.71 of a product.
+        /// A Multiply call with an explicit Karatsuba threshold other than <see cref="Threshold"/>
+        /// (tests, tuning) uses that one for squares too.
         /// </summary>
-        public static int SqrThreshold { get; set; } = Environment.Is64BitProcess ? 96 : 32;
+        public static int SqrThreshold { get; set; } = Environment.Is64BitProcess ? 96 : 48;
 
         // r = a · b, r.Length == a.Length + b.Length. The scratch is dirty on entry: everything
         // taken from it is fully written before it is read.
