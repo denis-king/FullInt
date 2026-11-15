@@ -25,7 +25,7 @@ struct Cpu
 #if defined(_M_X64) || defined(__x86_64__)
         return Fullint64CpuFeatures() | Recip;
 #else
-        return 0;   // x86: the baseline kernels only, for now
+        return Recip;   // x86: the reciprocal division (DivRecip.asm, ToDecStringRecip.asm)
 #endif
     }
 

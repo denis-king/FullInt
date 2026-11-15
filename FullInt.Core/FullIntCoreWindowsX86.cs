@@ -38,6 +38,20 @@ namespace FullInt.Core
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern int Fullint64CompareWIN(IntPtr a, IntPtr b, int lenA, int lenB);
 
+        // Division by a precomputed reciprocal (DivRecip.asm, ToDecStringRecip.asm): plain i386,
+        // any CPU; FULLINT_CPU=baseline keeps the original kernels above. The long division works
+        // on a copy of the dividend and the divisor: lenA + lenB + 2 words of scratch.
+        private static readonly bool DivRecip = Environment.GetEnvironmentVariable("FULLINT_CPU") != "baseline";
+
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern void Fullint64DivWIN_recip(IntPtr a, IntPtr b, IntPtr q, IntPtr r, int lenA, int lenB, IntPtr work);
+
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern void Fullint64Div2longWIN_recip(IntPtr a, ulong b, IntPtr q, out ulong r, int lenA);
+
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern void Fullint64ToDecStringWIN_recip(IntPtr value, IntPtr valueBuf, IntPtr resultBuf, int lenValue, ref int lenResult);
+
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern int Fullint64AndWIN(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs);
 
@@ -106,10 +120,34 @@ namespace FullInt.Core
             => Fullint64CompareWIN(a, b, lenA, lenB);
 
         protected override void Div(IntPtr a, IntPtr b, IntPtr q, IntPtr r, int lenA, int lenB)
-            => Fullint64DivWin(a, b, q, r, lenA, lenB);
+        {
+            // equal lengths (a quotient of 0 or 1): the baseline decides those by a compare
+            if (DivRecip && lenB >= 2 && lenA > lenB) DivRecipLong(a, b, q, r, lenA, lenB);
+            else Fullint64DivWin(a, b, q, r, lenA, lenB);
+        }
 
+        private static unsafe void DivRecipLong(IntPtr a, IntPtr b, IntPtr q, IntPtr r, int lenA, int lenB)
+        {
+            int words = lenA + lenB + 2;
+            if (words <= FullHelper.StackAllocLimitWords)
+            {
+                ulong* work = stackalloc ulong[words];
+                Fullint64DivWIN_recip(a, b, q, r, lenA, lenB, (IntPtr)work);
+                return;
+            }
+            var rented = System.Buffers.ArrayPool<ulong>.Shared.Rent(words);
+            fixed (ulong* work = rented)
+                Fullint64DivWIN_recip(a, b, q, r, lenA, lenB, (IntPtr)work);
+            System.Buffers.ArrayPool<ulong>.Shared.Return(rented);
+        }
+
+        // by one word: the reciprocal kernel takes divisors of 2^32 and more (one 3-by-2 step per
+        // 32-bit digit, was fi_div128 per word: 1.1-1.6x), smaller ones go on to the baseline inside
         protected override void Div(IntPtr a, ulong b, IntPtr q, out ulong r, int lenA)
-            => Fullint64Div2longWin(a, b, q, out r, lenA);
+        {
+            if (DivRecip) Fullint64Div2longWIN_recip(a, b, q, out r, lenA);
+            else Fullint64Div2longWin(a, b, q, out r, lenA);
+        }
 
         protected override int And(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs)
             => Fullint64AndWIN(a, b, r, lenA, lenB, lenR, signs);
@@ -127,7 +165,10 @@ namespace FullInt.Core
             => Fullint64ShrWIN(a, r, lenA, lenR, shift);
 
         protected override void ToDecString(IntPtr value, IntPtr valueBuf, IntPtr resultBuf, int lenValue, ref int lenResult)
-            => Fullint64ToDecStringWin(value, valueBuf, resultBuf, lenValue, ref lenResult);
+        {
+            if (DivRecip) Fullint64ToDecStringWIN_recip(value, valueBuf, resultBuf, lenValue, ref lenResult);
+            else Fullint64ToDecStringWin(value, valueBuf, resultBuf, lenValue, ref lenResult);
+        }
 
         protected override void FromDecString(IntPtr value, IntPtr valueBuf, IntPtr resultBuf, int lenValue, ref int lenResult)
             => Fullint64FromDecStringWin(value, valueBuf, resultBuf, lenValue, ref lenResult);
@@ -140,6 +181,9 @@ namespace FullInt.Core
             public static int Compare(IntPtr a, IntPtr b, int lenA, int lenB) => Fullint64CompareWIN(a, b, lenA, lenB);
             public static void DivByWord(IntPtr a, ulong b, IntPtr q, out ulong r, int lenA) => Fullint64Div2longWin(a, b, q, out r, lenA);
             public static void Div(IntPtr a, IntPtr b, IntPtr q, IntPtr r, int lenA, int lenB) => Fullint64DivWin(a, b, q, r, lenA, lenB);
+            /// <summary>lenA &gt; lenB &gt;= 2; work: lenA + lenB + 2 words.</summary>
+            public static void DivRecip(IntPtr a, IntPtr b, IntPtr q, IntPtr r, int lenA, int lenB, IntPtr work) => Fullint64DivWIN_recip(a, b, q, r, lenA, lenB, work);
+            public static void DivByWordRecip(IntPtr a, ulong b, IntPtr q, out ulong r, int lenA) => Fullint64Div2longWIN_recip(a, b, q, out r, lenA);
             public static int And(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => Fullint64AndWIN(a, b, r, lenA, lenB, lenR, signs);
             public static int Or(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => Fullint64OrWIN(a, b, r, lenA, lenB, lenR, signs);
             public static int Xor(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => Fullint64XorWIN(a, b, r, lenA, lenB, lenR, signs);

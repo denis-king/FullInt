@@ -20,6 +20,7 @@
 #include <fullint/kernels.h>
 
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <span>
 
@@ -30,7 +31,11 @@ using CSpan = std::span<const uint64_t>;
 
 struct FullIntCore
 {
+#if defined(_M_X64) || defined(__x86_64__)
     static constexpr size_t RecipWordsMin = 64;
+#else
+    static constexpr size_t RecipWordsMin = 1;   // x86: the baseline's d >= 2^32 path is fi_div128 per word
+#endif
 
     // scratch of the reciprocal division (its dividend copy): per thread, grown on demand
     static uint64_t* DivWork(size_t words)
@@ -69,24 +74,22 @@ struct FullIntCore
 
     static void Div(CSpan dividend, CSpan divisor, Span quotient, Span remainder) noexcept
     {
-#if defined(_M_X64) || defined(__x86_64__)
         // DivRecip.asm; equal lengths (a quotient of 0 or 1) stay with the baseline: it decides
         // those by a compare, the reciprocal's own div would not pay off
         if (Cpu::Has(Cpu::Recip) && divisor.size() >= 2 && dividend.size() > divisor.size())
         {
-            uint64_t stackWork[64];   // small: no thread_local lookup (a few ns at 3 words)
-            uint64_t* work = dividend.size() < 64 ? stackWork : DivWork(dividend.size() + 1);
+            size_t words = dividend.size() + divisor.size() + 2;
+            uint64_t stackWork[96];   // small: no thread_local lookup (a few ns at 3 words)
+            uint64_t* work = words <= std::size(stackWork) ? stackWork : DivWork(words);
             Fullint64DivWIN_recip(dividend.data(), divisor.data(), quotient.data(), remainder.data(),
                                   (int)dividend.size(), (int)divisor.size(), work);
             return;
         }
-#endif
         Fullint64DivWin(dividend.data(), divisor.data(), quotient.data(), remainder.data(), (int)dividend.size(), (int)divisor.size());
     }
 
     static void Div(CSpan dividend, uint64_t divisor, Span quotient, uint64_t* remainder) noexcept
     {
-#if defined(_M_X64) || defined(__x86_64__)
         // DivRecip.asm from RecipWordsMin words: below that the reciprocal's own div does not pay
         // off (measured on Zen 3: 1-3 words slower, 4-48 even, 64 words 1.1x, 1024 1.4x)
         if (Cpu::Has(Cpu::Recip) && dividend.size() >= RecipWordsMin)
@@ -94,7 +97,6 @@ struct FullIntCore
             Fullint64Div2longWIN_recip(dividend.data(), divisor, quotient.data(), remainder, (int)dividend.size());
             return;
         }
-#endif
         Fullint64Div2longWin(dividend.data(), divisor, quotient.data(), remainder, (int)dividend.size());
     }
 
@@ -110,13 +112,11 @@ struct FullIntCore
     // valueBuf: value.size() words of scratch; lenResult in = resultBuf size, out = start index
     static void ToDecString(CSpan value, uint64_t* valueBuf, uint8_t* resultBuf, int* lenResult) noexcept
     {
-#if defined(_M_X64) || defined(__x86_64__)
         if (Cpu::Has(Cpu::Recip))   // ToDecStringRecip.asm: 10^19 by its reciprocal
         {
             Fullint64ToDecStringWIN_recip(value.data(), valueBuf, resultBuf, (int)value.size(), lenResult);
             return;
         }
-#endif
         Fullint64ToDecStringWin(value.data(), valueBuf, resultBuf, (int)value.size(), lenResult);
     }
 

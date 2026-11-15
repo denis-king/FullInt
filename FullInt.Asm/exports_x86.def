@@ -12,3 +12,6 @@ Fullint64Div2longWin
 Fullint64DivWin
 Fullint64ToDecStringWin
 Fullint64FromDecStringWin
+Fullint64Div2longWIN_recip
+Fullint64DivWIN_recip
+Fullint64ToDecStringWIN_recip

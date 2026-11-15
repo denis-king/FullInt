@@ -88,6 +88,57 @@ namespace FullInt.Tests
         }
 
         /// <summary>
+        /// The reciprocal division kernels (DivRecip.asm): the digit version (divisors of 2..9
+        /// words) and the word version (10 and more), quotients of 1.. words, special words
+        /// (0, max, 2^63) and windows equal to the divisor; by one word, also in place.
+        /// </summary>
+        [TestMethod]
+        public void X86Kernels_DivRecip_MatchesBigInteger()
+        {
+            if (!IsX86Windows)
+            {
+                Assert.Inconclusive("x86 kernels run only in a 32-bit Windows process");
+                return;
+            }
+
+            var rnd = new Random(4242);
+            for (int it = 0; it < 6_000; it++)
+            {
+                int n = rnd.Next(2, 16), m = n + rnd.Next(1, 14);
+                var d = Next(rnd, n);
+                if (d[0] == 0) d[0] = rnd.Next(2) == 0 ? 1UL : ulong.MaxValue;
+                var a = Next(rnd, m);
+                if (a[0] == 0) a[0] = 1;
+                if (rnd.Next(5) == 0) Array.Copy(d, 0, a, rnd.Next(0, m - n + 1), n);
+
+                var q = new ulong[m - n + 1];
+                var r = new ulong[n + 2];
+                var work = new ulong[m + n + 2];
+                using (Pinned pa = new Pinned(a), pd = new Pinned(d), pq = new Pinned(q), pr = new Pinned(r), pw = new Pinned(work))
+                {
+                    FullIntCoreWindowsX86.Kernels.DivRecip(pa.P, pd.P, pq.P, pr.P, m, n, pw.P);
+                }
+                BigInteger A = Big(a), D = Big(d);
+                string ctx = $"m={m} n={n} a={A:X} d={D:X}";
+                Assert.AreEqual(A / D, Big(q), "q " + ctx);
+                Assert.AreEqual(A % D, Big(r), "r " + ctx);
+
+                ulong w = rnd.Next(3) == 0 ? (ulong)rnd.Next(1, int.MaxValue) : Next(rnd, 1)[0] | 1;
+                var qw = new ulong[m];
+                var inPlace = (ulong[])a.Clone();
+                using (Pinned pa = new Pinned(a), pq = new Pinned(qw), pi = new Pinned(inPlace))
+                {
+                    FullIntCoreWindowsX86.Kernels.DivByWordRecip(pa.P, w, pq.P, out ulong rem, m);
+                    Assert.AreEqual(A / w, Big(qw), $"div by word d={w:X} " + ctx);
+                    Assert.AreEqual(A % w, (BigInteger)rem, $"rem by word d={w:X} " + ctx);
+                    FullIntCoreWindowsX86.Kernels.DivByWordRecip(pi.P, w, pi.P, out ulong rem2, m);
+                    Assert.AreEqual(A / w, Big(inPlace), $"div by word in place d={w:X} " + ctx);
+                    Assert.AreEqual(A % w, (BigInteger)rem2, $"rem by word in place d={w:X} " + ctx);
+                }
+            }
+        }
+
+        /// <summary>
         /// The x86 decimal string kernels: ToDecString of random values, FromDecString of their
         /// digits with and without leading zeros (chunk boundaries at multiples of 19 digits),
         /// against BigInteger.
