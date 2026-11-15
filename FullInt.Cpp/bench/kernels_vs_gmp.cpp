@@ -161,7 +161,7 @@ int main(int argc, char** argv)
         }
         else if (a == "--max" && i + 1 < argc) maxN = std::atoi(argv[++i]);
         else if (a == "--csv" && i + 1 < argc) csv = std::fopen(argv[++i], "w");
-        else { std::printf("usage: %s [--ops add,sub,mul,div,div1,shl,shr,cmp,todec,fromdec] [--max N] [--csv file]\n", argv[0]); return 2; }
+        else { std::printf("usage: %s [--ops add,sub,mul,muladx,div,div1,shl,shr,cmp,todec,fromdec] [--max N] [--csv file]\n", argv[0]); return 2; }
     }
     if (csv) std::fprintf(csv, "op,n,fullint_ns,gmp_ns\n");
 
@@ -213,6 +213,23 @@ int main(int argc, char** argv)
             if (reversed(orr) != grr) fail("mul", n, "product");
             run("mul", n,
                 [&] { Fullint64MultWIN(oa.data(), ob.data(), orr.data(), n, n, 2 * n); },
+                [&] { mpn_mul_n(grr.data(), ga.data(), gb.data(), n); });
+        }
+
+        if (want(ops, "muladx") && (Fullint64CpuFeatures() & 3) == 3)   // the BMI2 + ADX kernel
+        {
+            Vec orr(2 * n), grr(2 * n);
+            Fullint64MultWIN_adx(oa.data(), ob.data(), orr.data(), n, n, 2 * n);
+            mpn_mul_n(grr.data(), ga.data(), gb.data(), n);
+            if (reversed(orr) != grr) fail("muladx", n, "product");
+            Vec ob1(ob.begin(), ob.begin() + (n + 1) / 2), gb1(gb.begin(), gb.begin() + (n + 1) / 2);   // unequal lengths, lenR + 1
+            Vec o3(n + ob1.size() + 1, 0xDEADull), g3(n + gb1.size());
+            Fullint64MultWIN_adx(oa.data(), ob1.data(), o3.data(), n, (int)ob1.size(), (int)o3.size());
+            mpn_mul(g3.data(), ga.data(), n, reversed(ob1).data(), (mp_size_t)ob1.size());
+            g3.push_back(0);
+            if (reversed(o3) != g3) fail("muladx", n, "unequal / longer result");
+            run("muladx", n,
+                [&] { Fullint64MultWIN_adx(oa.data(), ob.data(), orr.data(), n, n, 2 * n); },
                 [&] { mpn_mul_n(grr.data(), ga.data(), gb.data(), n); });
         }
 

@@ -1,5 +1,8 @@
 // Port of FullInt.Core/IFullIntCore.cs + FullIntCoreBase.cs: the span-level kernel calls.
 //
+// Kernel versions: the baseline kernels run on any x86-64; where the CPU has more (Cpu.h),
+// the newer versions are called instead (so far: Mult with BMI2 + ADX).
+//
 // In .NET the core is an interface (asm on win-x64/x86, managed elsewhere) and every call
 // pins the spans and crosses into the DLL. Here the asm kernels are linked into the same
 // binary: a core call is a direct call to the kernel's ...WIN entry.
@@ -12,6 +15,7 @@
 //   shifts:    ShiftLeft r >= a + shift / 64 + 1; ShiftRight r >= max(a - shift / 64, 1), r may alias a
 #pragma once
 
+#include <fullint/Cpu.h>
 #include <fullint/kernels.h>
 
 #include <cstdint>
@@ -36,6 +40,13 @@ struct FullIntCore
 
     static void Mult(CSpan a, CSpan b, Span r) noexcept
     {
+#if defined(_M_X64) || defined(__x86_64__)
+        if (Cpu::Has(Cpu::Bmi2 | Cpu::Adx))   // mulx / adcx / adox (MultAdx.asm)
+        {
+            Fullint64MultWIN_adx(a.data(), b.data(), r.data(), (int)a.size(), (int)b.size(), (int)r.size());
+            return;
+        }
+#endif
         Fullint64MultWIN(a.data(), b.data(), r.data(), (int)a.size(), (int)b.size(), (int)r.size());
     }
 

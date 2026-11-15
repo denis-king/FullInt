@@ -34,4 +34,12 @@ int  Fullint64XorWIN(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA
 void Fullint64ShlWIN(const uint64_t* a, uint64_t* r, int lenA, int lenR, int shift);
 void Fullint64ShrWIN(const uint64_t* a, uint64_t* r, int lenA, int lenR, int shift);
 
+// kernel versions for newer CPUs (x64 only; same contracts as the baseline ones above)
+#if defined(_M_X64) || defined(__x86_64__)
+// CPU features for picking kernel versions (Cpu.asm): bit 0 BMI2, bit 1 ADX, bit 2 AVX2 (OS-enabled)
+int Fullint64CpuFeatures(void);
+
+void Fullint64MultWIN_adx(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR);   // BMI2 + ADX
+#endif
+
 }

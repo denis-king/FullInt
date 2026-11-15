@@ -38,3 +38,7 @@ Fullint64Shl
 Fullint64ShlWIN
 Fullint64Shr
 Fullint64ShrWIN
+
+Fullint64CpuFeatures
+Fullint64Mult_adx
+Fullint64MultWIN_adx

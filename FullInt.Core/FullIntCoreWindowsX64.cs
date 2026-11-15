@@ -32,7 +32,31 @@ namespace FullInt.Core
         
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern void Fullint64FromDecStringWin(IntPtr value, IntPtr valueBuf, IntPtr resultBuf, int lenValue, ref int lenResult);
-        
+
+        // ---- kernel versions for newer CPUs ----
+        // The baseline kernels above run on any x86-64 (as on a Core 2). Where the CPU has more,
+        // newer versions are called instead, picked once at start-up (Cpu.asm: cpuid / xgetbv).
+        // FULLINT_CPU=baseline in the environment forces the baseline kernels.
+
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern int Fullint64CpuFeatures();
+
+        /// <summary>Bit 0 BMI2, bit 1 ADX, bit 2 AVX2 (OS-enabled); 0 with FULLINT_CPU=baseline.</summary>
+        public static readonly int CpuFeatures = DetectCpuFeatures();
+
+        private static int DetectCpuFeatures()
+        {
+            if (Environment.GetEnvironmentVariable("FULLINT_CPU") == "baseline") return 0;
+            try { return Fullint64CpuFeatures(); }
+            catch (EntryPointNotFoundException) { return 0; }   // an older native DLL
+        }
+
+        // mulx / adcx / adox (MultAdx.asm): BMI2 + ADX
+        private static readonly bool MultAdx = (CpuFeatures & 3) == 3;
+
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern void Fullint64MultWIN_adx(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR);
+
 #if NET5_0_OR_GREATER
         // The same entry points without the GC transition: ~10 ns less per call, which is most
         // of the cost of a small call. Only for calls that finish within a few microseconds:
@@ -48,6 +72,9 @@ namespace FullInt.Core
 
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "Fullint64MultWIN"), SuppressGCTransition]
         private static extern ulong Fullint64MultWIN_Fast(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR);
+
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "Fullint64MultWIN_adx"), SuppressGCTransition]
+        private static extern void Fullint64MultWIN_adx_Fast(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR);
 
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "Fullint64CompareWIN"), SuppressGCTransition]
         private static extern int Fullint64CompareWIN_Fast(IntPtr a, IntPtr b, int lenA, int lenB);
@@ -91,11 +118,13 @@ namespace FullInt.Core
 #if NET5_0_OR_GREATER
             if ((long)lenA * lenB <= FastProducts && lenR <= FastWords)
             {
-                Fullint64MultWIN_Fast(a, b, r, lenA, lenB, lenR);
+                if (MultAdx) Fullint64MultWIN_adx_Fast(a, b, r, lenA, lenB, lenR);
+                else Fullint64MultWIN_Fast(a, b, r, lenA, lenB, lenR);
                 return;
             }
 #endif
-            Fullint64MultWIN(a, b, r, lenA, lenB, lenR);
+            if (MultAdx) Fullint64MultWIN_adx(a, b, r, lenA, lenB, lenR);
+            else Fullint64MultWIN(a, b, r, lenA, lenB, lenR);
         }
 
         protected override void Div(IntPtr a, IntPtr b, IntPtr q, IntPtr r, int lenA, int lenB)
