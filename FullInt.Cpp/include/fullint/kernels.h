@@ -48,6 +48,9 @@ int  Fullint64XorWIN_avx2(const uint64_t* a, const uint64_t* b, uint64_t* r, int
 void Fullint64ShlWIN_avx2(const uint64_t* a, uint64_t* r, int lenA, int lenR, int shift);   // AVX2
 void Fullint64ShrWIN_avx2(const uint64_t* a, uint64_t* r, int lenA, int lenR, int shift);
 int  Fullint64CompareWIN_avx2(const uint64_t* a, const uint64_t* b, int lenA, int lenB);    // AVX2
+// the FFT butterfly halves mod 2^N + 1 (FftAdx.asm, BMI2 + ADX; n1 = N/64 + 1 words)
+void Fullint64FftAddSubWIN_adx(uint64_t* u, uint64_t* v, int n1);
+void Fullint64FftShlModWIN_bmi2(const uint64_t* x, uint64_t* dst, int n1, int s);
 #else
 void Fullint64MultWIN_adx(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR);   // x86 BMI2 + ADX
 int  Fullint64AndWIN_sse2(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR, int signs);   // x86 SSE2

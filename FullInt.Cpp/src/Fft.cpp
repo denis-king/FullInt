@@ -1,4 +1,4 @@
-// Port of FullInt.Core/Fft.cs: Schönhage–Strassen multiplication.
+// Port of FullInt.Core/Fft.cs + FftOps.cs: Schönhage–Strassen multiplication.
 //
 //   a and b are cut into pieces of M words (piece i = the words of weight B^(M·i)),
 //   K = 2^k >= the number of product pieces, so the cyclic convolution of length K does not
@@ -10,6 +10,10 @@
 //   products mod p (the multiplication dispatcher again), inverse FFT (decimation in time:
 //   bit-reversed in, natural out), times K^-1 = 2^(2N - k).
 // Values mod p are kept in n1 = N/64 + 1 words, in [0, 2^N].
+// A butterfly is two passes: u, v = u + v, u - v in place, and the twiddle shift into a spare
+// vector - the vectors are reached through a slot table, so the spare and the shifted vector
+// swap slots instead of a copy back. Both passes: the x64 kernels (FftAdx.asm, BMI2 + ADX),
+// otherwise the portable code below.
 #include <fullint/Karatsuba.h>
 
 #include <algorithm>
@@ -17,10 +21,20 @@
 #include <cstring>
 #include <memory>
 #include <stdexcept>
+#include <vector>
 
 namespace fullint {
 
 namespace {
+
+bool NativeKernels() noexcept
+{
+#if defined(_M_X64) || defined(__x86_64__)
+    return Cpu::Has(Cpu::Bmi2 | Cpu::Adx);
+#else
+    return false;
+#endif
+}
 
 CSpan Trim(CSpan v)
 {
@@ -29,116 +43,166 @@ CSpan Trim(CSpan v)
     return v.subspan(z);
 }
 
-bool IsZero(CSpan v)
+// the low part + 1, the top word = 0 or the carry out
+void LowPlusOne(Span v)
 {
-    for (uint64_t x : v)
-        if (x != 0) return false;
-    return true;
+    v[0] = 0;
+    for (size_t k = v.size() - 1; k >= 1; k--)
+        if (++v[k] != 0) return;
+    v[0] = 1;
 }
 
-struct FftContext
+// u, v = u + v, u - v (mod p), in place
+void AddSub(bool native, Span u, Span v)
 {
-    int K, LogK, NBits;
-    size_t N1;
-    Span P, T1, T2;
-};
-
-// dst = (x + y) mod p   (x, y in [0, p))
-void AddMod(const FftContext& c, CSpan x, CSpan y, Span dst)
-{
-    FullIntCore::Add(x, y, dst);
-    if (dst[0] != 0 && FullIntCore::Compare(dst, c.P) >= 0) FullIntCore::Sub(dst, c.P, dst);
+#if defined(_M_X64) || defined(__x86_64__)
+    if (native) { Fullint64FftAddSubWIN_adx(u.data(), v.data(), (int)u.size()); return; }
+#endif
+    size_t w = u.size() - 1;
+    uint64_t carry = 0, borrow = 0;
+    for (size_t k = w + 1; k-- > 0;)
+    {
+        uint64_t a = u[k], b = v[k];
+        uint64_t s = a + b, c = s < a;
+        uint64_t s2 = s + carry;
+        c |= s2 < s;
+        uint64_t d = a - b, br = a < b;
+        uint64_t d2 = d - borrow;
+        br |= d < borrow;
+        u[k] = s2;
+        v[k] = d2;
+        carry = c;
+        borrow = br;
+    }
+    uint64_t t = u[0];
+    if (t != 0)
+    {
+        u[0] = 0;
+        uint64_t bw = t;
+        for (size_t k = w; k >= 1 && bw != 0; k--)
+        {
+            uint64_t x = u[k];
+            u[k] = x - bw;
+            bw = x < bw;
+        }
+        if (bw != 0) LowPlusOne(u);
+    }
+    if (borrow != 0) LowPlusOne(v);
 }
 
-// dst = (x - y) mod p
-void SubMod(const FftContext& c, CSpan x, CSpan y, Span dst)
+// word j (from the low end) of x << bs; x word j is x[w - j]
+inline uint64_t Sh(CSpan x, size_t w, size_t j, int bs)
 {
-    if (FullIntCore::Sub(x, y, dst) < 0) FullIntCore::Sub(c.P, dst, dst);
+    uint64_t lo = x[w - j] << bs;
+    if (bs != 0 && j > 0) lo |= x[w - j + 1] >> (64 - bs);
+    return lo;
 }
 
 // dst = x·2^s mod p, 0 <= s < 2N; dst must not be x
-void MulPow2Mod(const FftContext& c, CSpan x, int s, Span dst)
+void ShlMod(bool native, CSpan x, int s, Span dst)
 {
-    size_t n1 = c.N1, w = n1 - 1;
+#if defined(_M_X64) || defined(__x86_64__)
+    if (native) { Fullint64FftShlModWIN_bmi2(x.data(), dst.data(), (int)x.size(), s); return; }
+#endif
+    size_t w = x.size() - 1;
+    int nBits = (int)(64 * w);
     bool negate = false;
-    if (s >= c.NBits) { s -= c.NBits; negate = true; }
+    if (s >= nBits) { s -= nBits; negate = true; }
     size_t ws = (size_t)s >> 6;
     int bs = s & 63;
-    Span t = c.T2;                                       // n1 + 1 words: x << bs
-    if (bs == 0) { t[0] = 0; std::copy(x.begin(), x.end(), t.begin() + 1); }
-    else FullIntCore::ShiftLeft(x, bs, t);
-    // x·2^s = t·B^ws = t_lo·B^ws + t_hi·2^N == t_lo·B^ws - t_hi
-    //   t_lo: the low w - ws words of t, t_hi: the ws + 2 words above them
+    uint64_t borrow = 0;
+    for (size_t i = 0; i < w; i++)
+    {
+        uint64_t l = i < ws ? 0 : Sh(x, w, i - ws, bs);
+        uint64_t h = i < ws ? Sh(x, w, i + w - ws, bs) : i == ws ? Sh(x, w, w, bs) : 0;
+        if (negate) std::swap(l, h);
+        uint64_t d = l - h, br = l < h;
+        uint64_t d2 = d - borrow;
+        br |= d < borrow;
+        dst[w - i] = d2;
+        borrow = br;
+    }
     dst[0] = 0;
-    std::copy(t.begin() + ws + 2, t.begin() + ws + 2 + (w - ws), dst.begin() + 1);
-    std::memset(dst.data() + 1 + (w - ws), 0, ws * sizeof(uint64_t));
-    CSpan hi = Trim(CSpan(t).subspan(0, ws + 2));
-    if (!(hi.size() == 1 && hi[0] == 0) && FullIntCore::Sub(dst, hi, dst) < 0)
-        FullIntCore::Sub(c.P, dst, dst);
-    if (negate && !IsZero(dst))
-        FullIntCore::Sub(c.P, dst, dst);
+    if (borrow != 0) LowPlusOne(dst);
 }
 
-// x = prod mod p (prod: 2·n1 words)
-void ReduceProduct(const FftContext& c, CSpan prod, Span x)
+// x = p - x for 0 < x <= 2^N:  p - x = (2^N - 1 - x) + 2, the low part complemented + 2
+void NegateMod(Span x)
 {
-    size_t n1 = c.N1, w = n1 - 1;
+    size_t w = x.size() - 1;
+    if (x[0] != 0) { x[0] = 0; x[w] = 1; return; }      // x = 2^N: p - x = 1
+    for (size_t i = 1; i <= w; i++) x[i] = ~x[i];
+    uint64_t add = 2;
+    for (size_t i = w; i >= 1 && add != 0; i--)
+    {
+        uint64_t y = x[i] + add;
+        add = y < add;
+        x[i] = y;
+    }
+    x[0] = add;
+}
+
+// x = prod mod p (prod: 2·n1 words): prod = hi·2^N + lo == lo - hi
+void ReduceProduct(CSpan prod, Span x)
+{
+    size_t n1 = x.size(), w = n1 - 1;
     x[0] = 0;
     std::copy(prod.begin() + (2 * n1 - w), prod.end(), x.begin() + 1);
     CSpan hi = Trim(prod.subspan(0, 2 * n1 - w));
-    if (!(hi.size() == 1 && hi[0] == 0) && FullIntCore::Sub(x, hi, x) < 0)
-        FullIntCore::Sub(c.P, x, x);
+    if (hi.size() == 1 && hi[0] == 0) return;
+    if (FullIntCore::Sub(x, hi, x) < 0) NegateMod(x);
 }
 
-// decimation in frequency, natural order in, bit-reversed out
-void ForwardDif(const FftContext& c, Span v)
+// decimation in frequency, natural order in, bit-reversed out; slots[K] is the spare
+void ForwardDif(bool native, uint64_t* all, size_t* slots, int K, size_t n1, int nBits)
 {
-    size_t n1 = c.N1;
-    for (int half = c.K / 2; half >= 1; half /= 2)
+    for (int half = K / 2; half >= 1; half /= 2)
     {
-        int step = c.NBits / half;                       // w_(2·half) = 2^(N / half)
-        for (int start = 0; start < c.K; start += 2 * half)
+        int step = nBits / half;                         // w_(2·half) = 2^(N / half)
+        for (int start = 0; start < K; start += 2 * half)
             for (int j = 0; j < half; j++)
             {
-                Span u = v.subspan((size_t)(start + j) * n1, n1), x = v.subspan((size_t)(start + j + half) * n1, n1);
-                SubMod(c, u, x, c.T1);
-                AddMod(c, u, x, u);
-                if (j == 0) std::copy(c.T1.begin(), c.T1.end(), x.begin());
-                else MulPow2Mod(c, c.T1, j * step, x);
+                int iu = start + j, ix = start + j + half;
+                AddSub(native, Span(all + slots[iu], n1), Span(all + slots[ix], n1));
+                if (j == 0) continue;
+                ShlMod(native, CSpan(all + slots[ix], n1), j * step, Span(all + slots[K], n1));
+                std::swap(slots[ix], slots[K]);
             }
     }
 }
 
 // decimation in time with w^-1, bit-reversed order in, natural out (without the 1/K)
-void InverseDit(const FftContext& c, Span v)
+void InverseDit(bool native, uint64_t* all, size_t* slots, int K, size_t n1, int nBits)
 {
-    size_t n1 = c.N1;
-    for (int half = 1; half < c.K; half *= 2)
+    for (int half = 1; half < K; half *= 2)
     {
-        int step = c.NBits / half;
-        for (int start = 0; start < c.K; start += 2 * half)
+        int step = nBits / half;
+        for (int start = 0; start < K; start += 2 * half)
             for (int j = 0; j < half; j++)
             {
-                Span u = v.subspan((size_t)(start + j) * n1, n1), x = v.subspan((size_t)(start + j + half) * n1, n1);
-                if (j == 0) std::copy(x.begin(), x.end(), c.T1.begin());
-                else MulPow2Mod(c, x, 2 * c.NBits - j * step, c.T1);
-                SubMod(c, u, c.T1, x);
-                AddMod(c, u, c.T1, u);
+                int iu = start + j, ix = start + j + half;
+                if (j != 0)
+                {
+                    ShlMod(native, CSpan(all + slots[ix], n1), 2 * nBits - j * step, Span(all + slots[K], n1));
+                    std::swap(slots[ix], slots[K]);
+                }
+                AddSub(native, Span(all + slots[iu], n1), Span(all + slots[ix], n1));
             }
     }
 }
 
-// the pieces of x (M words each, from the low end) into K vectors of n1 words, zero-padded
-void Split(CSpan x, size_t m, int K, size_t n1, Span v)
+// the pieces of x (M words each, from the low end) into the K vectors, zero-padded
+void Split(CSpan x, size_t m, int K, size_t n1, uint64_t* all, const size_t* slots)
 {
-    std::memset(v.data(), 0, v.size_bytes());
     size_t lx = x.size();
     for (int i = 0; i < K; i++)
     {
-        if ((size_t)i * m >= lx) break;
+        Span v(all + slots[i], n1);
+        std::memset(v.data(), 0, v.size_bytes());
+        if ((size_t)i * m >= lx) continue;
         size_t end = lx - (size_t)i * m;
         size_t start = end > m ? end - m : 0;
-        std::copy(x.begin() + start, x.begin() + end, v.begin() + ((size_t)i + 1) * n1 - (end - start));
+        std::copy(x.begin() + start, x.begin() + end, v.end() - (end - start));
     }
 }
 
@@ -147,6 +211,7 @@ void Split(CSpan x, size_t m, int K, size_t n1, Span v)
 // k, M, N for an la x lb product: the smallest estimated cost (or forceK = k for tests)
 void Karatsuba::ChooseFft(size_t la, size_t lb, int forceK, int& k, size_t& m, int& nBits)
 {
+    bool native = NativeKernels();
     size_t len = la + lb;
     double best = 1e300;
     k = 0; m = 0; nBits = 0;
@@ -160,9 +225,10 @@ void Karatsuba::ChooseFft(size_t la, size_t lb, int forceK, int& k, size_t& m, i
         long long nb = (bits + unit - 1) / unit * unit;
         if (nb > (1LL << 30)) continue;
         double n1 = (double)(nb / 64 + 1);
-        // ns, measured (Zen 3): an n-word product ~2.3·n^1.55 from 32 words, a butterfly ~40 + 4·n
+        // ns, measured (Zen 3): an n-word product ~2.3·n^1.55 from 32 words; a butterfly
         double mulCost = n1 < 32 ? 0.45 * n1 * n1 : 2.3 * std::pow(n1, 1.55);
-        double cost = (double)K * mulCost + 3.0 * (double)K * kk * (40 + 4.0 * n1);
+        double bfly = native ? FftNativeButterfly[0] + FftNativeButterfly[1] * n1 : 20 + 6.0 * n1;   // portable: as managed C#
+        double cost = (double)K * mulCost + 3.0 * (double)K * kk * bfly;
         if (cost < best || forceK > 0)
         {
             best = cost; k = kk; m = mm; nBits = (int)nb;
@@ -180,6 +246,7 @@ void Karatsuba::FftMultiply(CSpan a, CSpan b, Span r, int k)
 
 void Karatsuba::FftMul(CSpan a, CSpan b, Span r, int threshold, int toom3Threshold, int toom4Threshold, int fftThreshold, int forceK)
 {
+    bool native = NativeKernels();
     size_t la = a.size(), lb = b.size(), len = la + lb;
     int k, nBits;
     size_t m;
@@ -187,44 +254,47 @@ void Karatsuba::FftMul(CSpan a, CSpan b, Span r, int threshold, int toom3Thresho
     int K = 1 << k;
     size_t n1 = (size_t)nBits / 64 + 1;
 
-    size_t words = 2 * (size_t)K * n1 + 5 * n1 + 1 + ScratchLength(n1, n1);
+    // vectors: K for a, K for b, one spare each; then the product and the scratch
+    size_t vectors = 2 * (size_t)K + 2;
+    size_t words = vectors * n1 + 2 * n1 + ScratchLength(n1, n1);
     std::unique_ptr<uint64_t[]> buf = std::make_unique_for_overwrite<uint64_t[]>(words);
-    Span all(buf.get(), words);
-    Span va = all.subspan(0, K * n1), vb = all.subspan(K * n1, K * n1);
-    size_t o = 2 * (size_t)K * n1;
-    Span p = all.subspan(o, n1), t1 = all.subspan(o + n1, n1), t2 = all.subspan(o + 2 * n1, n1 + 1);
-    Span prod = all.subspan(o + 3 * n1 + 1, 2 * n1);
-    Span rest = all.subspan(o + 5 * n1 + 1);
-    std::memset(p.data(), 0, p.size_bytes());
-    p[0] = 1;
-    p[n1 - 1] = 1;                                        // p = 2^N + 1
+    uint64_t* all = buf.get();
+    std::vector<size_t> slotTable(vectors);
+    for (size_t i = 0; i < vectors; i++) slotTable[i] = i * n1;
+    size_t* sa = slotTable.data();
+    size_t* sb = slotTable.data() + K + 1;               // [K] = the spare
+    Span prod(all + vectors * n1, 2 * n1);
+    Span rest(all + vectors * n1 + 2 * n1, ScratchLength(n1, n1));
 
-    Split(a, m, K, n1, va);
-    Split(b, m, K, n1, vb);
+    Split(a, m, K, n1, all, sa);
+    Split(b, m, K, n1, all, sb);
 
-    FftContext ctx{ K, k, nBits, n1, p, t1, t2 };
-    ForwardDif(ctx, va);
-    ForwardDif(ctx, vb);
+    ForwardDif(native, all, sa, K, n1, nBits);
+    ForwardDif(native, all, sb, K, n1, nBits);
 
     for (int i = 0; i < K; i++)
     {
-        Span x = va.subspan((size_t)i * n1, n1), y = vb.subspan((size_t)i * n1, n1);
+        Span x(all + sa[i], n1), y(all + sb[i], n1);
         Mul(x, y, prod, rest, threshold, toom3Threshold, toom4Threshold, fftThreshold);
-        ReduceProduct(ctx, prod, x);
+        ReduceProduct(prod, x);
     }
 
-    InverseDit(ctx, va);
+    InverseDit(native, all, sa, K, n1, nBits);
 
     // r = sum (c_i / K)·B^(M·i)
     std::memset(r.data(), 0, r.size_bytes());
+    Span t(all + sa[K], n1);                             // the spare
     for (int i = 0; i < K && (size_t)i * m < len; i++)
     {
-        Span c = va.subspan((size_t)i * n1, n1);
-        MulPow2Mod(ctx, c, 2 * nBits - k, t1);           // / K
-        CSpan v = Trim(t1);
+        ShlMod(native, CSpan(all + sa[i], n1), 2 * nBits - k, t);   // / K
+        CSpan v = Trim(t);
         if (v.size() == 1 && v[0] == 0) continue;
-        Span up = r.subspan(0, len - (size_t)i * m);
-        FullIntCore::Add(up, v, up);
+        // only the words c_i lands on (and one for its carry); a carry beyond: on by hand
+        size_t end = len - (size_t)i * m, width = std::min(end, v.size() + 1);
+        Span target = r.subspan(end - width, width);
+        if (FullIntCore::Add(target, v, target) != 0)
+            for (size_t j = end - width; j-- > 0;)
+                if (++r[j] != 0) break;
     }
 }
 

@@ -55,6 +55,11 @@ namespace FullInt.Core
         // mulx / adcx / adox (MultAdx.asm): BMI2 + ADX
         private static readonly bool MultAdx = (CpuFeatures & 3) == 3;
 
+        // the FFT butterfly halves (FftAdx.asm): BMI2 + ADX; Fft.cs uses managed code without them
+        private static readonly bool FftKernels = (CpuFeatures & 3) == 3;
+        internal bool HasFftKernels => FftKernels;
+
+
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern void Fullint64MultWIN_adx(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR);
 

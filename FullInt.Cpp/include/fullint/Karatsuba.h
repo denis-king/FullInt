@@ -10,9 +10,17 @@ namespace fullint {
 struct Karatsuba
 {
     // From this many words in the shorter operand: the Schönhage–Strassen FFT (Fft.cpp).
-    // fullint_kara_tune fft (Zen 3): 0.91 of the Toom levels at 32768-65536 words, ~0.8 at
-    // 131072; up to 16384 no gain (the butterflies are the cost so far).
-    static inline int FftThreshold = 32768;
+    // fullint_kara_tune fft (Zen 3), the FFT / the Toom levels: x64 (the FftAdx.asm butterflies)
+    // 0.78 at 8192 words, 0.68 at 16384, 0.53 at 32768, 0.46 at 65536, 0.40 at 131072, no gain
+    // at 4096; x86 (the portable butterflies) ~0.97 at 65536, 0.77 at 131072.
+#if defined(_M_X64) || defined(__x86_64__)
+    static inline int FftThreshold = 8192;
+#else
+    static inline int FftThreshold = 65536;
+#endif
+
+    // the FFT parameter choice: a butterfly with the native kernels ~[0] + [1]·n ns (n words)
+    static inline double FftNativeButterfly[2] = { 30, 1.0 };
 
 #if defined(_M_X64) || defined(__x86_64__)
     // Shorter operand below this many words: the basecase (column) multiply.
