@@ -315,6 +315,87 @@ namespace FullInt.Tests
             }
         }
 
+        /// <summary>
+        /// Division through the Newton reciprocal, against BigInteger: small reciprocal bases make
+        /// the Newton recursion go deep on small numbers; splits give blocks shorter than the
+        /// divisor and a short first block. Also the reciprocal alone against the exact floor.
+        /// </summary>
+        [DataTestMethod]
+        [DynamicData(nameof(Cores), DynamicDataSourceType.Method)]
+        public void NewtonDivision_MatchesBigInteger(string coreName)
+        {
+            var core = GetCore(coreName);
+            var rnd = new Random(7272);
+            int[] bases = { 2, 3, 4, 5, 8, 16, 64 };
+
+            ulong[] Shaped(int length)
+            {
+                var w = Next(rnd, length, nonZeroTop: true);
+                switch (rnd.Next(6))
+                {
+                    case 0:   // all ones
+                        w.AsSpan().Fill(ulong.MaxValue);
+                        break;
+                    case 1:   // a small top word: the divisor needs a large bit shift
+                        w[0] = (ulong)rnd.Next(1, 16);
+                        break;
+                    case 2:   // a power of two times something: the reciprocal near β^s exactly
+                        w.AsSpan(1).Clear();
+                        w[0] = 1UL << rnd.Next(64);
+                        break;
+                }
+                return w;
+            }
+
+            void Check(ulong[] a, ulong[] b, int split, int inverseBase, string ctx)
+            {
+                var q = new ulong[a.Length - b.Length + 1];
+                var r = new ulong[b.Length + 2];
+                q.AsSpan().Fill(0xDEAD_BEEF_DEAD_BEEFUL);   // must be fully overwritten
+                r.AsSpan().Fill(0xDEAD_BEEF_DEAD_BEEFUL);
+                NewtonDivision.DivRem(core, a, b, q, r, split, inverseBase);
+                var expectedQ = BigInteger.DivRem(ToBig(a), ToBig(b), out var expectedR);
+                Assert.AreEqual(expectedQ, ToBig(q), "quotient " + ctx);
+                Assert.AreEqual(expectedR, ToBig(r), "remainder " + ctx);
+            }
+
+            for (int it = 0; it < 2_000; it++)
+            {
+                int inverseBase = bases[rnd.Next(bases.Length)];
+                int split = rnd.Next(1, 4);
+                int lb = rnd.Next(1, 120);
+                int la = lb + rnd.Next(0, 300);
+                var b = Shaped(lb);
+                var a = Shaped(la);
+                if (rnd.Next(4) == 0) b.CopyTo(a, 0);   // top of a equal to b
+                Check(a, b, split, inverseBase, $"[{coreName}] {la}/{lb} split={split} base={inverseBase} (iteration {it})");
+            }
+
+            for (int it = 0; it < 8; it++)
+            {
+                int lb = rnd.Next(100, 1500), la = lb + rnd.Next(100, 3000);
+                Check(Shaped(la), Shaped(lb), 1 + it % 2, 16, $"[{coreName}] {la}/{lb} large");
+            }
+
+            // the sizes the engine sends here, at the default split (automatic) and base
+            foreach (var (la, lb) in new[] { (20000, 9000), (30000, 8200) })
+            {
+                Check(Shaped(la), Shaped(lb), NewtonDivision.Split, NewtonDivision.InverseBase, $"[{coreName}] {la}/{lb} engine sizes");
+            }
+
+            // the reciprocal: within a few units of floor(β^(2s) / D)
+            for (int it = 0; it < 500; it++)
+            {
+                int s = rnd.Next(1, 200);
+                var d = Shaped(s);
+                d[0] |= 1UL << 63;
+                var inv = NewtonDivision.Inverse(core, d, bases[rnd.Next(bases.Length)]);
+                var exact = (BigInteger.One << (128 * s)) / ToBig(d);
+                var diff = BigInteger.Abs(ToBig(inv) - exact);
+                Assert.IsTrue(diff <= 4, $"[{coreName}] inverse s={s}: off by {diff}");
+            }
+        }
+
         [DataTestMethod]
         [DynamicData(nameof(Cores), DynamicDataSourceType.Method)]
         public void Core_DivByWord_MatchesBigInteger(string coreName)

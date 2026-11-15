@@ -61,6 +61,64 @@ namespace FullInt.Benchmarks
             return 0;
         }
 
+        /// <summary>
+        /// "newton [rounds] [ratio]": ratio·N / N word divisions (ratio 2 by default), Burnikel–Ziegler
+        /// against the Newton reciprocal with several block splits and reciprocal bases.
+        /// </summary>
+        public static int RunNewton(string[] args)
+        {
+            int rounds = args.Length > 0 ? int.Parse(args[0]) : 5;
+            int ratio = args.Length > 1 ? int.Parse(args[1]) : 2;
+            try
+            {
+                var proc = Process.GetCurrentProcess();
+                proc.PriorityClass = ProcessPriorityClass.High;
+                if (Environment.ProcessorCount > 2) proc.ProcessorAffinity = (nint)(1L << 2);
+            }
+            catch { /* best effort */ }
+
+            var core = FullIntCoreFactory.Create();
+            var rnd = new Random(1);
+            var configs = new (int split, int inverseBase)[] { (1, 64), (2, 64), (3, 64), (1, 256), (2, 256) };
+            Console.WriteLine($"core={core.GetType().Name} rounds={rounds}; {ratio}N / N; ratio = Newton (split/base) / Burnikel–Ziegler");
+            Console.Write($"{"N",6} {"BZ",12}");
+            foreach (var c in configs) Console.Write($" {c.split + "/" + c.inverseBase,7}");
+            Console.WriteLine();
+
+            foreach (int n in new[] { 1024, 2048, 4096, 8192, 16384, 32768, 65536 })
+            {
+                var a = new ulong[ratio * n];
+                var b = new ulong[n];
+                for (int i = 0; i < a.Length; i++) a[i] = (ulong)rnd.NextInt64() ^ ((ulong)rnd.Next(2) << 63);
+                for (int i = 0; i < b.Length; i++) b[i] = (ulong)rnd.NextInt64() ^ ((ulong)rnd.Next(2) << 63);
+                a[0] |= 1; b[0] |= 1;
+                var q = new ulong[a.Length - n + 1];
+                var r = new ulong[n + 2];
+
+                var variants = new List<Action> { () => BurnikelZiegler.DivRem(core, a, b, q, r) };
+                foreach (var c in configs) variants.Add(() => NewtonDivision.DivRem(core, a, b, q, r, c.split, c.inverseBase));
+
+                var best = new double[variants.Count];
+                Array.Fill(best, double.MaxValue);
+                foreach (var v in variants) v();
+                for (int round = 0; round < rounds; round++)
+                {
+                    for (int i = 0; i < variants.Count; i++)
+                    {
+                        int it = 0;
+                        var sw = Stopwatch.StartNew();
+                        do { variants[i](); it++; } while (sw.ElapsedMilliseconds < 30);
+                        best[i] = Math.Min(best[i], sw.Elapsed.TotalMilliseconds * 1e3 / it);
+                    }
+                }
+
+                Console.Write($"{n,6} {best[0],9:F0} us");
+                for (int i = 1; i < variants.Count; i++) Console.Write($" {best[i] / best[0],7:F3}");
+                Console.WriteLine();
+            }
+            return 0;
+        }
+
         public static int Run(string[] args)
         {
             int rounds = args.Length > 0 ? int.Parse(args[0]) : 5;

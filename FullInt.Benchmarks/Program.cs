@@ -18,6 +18,12 @@ if (args.Length > 0 && args[0] == "dec")
 {
     return BzTune.RunDecimal(args.Skip(1).ToArray());
 }
+// newton [rounds] [ratio]                   → Newton division against Burnikel–Ziegler (see BzTune.RunNewton)
+if (args.Length > 0 && args[0] == "newton")
+{
+    return BzTune.RunNewton(args.Skip(1).ToArray());
+}
+
 // bz [rounds]                                → Burnikel–Ziegler threshold tuning (see BzTune)
 if (args.Length > 0 && args[0] == "bz")
 {

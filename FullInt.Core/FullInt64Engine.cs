@@ -654,7 +654,13 @@ namespace FullInt.Core
         public void div_internal(Span<ulong> dividend, Span<ulong> divisor, Span<ulong> result, Span<ulong> remainder, toBase Base)
         {
             // long divisor and long quotient: Burnikel–Ziegler (recursion in C#, leaves in the core);
-            // the same contract as the core's Div, so the buffers above stay as they are
+            // the same contract as the core's Div, so the buffers above stay as they are;
+            // longer still: the Newton reciprocal
+            if (Base == toBase.hex && NewtonDivision.Use(dividend.Length, divisor.Length))
+            {
+                NewtonDivision.DivRem(_core, dividend, divisor, result, remainder);
+                return;
+            }
             if (Base == toBase.hex && divisor.Length >= 2 * BurnikelZiegler.Threshold
                 && dividend.Length - divisor.Length >= 2 * BurnikelZiegler.Threshold)
             {
