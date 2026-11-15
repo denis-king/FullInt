@@ -75,7 +75,7 @@ void BurnikelZiegler::DivRem(CSpan a, CSpan b, Span q, Span r, int threshold)
     // costs a whole Div2n1n (half of all numbers; 4096 / 2048 words ~2x, 8192 / 4096 more).
     Words ri(n), tt(at.begin(), at.begin() + n + h);
     // one work buffer for the whole recursion (was a few vectors per node): ScratchWords(n)
-    Words scratch(ScratchWords(n));
+    Words scratch(ScratchWords(n, threshold));
     Span topN = Span(tt).subspan(0, n);
     if (CompareEqualLength(topN, bn) >= 0)
     {
@@ -108,18 +108,20 @@ void BurnikelZiegler::DivRem(CSpan a, CSpan b, Span q, Span r, int threshold)
 void BurnikelZiegler::Div2n1n(CSpan a, CSpan b, Span q, Span r, int threshold, Span scratch)
 {
     size_t n = b.size();
-    if ((n & 1) != 0 || n < (size_t)threshold)
+    if (n < (size_t)threshold)
     {
         Basecase(a, b, q, r, scratch);
         return;
     }
 
-    size_t k = n / 2;
-    Span r1 = scratch.subspan(0, 3 * k);   // [R, A4] for the second step (fully written)
-    Span rest = scratch.subspan(3 * k);
-    Div3n2n(a.subspan(0, 3 * k), b, q.subspan(0, k), r1.subspan(0, n), threshold, rest);
-    std::copy(a.begin() + 3 * k, a.begin() + 4 * k, r1.begin() + n);
-    Div3n2n(r1, b, q.subspan(k, k), r, threshold, rest);
+    // an odd n splits into k1 = ceil(n/2) and k2 = floor(n/2) quotient words (was: the kernel
+    // on the whole block, quadratic)
+    size_t k1 = (n + 1) / 2, k2 = n / 2;
+    Span r1 = scratch.subspan(0, n + k2);   // [R, A4] for the second step (fully written)
+    Span rest = scratch.subspan(n + k2);
+    Div3n2n(a.subspan(0, n + k1), b, q.subspan(0, k1), r1.subspan(0, n), threshold, rest);
+    std::copy(a.begin() + n + k1, a.begin() + 2 * n, r1.begin() + n);
+    Div3n2n(r1, b, q.subspan(k1, k2), r, threshold, rest);
 }
 
 // A (n + k) < B·β^k, B = [B1 B2] (n, top bit set; B1 k words) -> Q (k), R (n)
@@ -161,6 +163,92 @@ void BurnikelZiegler::Div3n2n(CSpan a, CSpan b, Span q, Span r, int threshold, S
     }
 
     std::copy(x.begin() + 1, x.end(), r.begin());   // R < B: the top word is zero
+}
+
+void BurnikelZiegler::Quotient(CSpan a, CSpan b, Span q)
+{
+    Quotient(a, b, q, Threshold);
+}
+
+void BurnikelZiegler::Quotient(CSpan a, CSpan b, Span q, int threshold)
+{
+    if (threshold < 2) throw std::out_of_range("threshold");
+    size_t la = a.size(), n = b.size();
+    Words rTmp(n + 2);
+    if (la - n + 2 < 4 * (size_t)threshold && n <= la - n + 4)
+    {
+        // neither split nor cut below (see Approx): the exact division directly
+        Exact(a, b, q, rTmp, threshold);
+        return;
+    }
+    Words ae(la + 1);                                                // A·β
+    std::copy(a.begin(), a.end(), ae.begin());
+    Words qa(la - n + 2);
+    int err = Approx(ae, b, qa, threshold);
+    uint64_t low = qa.back();
+    if (low >= (uint64_t)err && low <= ~0ull - (uint64_t)err)
+    {
+        std::copy(qa.begin(), qa.end() - 1, q.begin());
+        return;
+    }
+    Exact(a, b, q, rTmp, threshold);
+}
+
+// Q̃ ~ floor(A / B), returns E with |Q̃ - floor(A / B)| <= E, Q̃ >= 0. A may have leading zero
+// words, B not; q: at least the quotient's length, right-aligned, fully written.
+//   B longer than the quotient + 2 words: both cut down to that (the dropped words change the
+//   quotient by at most 1: B_t >= β^(qn+1), A/B >= A_t/(B_t + 1) >= A_t/B_t - 1/β).
+//   Otherwise the top half of the quotient exactly (with its remainder R), the low half
+//   approximately from [R, the low words of A] (which is then cut down again).
+int BurnikelZiegler::Approx(CSpan a, CSpan b, Span q, int threshold)
+{
+    Clear(q);
+    a = DeleteZeros(a);
+    size_t la = a.size(), n = b.size();
+    if (la < n || (la == n && CompareEqualLength(a, b) < 0)) return 0;
+    size_t qn = la - n + 1;
+
+    if (n > qn + 2)
+    {
+        size_t d = n - (qn + 2);
+        return Approx(a.subspan(0, la - d), b.subspan(0, n - d), q, threshold) + 1;
+    }
+    if (qn < 4 * (size_t)threshold)   // below: the split costs more than it saves
+    {
+        Words rTmp(n + 2);
+        Exact(a, b, q, rTmp, threshold);
+        return 0;
+    }
+
+    size_t k = qn / 2;
+    Span qq = q.subspan(q.size() - qn);
+    Words rem(n + 2);
+    Exact(a.subspan(0, la - k), b, qq.subspan(0, qn - k), rem, threshold);
+    Words x(n + k);                                                  // [R, the low k words of A]
+    std::copy(rem.begin() + 2, rem.end(), x.begin());
+    std::copy(a.end() - k, a.end(), x.begin() + n);
+    Words ql(k + 1);
+    int e = Approx(x, b, ql, threshold);
+    FullIntCore::Add(qq, ql, qq);                                    // the low k words are zero; a carry goes up
+    return e;
+}
+
+// exact: q (right-aligned, at least the quotient's length) = A / B, r (n + 2 words) the
+// remainder right-aligned; A may have leading zero words, B not
+void BurnikelZiegler::Exact(CSpan a, CSpan b, Span q, Span r, int threshold)
+{
+    Clear(q);
+    Clear(r);
+    a = DeleteZeros(a);
+    size_t la = a.size(), n = b.size();
+    if (la < n || (la == n && CompareEqualLength(a, b) < 0))
+    {
+        std::copy(a.begin(), a.end(), r.end() - la);
+        return;
+    }
+    Span qb = q.subspan(q.size() - (la - n + 1));
+    if (n >= 2 * (size_t)threshold && la - n >= 2 * (size_t)threshold) DivRem(a, b, qb, r, threshold);
+    else FullIntCore::Div(a, b, qb, r);
 }
 
 // the kernel division on one block: A (2n) < B·β^n -> Q (n), R (n)

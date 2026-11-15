@@ -306,6 +306,56 @@ void DivideThresholds()
     }
 }
 
+// the quotient alone: small thresholds (the approximation recurses on small numbers), long
+// divisors with short quotients (cut down), exact multiples A = B·Q (+ 0/1) put the guard word
+// at the boundary (the fallback to the full division)
+void QuotientOnly()
+{
+    auto shaped = [](size_t len) {
+        std::vector<uint64_t> w(len);
+        for (auto& x : w) x = rng();
+        int shape = (int)(rng() % 5);
+        if (shape == 0) std::fill(w.begin(), w.end(), ~0ull);
+        if (shape == 1) w[0] = 1 + rng() % 15;
+        if (w[0] == 0) w[0] = 1;
+        return w;
+    };
+    const int thresholds[] = { 2, 3, 4, 5, 8, 16, 33, 96 };
+    for (int round = 0; round < 3000; round++)
+    {
+        int threshold = thresholds[rng() % 8];
+        size_t lb = 1 + rng() % 150, la = lb + (rng() % 3 == 0 ? rng() % 8 : rng() % 250);
+        auto b = shaped(lb);
+        std::vector<uint64_t> a;
+        int kind = (int)(rng() % 6);
+        Mpz ma, mb, mq, got;
+        mpz_import(mb.v, b.size(), 1, 8, 0, 0, b.data());
+        if (kind == 0)
+        {
+            auto qv = shaped(std::max<size_t>(1, la - lb));
+            mpz_import(mq.v, qv.size(), 1, 8, 0, 0, qv.data());
+            mpz_mul(ma.v, mb.v, mq.v);
+            if (rng() % 2) mpz_add_ui(ma.v, ma.v, 1);
+            size_t words = (mpz_sizeinbase(ma.v, 2) + 63) / 64;
+            a.assign(words, 0);
+            mpz_export(a.data() + (words - (mpz_sizeinbase(ma.v, 2) + 63) / 64), nullptr, 1, 8, 0, 0, ma.v);
+        }
+        else
+        {
+            a = shaped(la);
+            if (kind == 1) std::copy(b.begin(), b.end(), a.begin());
+            mpz_import(ma.v, a.size(), 1, 8, 0, 0, a.data());
+        }
+        if (a.size() < b.size()) continue;
+        std::vector<uint64_t> q(a.size() - b.size() + 1, 0xDEADBEEFDEADBEEFull);
+        fullint::BurnikelZiegler::Quotient(a, b, q, threshold);
+        mpz_tdiv_q(mq.v, ma.v, mb.v);
+        mpz_import(got.v, q.size(), 1, 8, 0, 0, q.data());
+        CHECK(mpz_cmp(mq.v, got.v) == 0, "quotient alone threshold " + std::to_string(threshold) + " kind " + std::to_string(kind) +
+                                             " " + std::to_string(a.size()) + "/" + std::to_string(lb));
+    }
+}
+
 // division through the Newton reciprocal: small reciprocal bases and block splits make every
 // path run on small numbers; a few at the sizes the engine sends there; the reciprocal itself
 void NewtonDivide()
@@ -468,6 +518,7 @@ int main()
     FftProducts();
     DivideThresholds();
     NewtonDivide();
+    QuotientOnly();
     InPlaceApi();
     DecimalByHalves();
 
