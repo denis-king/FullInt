@@ -2,6 +2,7 @@
 // sizes from one word to Toom-3 range, all sign combinations; plus the C# semantics that GMP
 // does not define the same way (parse prefixes, hex format).
 #include <fullint/BurnikelZiegler.h>
+#include <fullint/NewtonDivision.h>
 #include <fullint/FullInt64.h>
 #include <fullint/Karatsuba.h>
 #include <gmp.h>
@@ -305,6 +306,63 @@ void DivideThresholds()
     }
 }
 
+// division through the Newton reciprocal: small reciprocal bases and block splits make every
+// path run on small numbers; a few at the sizes the engine sends there; the reciprocal itself
+void NewtonDivide()
+{
+    auto check = [](const std::vector<uint64_t>& a, const std::vector<uint64_t>& b, int split, int base) {
+        std::vector<uint64_t> q(a.size() - b.size() + 1, 0xDEADBEEFDEADBEEFull), r(b.size() + 2, 0xDEADBEEFDEADBEEFull);
+        fullint::NewtonDivision::DivRem(a, b, q, r, split, base);
+        Mpz ma, mb, eq, er, gq, gr;
+        mpz_import(ma.v, a.size(), 1, 8, 0, 0, a.data());
+        mpz_import(mb.v, b.size(), 1, 8, 0, 0, b.data());
+        mpz_tdiv_qr(eq.v, er.v, ma.v, mb.v);
+        mpz_import(gq.v, q.size(), 1, 8, 0, 0, q.data());
+        mpz_import(gr.v, r.size(), 1, 8, 0, 0, r.data());
+        CHECK(mpz_cmp(eq.v, gq.v) == 0 && mpz_cmp(er.v, gr.v) == 0,
+              "Newton division split " + std::to_string(split) + " base " + std::to_string(base) + " " +
+                  std::to_string(a.size()) + "/" + std::to_string(b.size()));
+    };
+    auto shaped = [](size_t len) {
+        std::vector<uint64_t> w(len);
+        for (auto& x : w) x = rng();
+        int shape = (int)(rng() % 6);
+        if (shape == 0) std::fill(w.begin(), w.end(), ~0ull);
+        if (shape == 1) w[0] = 1 + rng() % 15;
+        if (shape == 2) { std::fill(w.begin(), w.end(), 0); w[0] = 1ull << (rng() % 64); }
+        if (w[0] == 0) w[0] = 1;
+        return w;
+    };
+    const int bases[] = { 2, 3, 4, 5, 8, 16, 64 };
+    for (int round = 0; round < 1500; round++)
+    {
+        int base = bases[rng() % 7], split = (int)(rng() % 4);
+        size_t lb = 1 + rng() % 120, la = lb + rng() % 300;
+        auto a = shaped(la), b = shaped(lb);
+        if (rng() % 4 == 0) std::copy(b.begin(), b.end(), a.begin());
+        check(a, b, split, base);
+    }
+    check(shaped(20000), shaped(9000), 0, fullint::NewtonDivision::InverseBase);
+    check(shaped(30000), shaped(8200), 0, fullint::NewtonDivision::InverseBase);
+
+    for (int round = 0; round < 300; round++)
+    {
+        size_t s = 1 + rng() % 200;
+        auto d = shaped(s);
+        d[0] |= 1ull << 63;
+        auto inv = fullint::NewtonDivision::Inverse(d, bases[rng() % 7]);
+        Mpz md, exact, got;
+        mpz_import(md.v, d.size(), 1, 8, 0, 0, d.data());
+        mpz_set_ui(exact.v, 1);
+        mpz_mul_2exp(exact.v, exact.v, 128 * s);
+        mpz_tdiv_q(exact.v, exact.v, md.v);
+        mpz_import(got.v, inv.size(), 1, 8, 0, 0, inv.data());
+        mpz_sub(got.v, got.v, exact.v);
+        mpz_abs(got.v, got.v);
+        CHECK(mpz_cmp_ui(got.v, 4) <= 0, "Newton inverse s " + std::to_string(s));
+    }
+}
+
 // the in-place API (Add(result, a, b) etc.) and the compound operators against the plain
 // operators: result fresh, reused across sizes, and the same object as a or b
 void InPlaceApi()
@@ -409,6 +467,7 @@ int main()
     MultiplyThresholds();
     FftProducts();
     DivideThresholds();
+    NewtonDivide();
     InPlaceApi();
     DecimalByHalves();
 

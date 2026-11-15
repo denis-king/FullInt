@@ -47,9 +47,16 @@ namespace FullInt.Core
 
         /// <summary>
         /// Quotient blocks per divisor length (1: blocks of n words; 2: n/2, a reciprocal of half
-        /// the size); 0: 1 for a quotient of at least two divisor lengths, otherwise 2 (measured best).
+        /// the size); 0: 1 for a quotient of at least two divisor lengths or a divisor below
+        /// <see cref="SplitFrom"/> words, otherwise 2 (measured best).
         /// </summary>
         public static int Split { get; set; } = 0;
+
+        /// <summary>
+        /// The automatic split halves the blocks from this many divisor words (2N / N, x64: split 2
+        /// 0.98 / 0.84 / 0.73 of Burnikel–Ziegler at 16384 / 32768 / 65536, split 1 1.21 / 0.90 / 0.84).
+        /// </summary>
+        public static int SplitFrom { get; set; } = 0;
 
         /// <summary>
         /// The core.Div contract: a and b without leading zero words, a.Length &gt;= b.Length;
@@ -94,7 +101,7 @@ namespace FullInt.Core
 
             if (qn > 0)
             {
-                if (split == 0) split = qn >= 2 * n ? 1 : 2;
+                if (split == 0) split = qn >= 2 * n || n < SplitFrom ? 1 : 2;
                 int blocks = Math.Max(1, (qn + n - 1) / n) * split;
                 int s = Math.Min(n, (qn + blocks - 1) / blocks);
                 ulong[] inv = Inverse(core, bn.Slice(0, s), inverseBase);    // s + 1 words
