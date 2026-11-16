@@ -403,7 +403,22 @@ namespace FullInt.Core
             {
                 bool neg1 = value1.Sing, neg2 = value2.Sing;
                 if (neg1 != neg2) return neg1 ? -1 : 1;
-                int abs = CompareAbsQuick(value1.value, value2.value);
+                ulong[] a = value1.value, b = value2.value;
+                int abs;
+                if (a.Length == b.Length && a.Length <= ShortLoopCompareWords)
+                {
+                    // equal lengths: leading zero words do not matter, the first differing word
+                    // decides; a plain loop over the arrays (no spans in this frame)
+                    abs = 0;
+                    for (int i = 0; i < a.Length; i++)
+                    {
+                        if (a[i] != b[i]) { abs = a[i] > b[i] ? 1 : -1; break; }
+                    }
+                }
+                else
+                {
+                    abs = CompareAbsArrays(a, b);
+                }
                 return neg1 ? -abs : abs;
             }
             return CompareMixedBase(value1, value2);
@@ -440,6 +455,13 @@ namespace FullInt.Core
         {
             return _core.Compare(value1, value2);
         }
+
+        // the operators' compare beyond the short loop: separate, so that the caller's frame holds
+        // no spans (with them inlined the operator saved 8 registers and zeroed its locals: ~5 ns)
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static int CompareAbsArrays(ulong[] value1, ulong[] value2) => CompareAbsQuick(value1, value2);
+
+        private const int ShortLoopCompareWords = 16;
 
         // Magnitudes almost always differ in the length or the top word: with no leading zero
         // words that decides it here, without the core call. Equal length and top word: the
