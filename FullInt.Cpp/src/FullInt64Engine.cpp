@@ -203,6 +203,25 @@ void FullInt64Engine::addIntoFresh(FullInt64& result, CSpan a, CSpan b, bool neg
     result = neg1 == neg2 ? addMagnitudes(a, b, neg1) : subMagnitudes(a, b, neg1, neg2);
 }
 
+// 2 x 1 and 2 x 2 words inline (FullHelper::Mul2x1 / Mul2x2 / Sqr2), no kernel call; false: longer
+static FULLINT_FORCEINLINE bool MultShort(CSpan a, CSpan b, uint64_t* r) noexcept
+{
+    size_t la = a.size(), lb = b.size();
+    if (la + lb == 3)
+    {
+        if (la == 2) FullHelper::Mul2x1(a.data(), b[0], r);
+        else FullHelper::Mul2x1(b.data(), a[0], r);
+        return true;
+    }
+    if (la == 2 && lb == 2)
+    {
+        if (Karatsuba::Same(a, b)) FullHelper::Sqr2(a.data(), r);
+        else FullHelper::Mul2x2(a.data(), b.data(), r);
+        return true;
+    }
+    return false;
+}
+
 void FullInt64Engine::multIntoAliased(FullInt64& result, const FullInt64& value1, const FullInt64& value2)
 {
     result = mult(value1, value2);
@@ -225,6 +244,8 @@ void FullInt64Engine::multInto(FullInt64& result, const FullInt64& value1, const
     Span r(result.Prepare(length), length);
     if (length == 2)
         r[0] = FullHelper::BigMul(a[0], b[0], &r[1]);
+    else if (MultShort(a, b, r.data()))
+        ;
     else if (Karatsuba::Same(a, b) && a.size() < (size_t)Karatsuba::SqrThreshold)
         FullIntCore::Sqr(a, r);                                       // x·x: the square kernel
     else if (std::min(a.size(), b.size()) >= (size_t)Karatsuba::Threshold || Karatsuba::Same(a, b))
@@ -296,7 +317,9 @@ FullInt64 FullInt64Engine::multGeneral(const FullInt64& value1, const FullInt64&
     FullInt64 r;
     Span bytes(r.Prepare(length), length);
 
-    if (Karatsuba::Same(a, b) && a.size() < (size_t)Karatsuba::SqrThreshold)
+    if (MultShort(a, b, bytes.data()))
+        ;
+    else if (Karatsuba::Same(a, b) && a.size() < (size_t)Karatsuba::SqrThreshold)
         FullIntCore::Sqr(a, bytes);                                   // x·x: the square kernel
     else if (std::min(a.size(), b.size()) >= (size_t)Karatsuba::Threshold || Karatsuba::Same(a, b))
         Karatsuba::Multiply(a, b, bytes);   // recursion in C++, leaves in the kernels

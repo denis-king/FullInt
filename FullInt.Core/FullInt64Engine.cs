@@ -210,7 +210,11 @@ namespace FullInt.Core
             ulong[] r = result.WritableBuffer(len, mustBeNew: aliased);
             Span<ulong> low = r.AsSpan(r.Length - len);
             r.AsSpan(0, r.Length - len).Clear();
-            if (a == b && a.Length < Karatsuba.SqrThreshold)
+            if (FullHelper.MultShort(a, b, low))
+            {
+                // 2 x 1, 2 x 2: here
+            }
+            else if (a == b && a.Length < Karatsuba.SqrThreshold)
                 _core.Sqr(a, low);                                       // x·x: the square kernel
             else if (Math.Min(a.Length, b.Length) >= Karatsuba.Threshold || a == b)
                 Karatsuba.Multiply(_core, a, b, low);
@@ -323,7 +327,11 @@ namespace FullInt.Core
             var heap = lenth <= FullHelper.StackAllocLimitWords ? null : new ulong[lenth];
             Span<ulong> bytes = heap ?? stackalloc ulong[lenth];
 
-            if (Base == toBase.hex && value1.value == value2.value && value1.value.Length < Karatsuba.SqrThreshold)
+            if (Base == toBase.hex && FullHelper.MultShort(value1.value, value2.value, bytes))
+            {
+                // 2 x 1, 2 x 2: here
+            }
+            else if (Base == toBase.hex && value1.value == value2.value && value1.value.Length < Karatsuba.SqrThreshold)
             {
                 _core.Sqr(value1.value, bytes);                          // x·x: the square kernel
             }

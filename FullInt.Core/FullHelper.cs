@@ -132,6 +132,53 @@ namespace FullInt.Core
 #endif
         }
 
+        // 2 x 1 and 2 x 2 words here (words big-endian), no core call: its entry cost more than the three /
+        // four multiplies (C++ FullHelper::Mul2x1 / Mul2x2 / Sqr2). r: a.Length + b.Length words, written
+        // whole. false: longer operands, r untouched. .NET 5+ only (one mul a BigMul; x64 .NET 8, 2 x 2:
+        // 9.3 ns, the core 15); the 32-bit split of netstandard2.0 lost to the core (.NET Framework 43 / 40).
+#if NETCOREAPP3_0_OR_GREATER
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
+#endif
+        public static bool MultShort(Span<ulong> a, Span<ulong> b, Span<ulong> r)
+        {
+#if !NET5_0_OR_GREATER
+            return false;
+#else
+            if (a.Length + b.Length == 3)
+            {
+                if (a.Length == 1) { var t = a; a = b; b = t; }
+                ulong h0 = BigMul(a[1], b[0], out ulong l0);
+                ulong h1 = BigMul(a[0], b[0], out ulong l1);
+                ulong s = h0 + l1;
+                r[0] = h1 + (s < l1 ? 1UL : 0UL);
+                r[1] = s;
+                r[2] = l0;
+                return true;
+            }
+            if (a.Length != 2 || b.Length != 2) return false;
+            ulong h00 = BigMul(a[1], b[1], out ulong l00);
+            ulong h01 = BigMul(a[1], b[0], out ulong l01);
+            ulong h10 = BigMul(a[0], b[1], out ulong l10);
+            ulong h11 = BigMul(a[0], b[0], out ulong l11);
+            ulong w1 = h00 + l01;
+            ulong c = w1 < l01 ? 1UL : 0UL;
+            ulong w2 = h01 + l11;
+            ulong c2 = w2 < l11 ? 1UL : 0UL;
+            w2 += c;
+            c2 += w2 < c ? 1UL : 0UL;
+            ulong w3 = h11 + c2;
+            w1 += l10;
+            c = w1 < l10 ? 1UL : 0UL;
+            w2 += h10;
+            c2 = w2 < h10 ? 1UL : 0UL;
+            w2 += c;
+            c2 += w2 < c ? 1UL : 0UL;
+            w3 += c2;
+            r[0] = w3; r[1] = w2; r[2] = w1; r[3] = l00;
+            return true;
+#endif
+        }
+
         // A two-word divisor (GMP's mpn_divrem_2): one 3-by-2 division per quotient word with the
         // reciprocal of the normalized divisor (Moller, Granlund 2011, Algorithm 5; v as invert_pi1
         // in DivRecip.asm), the dividend shifted on the fly. a: at least 3 words, a[0] != 0;

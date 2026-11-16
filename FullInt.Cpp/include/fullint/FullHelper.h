@@ -38,6 +38,66 @@ struct FullHelper
 #endif
     }
 
+    // x + y + carry, the carry out in carry (0 / 1)
+    static uint64_t AddC(uint64_t x, uint64_t y, unsigned char& carry) noexcept
+    {
+#if defined(_MSC_VER) && defined(_M_X64)
+        uint64_t s;
+        carry = _addcarry_u64(carry, x, y, &s);
+        return s;
+#else
+        uint64_t s = x + y, t = s + carry;
+        carry = (unsigned char)((s < x) | (t < s));
+        return t;
+#endif
+    }
+
+    // Products of two-word numbers inline (words big-endian, as everywhere): the kernel call cost more
+    // than the four (three) multiplies. x64: r = a·b 1.9-2.4 ns, the kernel 5.3; a² 2.3, the kernel 4.2.
+    // r: 4 words
+    static void Mul2x2(const uint64_t* a, const uint64_t* b, uint64_t* r) noexcept
+    {
+        uint64_t l00, h00 = BigMul(a[1], b[1], &l00);
+        uint64_t l01, h01 = BigMul(a[1], b[0], &l01);
+        uint64_t l10, h10 = BigMul(a[0], b[1], &l10);
+        uint64_t l11, h11 = BigMul(a[0], b[0], &l11);
+        unsigned char c = 0;
+        uint64_t w1 = AddC(h00, l01, c);
+        uint64_t w2 = AddC(h01, l11, c);
+        uint64_t w3 = h11 + c;
+        c = 0;
+        w1 = AddC(w1, l10, c);
+        w2 = AddC(w2, h10, c);
+        w3 += c;
+        r[0] = w3; r[1] = w2; r[2] = w1; r[3] = l00;
+    }
+
+    // r = a², a two words, r 4 words
+    static void Sqr2(const uint64_t* a, uint64_t* r) noexcept
+    {
+        uint64_t l00, h00 = BigMul(a[1], a[1], &l00);
+        uint64_t l01, h01 = BigMul(a[1], a[0], &l01);
+        uint64_t l11, h11 = BigMul(a[0], a[0], &l11);
+        uint64_t t2 = h01 >> 63;   // 2·a0·a1 = t2 : h01 : l01
+        h01 = h01 << 1 | l01 >> 63;
+        l01 <<= 1;
+        unsigned char c = 0;
+        uint64_t w1 = AddC(h00, l01, c);
+        uint64_t w2 = AddC(l11, h01, c);
+        r[0] = h11 + t2 + c; r[1] = w2; r[2] = w1; r[3] = l00;
+    }
+
+    // r = a·b, a two words, b one, r 3 words
+    static void Mul2x1(const uint64_t* a, uint64_t b, uint64_t* r) noexcept
+    {
+        uint64_t l0, h0 = BigMul(a[1], b, &l0);
+        uint64_t l1, h1 = BigMul(a[0], b, &l1);
+        unsigned char c = 0;
+        r[1] = AddC(h0, l1, c);
+        r[0] = h1 + c;
+        r[2] = l0;
+    }
+
     // (hi:lo) / d with hi < d (the quotient fits 64 bits), the contract of x64 `div r64`.
     // x64: the instruction itself (_udiv128); elsewhere Hacker's Delight divlu as in C#.
     static uint64_t Div128(uint64_t hi, uint64_t lo, uint64_t d, uint64_t* remainder) noexcept
