@@ -11,10 +11,18 @@
 #include <ostream>
 #include <stdexcept>
 
+#if defined(_M_X64) || defined(__x86_64__) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2) || defined(__SSE2__)
+#include <emmintrin.h>
+#define FULLINT_SSE2 1
+#else
+#define FULLINT_SSE2 0
+#endif
+
 namespace fullint {
 
 // a few words zeroed / copied in place: MSVC turns the plain loops into memset / memcpy calls, whose
-// entry outweighs a few words; long runs still use them
+// entry outweighs a few words; long runs still use them. Two words a store (SSE2; the plain loops
+// stored one: a copy of 12-16 words 8-12 ns, GMP 6)
 static FULLINT_FORCEINLINE void ZeroWords(uint64_t* p, size_t n) noexcept
 {
     if (n > 16)
@@ -22,8 +30,28 @@ static FULLINT_FORCEINLINE void ZeroWords(uint64_t* p, size_t n) noexcept
         std::memset(p, 0, n * sizeof(uint64_t));
         return;
     }
+#if FULLINT_SSE2
+    __m128i z = _mm_setzero_si128();
+    size_t i = 0;
+    for (; i + 2 <= n; i += 2) _mm_storeu_si128((__m128i*)(p + i), z);
+    if (i < n) _mm_storel_epi64((__m128i*)(p + i), z);
+#else
     volatile uint64_t* v = p;
     for (size_t i = 0; i < n; i++) v[i] = 0;
+#endif
+}
+
+// word by word (bitwiseInto: with the SSE2 copy inlined there x86's a & b on 1-16 words ran 1.4-1.8 ns
+// slower, though the and path copies nothing)
+static FULLINT_FORCEINLINE void CopyWordsScalar(uint64_t* dst, const uint64_t* src, size_t n) noexcept
+{
+    if (n > 16)
+    {
+        std::memcpy(dst, src, n * sizeof(uint64_t));
+        return;
+    }
+    volatile uint64_t* v = dst;
+    for (size_t i = 0; i < n; i++) v[i] = src[i];
 }
 
 static FULLINT_FORCEINLINE void CopyWords(uint64_t* dst, const uint64_t* src, size_t n) noexcept
@@ -33,8 +61,14 @@ static FULLINT_FORCEINLINE void CopyWords(uint64_t* dst, const uint64_t* src, si
         std::memcpy(dst, src, n * sizeof(uint64_t));
         return;
     }
+#if FULLINT_SSE2
+    size_t i = 0;
+    for (; i + 2 <= n; i += 2) _mm_storeu_si128((__m128i*)(dst + i), _mm_loadu_si128((const __m128i*)(src + i)));
+    if (i < n) _mm_storel_epi64((__m128i*)(dst + i), _mm_loadl_epi64((const __m128i*)(src + i)));
+#else
     volatile uint64_t* v = dst;
     for (size_t i = 0; i < n; i++) v[i] = src[i];
+#endif
 }
 
 
@@ -651,7 +685,7 @@ void FullInt64Engine::bitwiseInto(FullInt64& result, int op, const FullInt64& va
         else
         {
             uint64_t* p = result.Prepare((uint32_t)la);
-            CopyWords(p, a.data(), d);
+            CopyWordsScalar(p, a.data(), d);
             if (op == 1) for (size_t i = 0; i < lb; i++) p[d + i] = a[d + i] | b[i];
             else for (size_t i = 0; i < lb; i++) p[d + i] = a[d + i] ^ b[i];
         }
