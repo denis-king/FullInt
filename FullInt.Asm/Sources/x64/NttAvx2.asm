@@ -24,6 +24,9 @@ section .text
 ;    void Fullint64NttDif3WIN_avx2(uint32* x, int64 L, const uint32* W, const uint32* Wq, uint32 p)
 ;    void Fullint64NttDit1WIN_avx2 / Dit2 (as Dif1 / Dif2, inverse tables; Dit2: levels h/2, h)
 ;    void Fullint64NttDit3WIN_avx2 (as Dif3, inverse tables)
+;    void Fullint64NttR3DifWIN_avx2(uint32* x, int64 M, const uint32* k, uint32 p)
+;    void Fullint64NttR3DitWIN_avx2(uint32* x, int64 M, const uint32* k, uint32 p)
+;         the radix-3 level of a transform of N = 3M values (M a multiple of 8), see below
 ;    void Fullint64NttPointWIN_avx2(uint32* x, const uint32* y, int64 n, uint32 p, uint32 pinv)
 ;         x = x·y·2^-32 (n a multiple of 8)
 ;    void Fullint64NttScaleWIN_avx2(uint32* x, int64 n, uint32 p, uint32 c, uint32 cq)
@@ -653,4 +656,124 @@ Fullint64NttCrtWIN:
 	pop rsi
 	pop rbp
 	pop rbx
+	ret
+
+; -----------------------------------------------------------------------------
+; The radix-3 level on top of a transform of N = 3M values (then three of M = 2^k: the lengths
+; 3·2^k fill the gaps between the powers of two). w = w_N, ω = w^M (a cube root of unity,
+; ω² = -1 - ω). Decimation in frequency, for j < M with x0, x1, x2 = x[j], x[j + M], x[j + 2M]:
+;   y0 = x0 + x1 + x2
+;   y1 = (x0 + ω·x1 + ω²·x2)·w^j   = (x0 - x2 + ω·(x1 - x2))·w^j
+;   y2 = (x0 + ω²·x1 + ω·x2)·w^2j  = (x0 - x1 - ω·(x1 - x2))·w^2j
+; and in time (the inverse, w and ω inverted): y1' = y1·w^j, y2' = y2·w^2j,
+;   x0 = y0 + y1' + y2',  x1 = y0 - y2' + ω·(y1' - y2'),  x2 = y0 - y1' - ω·(y1' - y2')
+; The twiddles w^j, w^2j are made as the loop goes (times w^8, w^16 a pass, kept below p):
+; no tables. k: nine vectors of 8 values (Montgomery form, ·2^32 mod p; q = ·p^-1 mod 2^32):
+;   [0] w^0..7, [1] w^0,2,..,14, [2] w^8, [3] its q, [4] w^16, [5] its q, [6] ω, [7] its q,
+;   [8] p^-1 (all lanes)
+;   rcx x, rdx M, r8 k, r9 p
+%macro R3_SETUP 0
+	SAVE_XMM
+	vmovd xmm15, r9d
+	vpbroadcastd ymm15, xmm15
+	vpaddd ymm14, ymm15, ymm15
+	vmovdqu ymm13, [r8 + 256]           ; p^-1
+	vmovdqu ymm12, [r8]                 ; w^j
+	vmovdqu ymm11, [r8 + 32]            ; w^2j
+	lea r10, [rcx + rdx*4]              ; x1
+	lea r11, [r10 + rdx*4]              ; x2
+	shl rdx, 2
+	xor eax, eax
+%endmacro
+
+; the twiddles one pass on: w^j·w^8, w^2j·w^16, reduced below p
+%macro R3_ADVANCE 0
+	MULW ymm3, ymm12, [r8 + 64], [r8 + 64], [r8 + 96], ymm5, ymm6, ymm7
+	vpsubd ymm4, ymm3, ymm15
+	vpminud ymm12, ymm3, ymm4
+	MULW ymm3, ymm11, [r8 + 128], [r8 + 128], [r8 + 160], ymm5, ymm6, ymm7
+	vpsubd ymm4, ymm3, ymm15
+	vpminud ymm11, ymm3, ymm4
+%endmacro
+
+global Fullint64NttR3DifWIN_avx2
+Fullint64NttR3DifWIN_avx2:
+	R3_SETUP
+.word:
+	vmovdqu ymm0, [rcx + rax]
+	vmovdqu ymm1, [r10 + rax]
+	vmovdqu ymm2, [r11 + rax]
+	vpaddd ymm3, ymm1, ymm2
+	RED ymm3, ymm4                      ; x1 + x2
+	vpaddd ymm3, ymm0, ymm3
+	RED ymm3, ymm4
+	vmovdqu [rcx + rax], ymm3           ; y0
+	vpsubd ymm3, ymm1, ymm2
+	vpaddd ymm3, ymm3, ymm14            ; x1 - x2
+	MULW ymm4, ymm3, [r8 + 192], [r8 + 192], [r8 + 224], ymm5, ymm6, ymm7   ; r = ω·(x1 - x2)
+	vpsubd ymm3, ymm0, ymm2
+	vpaddd ymm3, ymm3, ymm14
+	RED ymm3, ymm5
+	vpaddd ymm3, ymm3, ymm4             ; A = x0 - x2 + r (< 4p)
+	vpsubd ymm0, ymm0, ymm1
+	vpaddd ymm0, ymm0, ymm14
+	RED ymm0, ymm5
+	vpsubd ymm0, ymm0, ymm4
+	vpaddd ymm0, ymm0, ymm14            ; B = x0 - x1 - r (< 4p)
+	vpmulld ymm8, ymm12, ymm13
+	vpsrlq ymm9, ymm12, 32
+	MULW ymm1, ymm3, ymm12, ymm9, ymm8, ymm5, ymm6, ymm7
+	vmovdqu [r10 + rax], ymm1           ; y1 = A·w^j
+	vpmulld ymm8, ymm11, ymm13
+	vpsrlq ymm9, ymm11, 32
+	MULW ymm2, ymm0, ymm11, ymm9, ymm8, ymm5, ymm6, ymm7
+	vmovdqu [r11 + rax], ymm2           ; y2 = B·w^2j
+	R3_ADVANCE
+	add rax, 32
+	cmp rax, rdx
+	jb .word
+	vzeroupper
+	RESTORE_XMM
+	ret
+
+global Fullint64NttR3DitWIN_avx2
+Fullint64NttR3DitWIN_avx2:
+	R3_SETUP
+.word:
+	vmovdqu ymm0, [rcx + rax]
+	vmovdqu ymm1, [r10 + rax]
+	vmovdqu ymm2, [r11 + rax]
+	vpmulld ymm8, ymm12, ymm13
+	vpsrlq ymm9, ymm12, 32
+	MULW ymm3, ymm1, ymm12, ymm9, ymm8, ymm5, ymm6, ymm7     ; y1' = y1·w^j
+	vpmulld ymm8, ymm11, ymm13
+	vpsrlq ymm9, ymm11, 32
+	MULW ymm4, ymm2, ymm11, ymm9, ymm8, ymm5, ymm6, ymm7     ; y2' = y2·w^2j
+	vpaddd ymm1, ymm3, ymm4
+	RED ymm1, ymm5
+	vpaddd ymm1, ymm0, ymm1
+	RED ymm1, ymm5
+	vmovdqu [rcx + rax], ymm1           ; x0
+	vpsubd ymm1, ymm3, ymm4
+	vpaddd ymm1, ymm1, ymm14
+	MULW ymm2, ymm1, [r8 + 192], [r8 + 192], [r8 + 224], ymm5, ymm6, ymm7   ; r = ω·(y1' - y2')
+	vpsubd ymm1, ymm0, ymm4
+	vpaddd ymm1, ymm1, ymm14
+	RED ymm1, ymm5
+	vpaddd ymm1, ymm1, ymm2
+	RED ymm1, ymm5
+	vmovdqu [r10 + rax], ymm1           ; x1 = y0 - y2' + r
+	vpsubd ymm1, ymm0, ymm3
+	vpaddd ymm1, ymm1, ymm14
+	RED ymm1, ymm5
+	vpsubd ymm1, ymm1, ymm2
+	vpaddd ymm1, ymm1, ymm14
+	RED ymm1, ymm5
+	vmovdqu [r11 + rax], ymm1           ; x2 = y0 - y1' - r
+	R3_ADVANCE
+	add rax, 32
+	cmp rax, rdx
+	jb .word
+	vzeroupper
+	RESTORE_XMM
 	ret

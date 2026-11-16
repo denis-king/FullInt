@@ -1,9 +1,12 @@
 // Port of FullInt.Core/NttOps.cs: multiplication through number-theoretic transforms with the
-// AVX2 kernels (NttAvx2.asm, x64 and x86). 32-bit digits, the cyclic convolution of length L (a power of
-// two, at least the product's digits) modulo three primes p < 2^30 (998244353 = 119·2^23 + 1,
-// 985661441 = 235·2^22 + 1, 943718401 = 225·2^22 + 1): forward transforms, pointwise products,
-// the inverse transform, times L^-1; every term is below L·2^64 <= 2^86 < p1·p2·p3 (2^89.6), so
+// AVX2 kernels (NttAvx2.asm, x64 and x86). 32-bit digits, the cyclic convolution of length L
+// (2^k or 3·2^k, the shortest at least the product's digits: at most 1.5 times the product)
+// modulo three primes p < 2^30 with 3·2^22 | p - 1 (943718401 = 225·2^22 + 1, 918552577 =
+// 219·2^22 + 1, 880803841 = 105·2^23 + 1): forward transforms, pointwise products, the inverse
+// transform, times L^-1; every term is below (L/2)·2^64 <= 2^85 < p1·p2·p3 (2^89.3), so
 // Garner's CRT gives it exactly and the carries put the words together. L <= 2^22 digits.
+// A length 3·2^k: a radix-3 level on top (R3Dif / R3Dit, twiddles made on the way), then
+// three transforms of 2^k.
 // Transforms: radix-2 levels two at a time, depth-first above Block values; the last three
 // levels inside the registers. Twiddles in Montgomery form, W[h + j] = w_2h^j·2^32 mod p for
 // every level h, with Wq = W·p^-1 mod 2^32; the inverse transform has its own tables.
@@ -26,8 +29,8 @@ constexpr int MaxLog = 22;
 bool Available() { return Cpu::Has(Cpu::Avx2); }   // NttAvx2.asm (x64 and x86)
 
 constexpr size_t Block = size_t(1) << 12;
-constexpr uint32_t Primes[3] = { 998244353u, 985661441u, 943718401u };
-constexpr uint32_t Generators[3] = { 3u, 3u, 7u };
+constexpr uint32_t Primes[3] = { 943718401u, 918552577u, 880803841u };
+constexpr uint32_t Generators[3] = { 7u, 5u, 26u };
 
 uint64_t PowMod(uint64_t a, uint64_t e, uint64_t p)
 {
@@ -163,7 +166,70 @@ void Inverse(uint32_t* x, size_t L, const uint32_t* w, const uint32_t* wq, uint3
     }
 }
 
-// the cyclic convolution of a and b in L 32-bit digits (L a power of two, at least the digits
+// the transform length for n digits: the shortest 2^k or 3·2^k (k >= 4) from n
+size_t Length(size_t n)
+{
+    size_t L = 16;
+    while (L < n) L *= 2;
+    size_t l3 = L / 4 * 3;   // 3·2^(k-2)
+    return l3 >= n && l3 >= 48 ? l3 : L;
+}
+
+// the radix-3 level's constants for N = 3M (NttAvx2.asm): w = w_N (inverse: w^-1), ω = w^M;
+// nine vectors: w^0..7, w^0,2,..,14, w^8 and its q, w^16 and its q, ω and its q, p^-1
+// (Montgomery form: ·2^32 mod p; q = ·p^-1 mod 2^32)
+struct R3Constants
+{
+    alignas(32) uint32_t c[72];
+    R3Constants(int k, const Tables& t, size_t n, bool inverse)
+    {
+        uint64_t p = t.p, r = (uint64_t(1) << 32) % p;
+        uint64_t w = PowMod(Generators[k], (p - 1) / n, p);
+        if (inverse) w = PowMod(w, p - 2, p);
+        auto mont = [&](uint64_t v) { return (uint32_t)(v * r % p); };
+        uint64_t wj = 1, w2 = w * w % p, w2j = 1;
+        for (int j = 0; j < 8; j++)
+        {
+            c[j] = mont(wj);
+            c[8 + j] = mont(w2j);
+            wj = wj * w % p;
+            w2j = w2j * w2 % p;
+        }
+        uint32_t s1 = mont(wj), s2 = mont(w2j), om = mont(PowMod(w, n / 3, p));
+        for (int j = 0; j < 8; j++)
+        {
+            c[16 + j] = s1; c[24 + j] = s1 * t.pinv;
+            c[32 + j] = s2; c[40 + j] = s2 * t.pinv;
+            c[48 + j] = om; c[56 + j] = om * t.pinv;
+            c[64 + j] = t.pinv;
+        }
+    }
+};
+
+// a transform of M (r3: 3M) values: the radix-3 level first, then three of M
+void Forward3(uint32_t* x, size_t M, const R3Constants* k, const Tables& t)
+{
+    if (!k)
+    {
+        Forward(x, M, t.W.data(), t.Wq.data(), t.p);
+        return;
+    }
+    Fullint64NttR3DifWIN_avx2(x, (int64_t)M, k->c, t.p);
+    for (int i = 0; i < 3; i++) Forward(x + i * M, M, t.W.data(), t.Wq.data(), t.p);
+}
+
+void Inverse3(uint32_t* x, size_t M, const R3Constants* k, const Tables& t)
+{
+    if (!k)
+    {
+        Inverse(x, M, t.IW.data(), t.IWq.data(), t.p);
+        return;
+    }
+    for (int i = 0; i < 3; i++) Inverse(x + i * M, M, t.IW.data(), t.IWq.data(), t.p);
+    Fullint64NttR3DitWIN_avx2(x, (int64_t)M, k->c, t.p);
+}
+
+// the cyclic convolution of a and b in L 32-bit digits (L = 2^k or 3·2^k, at least the digits
 // of both; a and b the same words: a square), its digits put together into the r.size() <= L/2
 // words of r; returns the carry out of the top
 uint64_t NttConvolve(CSpan a, CSpan b, Span r, size_t L)
@@ -180,12 +246,20 @@ uint64_t NttConvolve(CSpan a, CSpan b, Span r, size_t L)
     }
     uint32_t* buf = buffer.get();
     uint32_t* y = buf + 3 * L;
+    bool r3 = (L & (L - 1)) != 0;   // 3·2^k: a radix-3 level on top
+    size_t M = r3 ? L / 3 : L;
     for (int k = 0; k < 3; k++)
     {
-        const Tables& t = Get(k, L);
+        const Tables& t = Get(k, M);
         uint32_t* x = buf + k * L;
+        std::unique_ptr<R3Constants> fk, ik;
+        if (r3)
+        {
+            fk = std::make_unique<R3Constants>(k, t, L, false);
+            ik = std::make_unique<R3Constants>(k, t, L, true);
+        }
         Fullint64NttLoadWIN_avx2(a.data(), (int64_t)a.size(), x, (int64_t)L, t.p);
-        Forward(x, L, t.W.data(), t.Wq.data(), t.p);
+        Forward3(x, M, fk.get(), t);
         if (square)
         {
             Fullint64NttPointWIN_avx2(x, x, (int64_t)L, t.p, t.pinv);
@@ -193,10 +267,10 @@ uint64_t NttConvolve(CSpan a, CSpan b, Span r, size_t L)
         else
         {
             Fullint64NttLoadWIN_avx2(b.data(), (int64_t)b.size(), y, (int64_t)L, t.p);
-            Forward(y, L, t.W.data(), t.Wq.data(), t.p);
+            Forward3(y, M, fk.get(), t);
             Fullint64NttPointWIN_avx2(x, y, (int64_t)L, t.p, t.pinv);
         }
-        Inverse(x, L, t.IW.data(), t.IWq.data(), t.p);
+        Inverse3(x, M, ik.get(), t);
         // × 2^32·L^-1 (a Montgomery product by 2^64·L^-1): the pointwise products left one 2^-32
         uint64_t c = (uint64_t(1) << 32) % t.p;
         c = c * c % t.p * PowMod(L, t.p - 2, t.p) % t.p;
@@ -209,29 +283,20 @@ bool Fits(size_t len) { return 2 * len <= (size_t(1) << MaxLog); }
 
 }  // namespace
 
-bool Karatsuba::NttWorth(size_t len, bool large)
-{
-    if (!Fits(len) || !Available()) return false;
-    size_t nd = 2 * len, L = 16;
-    while (L < nd) L *= 2;
-    return large || 5 * nd >= 3 * L;
-}
+bool Karatsuba::NttFits(size_t len) { return Available() && Fits(len); }
 
 bool Karatsuba::NttMultiply(CSpan a, CSpan b, Span r)
 {
     if (r.size() != a.size() + b.size()) throw std::invalid_argument("r.size() must be a.size() + b.size()");
     if (a.empty() || b.empty() || !Available() || !Fits(r.size())) return false;
-    size_t nd = 2 * r.size(), L = 16;
-    while (L < nd) L *= 2;
-    NttConvolve(a, b, r, L);
+    NttConvolve(a, b, r, Length(2 * r.size()));
     return true;
 }
 
 size_t Karatsuba::NttCyclicLength(size_t minWords)
 {
     if (!Available()) return 0;
-    size_t m = 8;
-    while (m < minWords) m *= 2;
+    size_t m = Length(2 * std::max(minWords, size_t(8))) / 2;   // 2^a or 3·2^a
     return Fits(m) ? m : 0;
 }
 

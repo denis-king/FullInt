@@ -28,7 +28,7 @@ struct Karatsuba
 
     // From this many words in the shorter operand (and not too unbalanced): the AVX2
     // number-theoretic transforms (Ntt.cpp, NttAvx2.asm; AVX2, x64 and x86), up to products of 2^21
-    // words; below 4·NttThreshold only when the product fills 0.6 of the transform (NttWorth).
+    // words (the transform lengths 2^k and 3·2^k: at most 1.5 times the product).
     // x64 (Zen 3), of the Toom / FFT levels: 896 words 0.82, 1024 0.73, 1536 0.76-0.81, 2048
     // 0.59, 4096-8192 0.46-0.50, 16384-131072 0.40-0.50; of GMP 0.42-0.63 from 4096. x86: from
     // 96 words (C#, x86: 112 words 0.64, 128 0.57, 512 0.28, 2048 0.17, 32768 0.08).
@@ -39,9 +39,9 @@ struct Karatsuba
 #endif
     // the NTT product alone (tests): false, r untouched, without the kernels or too long
     static bool NttMultiply(CSpan a, CSpan b, Span r);
-    // whether the NTT pays off for a product of len words (C#: NttOps.Worth)
-    static bool NttWorth(size_t len, bool large);
-    // the cyclic NTT (C#: NttOps.CyclicLength / MultiplyCyclic): the power of two m >= minWords
+    // whether the NTT kernels are there and a product of len words fits them
+    static bool NttFits(size_t len);
+    // the cyclic NTT (C#: NttOps.CyclicLength / MultiplyCyclic): the shortest m = 2^a or 3·2^a >= minWords
     // (0: no kernels or too long); r = a·b mod β^m - 1 through the cyclic convolution of 2m
     // digits, the carry out of the top brought in at the bottom, β^m - 1 written as 0
     static size_t NttCyclicLength(size_t minWords);

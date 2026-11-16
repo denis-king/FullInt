@@ -33,3 +33,5 @@ Fullint64NttPointWIN_avx2
 Fullint64NttScaleWIN_avx2
 Fullint64NttLoadWIN_avx2
 Fullint64NttCrtWIN
+Fullint64NttR3DifWIN_avx2
+Fullint64NttR3DitWIN_avx2

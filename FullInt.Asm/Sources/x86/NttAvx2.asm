@@ -547,3 +547,158 @@ Fullint64NttCrtWIN:
 	pop ebx
 	pop ebp
 	ret
+
+; -----------------------------------------------------------------------------
+; The radix-3 level on top of a transform of N = 3M values (x64/NttAvx2.asm has the scheme and
+; the constants k). Here the current twiddles, their q and odd lanes, and one value of the
+; butterfly wait in the frame: five registers for the work.
+;   void Fullint64NttR3DifWIN_avx2(uint32* x, int64 M, const uint32* k, uint32 p)
+;   void Fullint64NttR3DitWIN_avx2(... the inverse constants ...)
+;   after 3 pushes and the 192-byte frame: x +208, M +212, k +220, p +224
+%define F_W1    esp             ; w^j
+%define F_W2    esp+32          ; w^2j
+%define F_V     esp+64          ; a value of the butterfly
+%define F_TQ    esp+96          ; the twiddle in use: its q
+%define F_TO    esp+128         ; its odd lanes
+%define K_S1    ebx+64
+%define K_S1Q   ebx+96
+%define K_S2    ebx+128
+%define K_S2Q   ebx+160
+%define K_OM    ebx+192
+%define K_OMQ   ebx+224
+%define K_PINV  ebx+256
+
+%macro R3X_SETUP 0
+	push ebx
+	push esi
+	push edi
+	sub esp, 192
+	mov ebx, [esp + 220]
+	vpbroadcastd ymm7, [esp + 224]
+	vpaddd ymm6, ymm7, ymm7
+	vmovdqu ymm0, [ebx]
+	vmovdqu [F_W1], ymm0
+	vmovdqu ymm0, [ebx + 32]
+	vmovdqu [F_W2], ymm0
+	mov ecx, [esp + 208]
+	mov edx, [esp + 212]
+	lea esi, [ecx + edx*4]      ; x1
+	lea edi, [esi + edx*4]      ; x2
+	shl edx, 2
+	xor eax, eax
+%endmacro
+
+; F_TQ, F_TO for the twiddle at %1 (ymm0, ymm1 overwritten)
+%macro R3X_TWIDDLE 1
+	vmovdqu ymm0, [%1]
+	vpmulld ymm1, ymm0, [K_PINV]
+	vmovdqu [F_TQ], ymm1
+	vpsrlq ymm1, ymm0, 32
+	vmovdqu [F_TO], ymm1
+%endmacro
+
+; the twiddles one pass on (times w^8, w^16), below p
+%macro R3X_ADVANCE 0
+	vmovdqu ymm0, [F_W1]
+	MULW ymm1, ymm0, [K_S1], [K_S1], [K_S1Q], ymm2, ymm3, ymm4
+	vpsubd ymm2, ymm1, ymm7
+	vpminud ymm1, ymm1, ymm2
+	vmovdqu [F_W1], ymm1
+	vmovdqu ymm0, [F_W2]
+	MULW ymm1, ymm0, [K_S2], [K_S2], [K_S2Q], ymm2, ymm3, ymm4
+	vpsubd ymm2, ymm1, ymm7
+	vpminud ymm1, ymm1, ymm2
+	vmovdqu [F_W2], ymm1
+%endmacro
+
+%macro R3X_DONE 0
+	vzeroupper
+	add esp, 192
+	pop edi
+	pop esi
+	pop ebx
+	ret
+%endmacro
+
+global Fullint64NttR3DifWIN_avx2
+Fullint64NttR3DifWIN_avx2:
+	R3X_SETUP
+.word:
+	vmovdqu ymm0, [ecx + eax]
+	vmovdqu ymm1, [esi + eax]
+	vmovdqu ymm2, [edi + eax]
+	vpaddd ymm3, ymm1, ymm2
+	RED ymm3, ymm4
+	vpaddd ymm3, ymm0, ymm3
+	RED ymm3, ymm4
+	vmovdqu [ecx + eax], ymm3           ; y0
+	vpsubd ymm3, ymm0, ymm1
+	vpaddd ymm3, ymm3, ymm6
+	RED ymm3, ymm4
+	vmovdqu [F_V], ymm3                 ; x0 - x1
+	vpsubd ymm0, ymm0, ymm2
+	vpaddd ymm0, ymm0, ymm6
+	RED ymm0, ymm4                      ; x0 - x2
+	vpsubd ymm1, ymm1, ymm2
+	vpaddd ymm1, ymm1, ymm6             ; x1 - x2
+	MULW ymm2, ymm1, [K_OM], [K_OM], [K_OMQ], ymm3, ymm4, ymm5   ; r
+	vpaddd ymm0, ymm0, ymm2             ; A = x0 - x2 + r
+	vmovdqu ymm1, [F_V]
+	vpsubd ymm1, ymm1, ymm2
+	vpaddd ymm1, ymm1, ymm6             ; B = x0 - x1 - r
+	vmovdqu [F_V], ymm1
+	vmovdqu ymm2, ymm0                  ; A
+	R3X_TWIDDLE F_W1
+	MULW ymm0, ymm2, [F_W1], [F_TO], [F_TQ], ymm3, ymm4, ymm5
+	vmovdqu [esi + eax], ymm0           ; y1 = A·w^j
+	R3X_TWIDDLE F_W2
+	vmovdqu ymm2, [F_V]
+	MULW ymm0, ymm2, [F_W2], [F_TO], [F_TQ], ymm3, ymm4, ymm5
+	vmovdqu [edi + eax], ymm0           ; y2 = B·w^2j
+	R3X_ADVANCE
+	add eax, 32
+	cmp eax, edx
+	jb .word
+	R3X_DONE
+
+global Fullint64NttR3DitWIN_avx2
+Fullint64NttR3DitWIN_avx2:
+	R3X_SETUP
+.word:
+	R3X_TWIDDLE F_W1
+	vmovdqu ymm1, [esi + eax]
+	MULW ymm2, ymm1, [F_W1], [F_TO], [F_TQ], ymm3, ymm4, ymm5    ; y1' = y1·w^j
+	vmovdqu [F_V], ymm2
+	R3X_TWIDDLE F_W2
+	vmovdqu ymm1, [edi + eax]
+	MULW ymm3, ymm1, [F_W2], [F_TO], [F_TQ], ymm0, ymm4, ymm5    ; y2' = y2·w^2j
+	vmovdqu ymm2, [F_V]                 ; y1'
+	vmovdqu ymm0, [ecx + eax]           ; y0
+	vpaddd ymm1, ymm2, ymm3
+	RED ymm1, ymm4
+	vpaddd ymm1, ymm0, ymm1
+	RED ymm1, ymm4
+	vmovdqu [ecx + eax], ymm1           ; x0
+	vpsubd ymm1, ymm2, ymm3
+	vpaddd ymm1, ymm1, ymm6             ; d = y1' - y2'
+	vpsubd ymm3, ymm0, ymm3
+	vpaddd ymm3, ymm3, ymm6
+	RED ymm3, ymm4                      ; y0 - y2'
+	vpsubd ymm2, ymm0, ymm2
+	vpaddd ymm2, ymm2, ymm6
+	RED ymm2, ymm4                      ; y0 - y1'
+	vmovdqu [F_V], ymm2
+	MULW ymm0, ymm1, [K_OM], [K_OM], [K_OMQ], ymm2, ymm4, ymm5   ; r = ω·d
+	vpaddd ymm3, ymm3, ymm0
+	RED ymm3, ymm4
+	vmovdqu [esi + eax], ymm3           ; x1 = y0 - y2' + r
+	vmovdqu ymm1, [F_V]
+	vpsubd ymm1, ymm1, ymm0
+	vpaddd ymm1, ymm1, ymm6
+	RED ymm1, ymm4
+	vmovdqu [edi + eax], ymm1           ; x2 = y0 - y1' - r
+	R3X_ADVANCE
+	add eax, 32
+	cmp eax, edx
+	jb .word
+	R3X_DONE

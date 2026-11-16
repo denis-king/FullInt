@@ -44,8 +44,8 @@ namespace FullInt.Core
         /// <summary>
         /// From this many words in the shorter operand (and when the operands are not too
         /// unbalanced) the product goes through the AVX2 number-theoretic transforms (NttOps.cs,
-        /// NttAvx2.asm; x64 and x86 with AVX2), up to products of 2^21 words; the FFT above them. Below
-        /// 4·NttThreshold only when the product fills 0.6 of the transform (NttOps.Worth).
+        /// NttAvx2.asm; x64 and x86 with AVX2), up to products of 2^21 words; the FFT above them.
+        /// The transform lengths 2^k and 3·2^k keep it within 1.5 times the product.
         /// `FullInt.Benchmarks kara ntt` (Zen 3), with the NTT / the Toom and FFT levels alone:
         /// x64 768 words 0.78 (from 1024: 0.99), 896 0.64, 1024 0.60, 1536 0.57, 2048 0.45-0.49,
         /// 4096 0.35, 8192-131072 0.24-0.29 (C++ x64, whose Toom levels are faster: 0.73 at 1024,

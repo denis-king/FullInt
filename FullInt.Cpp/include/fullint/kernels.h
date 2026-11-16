@@ -54,6 +54,9 @@ void Fullint64NttDif3WIN_avx2(uint32_t* x, int64_t L, const uint32_t* w, const u
 void Fullint64NttDit1WIN_avx2(uint32_t* x, int64_t L, int64_t h, const uint32_t* w, const uint32_t* wq, uint32_t p);
 void Fullint64NttDit2WIN_avx2(uint32_t* x, int64_t L, int64_t h, const uint32_t* w, const uint32_t* wq, uint32_t p);
 void Fullint64NttDit3WIN_avx2(uint32_t* x, int64_t L, const uint32_t* w, const uint32_t* wq, uint32_t p);
+// the radix-3 level of a transform of 3M values; k: nine vectors of constants (Ntt.cpp)
+void Fullint64NttR3DifWIN_avx2(uint32_t* x, int64_t M, const uint32_t* k, uint32_t p);
+void Fullint64NttR3DitWIN_avx2(uint32_t* x, int64_t M, const uint32_t* k, uint32_t p);
 void Fullint64NttPointWIN_avx2(uint32_t* x, const uint32_t* y, int64_t n, uint32_t p, uint32_t pinv);
 void Fullint64NttScaleWIN_avx2(uint32_t* x, int64_t n, uint32_t p, uint32_t c, uint32_t cq);
 void Fullint64NttLoadWIN_avx2(const uint64_t* a, int64_t la, uint32_t* x, int64_t L, uint32_t p);

@@ -158,7 +158,7 @@ namespace FullInt.Core
                 return;
             }
 
-            if (lb >= lim.Ntt && NttOps.Worth(la + lb, lb >= 4 * lim.Ntt) && NativeNtt(core))
+            if (lb >= lim.Ntt && NttOps.Fits(la + lb) && NativeNtt(core))
             {
                 NttOps.Multiply(a, b, r);
                 return;
