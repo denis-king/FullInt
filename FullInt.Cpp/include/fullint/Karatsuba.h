@@ -33,7 +33,7 @@ struct Karatsuba
     // 0.59, 4096-8192 0.46-0.50, 16384-131072 0.40-0.50; of GMP 0.42-0.63 from 4096. x86: from
     // 96 words (C#, x86: 112 words 0.64, 128 0.57, 512 0.28, 2048 0.17, 32768 0.08).
 #if defined(_M_X64) || defined(__x86_64__)
-    static inline int NttThreshold = 1024;
+    static inline int NttThreshold = 896;   // (and from 448 when filled: 512, 768 words)
 #else
     static inline int NttThreshold = 96;
 #endif
@@ -41,6 +41,11 @@ struct Karatsuba
     static bool NttMultiply(CSpan a, CSpan b, Span r);
     // whether the NTT kernels are there and a product of len words fits them
     static bool NttFits(size_t len);
+    // whether the NTT pays off for a product of len words (C#: NttOps.Worth): from NttThreshold
+    // (full) whenever it fits, from half of it only when the product fills 0.9 of the transform
+    // (512, 768 words on 2048, 3072 digits: x64 of GMP 1.00-1.03 / 0.98-1.00 against the Toom
+    // levels' 1.12 / 1.13; not filled, 384 / 640 words: 1.25 / 1.16 against 1.11 / 1.12)
+    static bool NttWorth(size_t len, bool full);
     // the cyclic NTT (C#: NttOps.CyclicLength / MultiplyCyclic): the shortest m = 2^a or 3·2^a >= minWords
     // (0: no kernels or too long); r = a·b mod β^m - 1 through the cyclic convolution of 2m
     // digits, the carry out of the top brought in at the bottom, β^m - 1 written as 0

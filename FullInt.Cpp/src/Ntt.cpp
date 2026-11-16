@@ -285,6 +285,13 @@ bool Fits(size_t len) { return 2 * len <= (size_t(1) << MaxLog); }
 
 bool Karatsuba::NttFits(size_t len) { return Available() && Fits(len); }
 
+bool Karatsuba::NttWorth(size_t len, bool full)
+{
+    if (!NttFits(len)) return false;
+    size_t nd = 2 * len;
+    return full || 10 * nd >= 9 * Length(nd);
+}
+
 bool Karatsuba::NttMultiply(CSpan a, CSpan b, Span r)
 {
     if (r.size() != a.size() + b.size()) throw std::invalid_argument("r.size() must be a.size() + b.size()");

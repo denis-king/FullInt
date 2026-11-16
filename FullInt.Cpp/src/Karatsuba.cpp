@@ -93,7 +93,7 @@ void Karatsuba::Mul(CSpan a, CSpan b, Span r, Span scratch, const Limits& lim)
         return;
     }
 
-    if (lb >= (size_t)lim.Ntt && NttFits(la + lb))
+    if (lb >= (size_t)lim.Ntt / 2 && NttWorth(la + lb, lb >= (size_t)lim.Ntt))
     {
         NttMultiply(a, b, r);
         return;

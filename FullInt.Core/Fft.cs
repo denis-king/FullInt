@@ -45,7 +45,10 @@ namespace FullInt.Core
         /// From this many words in the shorter operand (and when the operands are not too
         /// unbalanced) the product goes through the AVX2 number-theoretic transforms (NttOps.cs,
         /// NttAvx2.asm; x64 and x86 with AVX2), up to products of 2^21 words; the FFT above them.
-        /// The transform lengths 2^k and 3·2^k keep it within 1.5 times the product.
+        /// The transform lengths 2^k and 3·2^k keep it within 1.5 times the product; from half
+        /// the threshold too when the product fills the transform (NttOps.Worth). With the 3·2^k
+        /// lengths (C#, `kara ntt`, x64): from 896, 896 words 0.55, 512 (filled) 0.70, 768 0.65,
+        /// 1024 0.46, 1280 0.66; 384 (filled, from 768) 1.08: 896 rather than 768.
         /// `FullInt.Benchmarks kara ntt` (Zen 3), with the NTT / the Toom and FFT levels alone:
         /// x64 768 words 0.78 (from 1024: 0.99), 896 0.64, 1024 0.60, 1536 0.57, 2048 0.45-0.49,
         /// 4096 0.35, 8192-131072 0.24-0.29 (C++ x64, whose Toom levels are faster: 0.73 at 1024,
@@ -53,7 +56,7 @@ namespace FullInt.Core
         /// none in the transforms) 96 words 0.85, 112 0.64, 128 0.57, 512 0.28, 2048 0.17, 8192
         /// 0.11, 32768 0.08.
         /// </summary>
-        public static int NttThreshold { get; set; } = Environment.Is64BitProcess ? 768 : 96;
+        public static int NttThreshold { get; set; } = Environment.Is64BitProcess ? 896 : 96;
 
         // the same rule as NativeFft: the x64 core's flag through an instance property
         private static bool NativeNtt(IFullIntCore core) =>

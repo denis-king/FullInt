@@ -134,6 +134,20 @@ namespace FullInt.Core
             return l3 >= n && l3 >= 48 ? l3 : L;
         }
 
+        /// <summary>
+        /// Whether the transforms pay off for a product of len words: from the threshold
+        /// (<paramref name="full"/>) whenever they fit; from half of it only when the product fills
+        /// the transform (0.9 of it: 512, 768 words on 2048, 3072 digits). C++ x64 (Zen 3), of
+        /// GMP, the Toom levels / the transforms: 512 words 1.12 / 1.00-1.03, 768 1.13 / 0.98-1.00,
+        /// but 384 (filled) 1.11 / 1.25 and 640 (0.83) 1.12 / 1.16.
+        /// </summary>
+        public static bool Worth(int len, bool full)
+        {
+            if (!Fits(len)) return false;
+            long nd = 2L * len;
+            return full || 10 * nd >= 9L * Length(nd);
+        }
+
         /// <summary>r = a·b, r.Length = a.Length + b.Length (a and b the same span: a square).</summary>
         public static void Multiply(Span<ulong> a, Span<ulong> b, Span<ulong> r) =>
             Convolve(a, b, r, Length(2L * r.Length));
