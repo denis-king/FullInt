@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 
 namespace FullInt.Core
 {
@@ -8,25 +7,11 @@ namespace FullInt.Core
         private static toBase Base = toBase.hex;
 
 
+        // 64 x 64 -> 128: FullHelper.BigMul (.NET 5+: Math.BigMul, one mul / mulx in the JIT's code;
+        // netstandard2.0: the 32-bit split)
         protected virtual void Mult128(ulong x, ulong y, bool isDec, out ulong lo, out ulong hi)
         {
-            const ulong mask32 = 0xFFFFFFFF;
-
-            ulong x0 = x & mask32;
-            ulong x1 = x >> 32;
-            ulong y0 = y & mask32;
-            ulong y1 = y >> 32;
-
-            ulong z0 = x0 * y0;
-            ulong z1 = x0 * y1;
-            ulong z2 = x1 * y0;
-            ulong z3 = x1 * y1;
-
-            ulong mid1 = z1 + (z0 >> 32);
-            ulong mid2 = z2 + (mid1 & mask32);
-
-            hi = z3 + (mid1 >> 32) + (mid2 >> 32);
-            lo = (mid2 << 32) | (z0 & mask32);
+            hi = FullHelper.BigMul(x, y, out lo);
         }
 		
         public void Multiply(ulong a, ulong b, bool isDec, out ulong low, out ulong high)
@@ -83,18 +68,7 @@ namespace FullInt.Core
             return q1 * b + q0;
         }
 
-        private static int LeadingZeroCount(ulong x)
-        {
-            if (x == 0) return 64;
-            int n = 0;
-            if (x <= 0x0000_0000_FFFF_FFFFUL) { n += 32; x <<= 32; }
-            if (x <= 0x0000_FFFF_FFFF_FFFFUL) { n += 16; x <<= 16; }
-            if (x <= 0x00FF_FFFF_FFFF_FFFFUL) { n += 8; x <<= 8; }
-            if (x <= 0x0FFF_FFFF_FFFF_FFFFUL) { n += 4; x <<= 4; }
-            if (x <= 0x3FFF_FFFF_FFFF_FFFFUL) { n += 2; x <<= 2; }
-            if (x <= 0x7FFF_FFFF_FFFF_FFFFUL) { n += 1; }
-            return n;
-        }
+        private static int LeadingZeroCount(ulong x) => FullHelper.LeadingZeroCount(x);   // lzcnt on .NET 5+
 
         // shld dst, src, s  (s = 0..63)
         private static ulong Shld(ulong dst, ulong src, int s) => s == 0 ? dst : (dst << s) | (src >> (64 - s));
@@ -124,47 +98,41 @@ namespace FullInt.Core
             }
             return sum;
         }
+        // result = value1 + value2 over result.Length words (the operands' missing top words 0); returns the
+        // carry out of result's top word. Word by word from the low end, the carry as 0 / 1.
         public ulong Add(Span<ulong> value1, Span<ulong> value2, Span<ulong> result)
         {
-            ulong sum;
-            ulong b1, b2;
-            //ulong baseMaxValue = Base == toBase.dec ? FullInt64.maxDecValue : ulong.MaxValue;
-            var value1LastIndex = value1.Length - 1;
-            var value2LastIndex = value2.Length - 1;
-            var resultLastIndex = result.Length - 1;
-
-            byte carry = 0;
-
-            for (int i = 0; i < result.Length; i++)
+            int i1 = value1.Length, i2 = value2.Length, ir = result.Length;
+            ulong carry = 0;
+            while (ir > 0 && i1 > 0 && i2 > 0)
             {
-                if (i < value1.Length) { b1 = value1[value1LastIndex - i]; } else { b1 = 0; }
-                if (i < value2.Length) { b2 = value2[value2LastIndex - i]; } else { b2 = 0; }
-
-
-                
-                sum = Adc64(b1, b2, ref carry);
-
-                //decimal corrections
-                if (Base == toBase.dec)
-                {
-                    carry = (byte)Div128(carry, sum, FullInt64.maxDecCapasity, out sum);
-                    //if (carry == 1)
-                    //{
-                        
-                    //}
-                    //else if (sum > FullInt64.maxDecValue)
-                    //{
-                    //    sum = sum - FullInt64.maxDecCapasity;
-                    //    carry = 1;
-                    //}
-                }
-                
-                result[resultLastIndex - i] = sum;
+                ulong a = value1[--i1], b = value2[--i2];
+                ulong t = a + b;
+                ulong c = t < a ? 1UL : 0UL;
+                t += carry;
+                c += t < carry ? 1UL : 0UL;
+                result[--ir] = t;
+                carry = c;
+            }
+            if (i2 > 0)   // the longer one's top words with the carry
+            {
+                value1 = value2;
+                i1 = i2;
+            }
+            while (ir > 0 && i1 > 0)
+            {
+                ulong t = value1[--i1] + carry;
+                carry = t < carry ? 1UL : 0UL;
+                result[--ir] = t;
+            }
+            if (ir > 0)
+            {
+                result[--ir] = carry;
+                carry = 0;
+                result.Slice(0, ir).Clear();
             }
             return carry;
         }
-
-		
 
         #region division (managed mirror of Div.asm / Div2Long.asm)
 
@@ -192,6 +160,18 @@ namespace FullInt.Core
                 return;
             }
 
+            // the divisor's top two words normalized (shifted left until the top bit is set) and the
+            // reciprocal of that pair: every digit then starts from one 3-by-2 division of the window's top
+            // words (FullHelper.Div3By2)
+            int s = LeadingZeroCount(divisor[0]);
+            ulong d1 = 0, d0 = 0, v = 0;
+            if (n >= 2)
+            {
+                d1 = Shld(divisor[0], divisor[1], s);
+                d0 = Shld(divisor[1], n > 2 ? divisor[2] : 0, s);
+                v = FullHelper.Reciprocal3By2(d1, d0);
+            }
+
             dividend.Slice(0, n).CopyTo(R.Slice(2));
             int pos = n, qi = 0;
 
@@ -210,7 +190,7 @@ namespace FullInt.Core
                 }
                 else
                 {
-                    digit = DivDigit(R, divisor, n);
+                    digit = DivDigit(R, divisor, n, s, d1, d0, v);
                 }
                 quotient[qi++] = digit;
 
@@ -218,54 +198,38 @@ namespace FullInt.Core
 
                 // shift the window one word left, bring in the next dividend word
                 R[0] = 0;
-                for (int i = 0; i < n; i++) R[1 + i] = R[2 + i];
+                R.Slice(2, n).CopyTo(R.Slice(1, n));
                 R[n + 1] = dividend[pos++];
             }
         }
 
-        private ulong DivDigit(Span<ulong> R, Span<ulong> D, int n)
+        private ulong DivDigit(Span<ulong> R, Span<ulong> D, int n, int s, ulong d1, ulong d0, ulong v)
         {
-            ulong uhi = R[1], ulo = R[2], dhi = D[0];
+            ulong uhi = R[1], ulo = R[2];
 
             if (n == 1)
             {
-                ulong digit1 = Div128(uhi, ulo, dhi, out ulong rem);
+                ulong digit1 = Div128(uhi, ulo, D[0], out ulong rem);
                 R[1] = 0;
                 R[2] = rem;
                 return digit1;
             }
 
-            // normalization shift (as in Div.asm: by Uhi | Dhi, Uhi <= Dhi, i.e. by Dhi)
-            int s = LeadingZeroCount(uhi | dhi);
+            // the window R[1 .. n+1] < D * b: its top three words normalized as the divisor's; their 3-by-2
+            // quotient is at least the digit (the left-out words only lower the true one) and at most a few
+            // above it - the corrections below take that
             ulong u2 = Shld(uhi, ulo, s);
             ulong u1 = Shld(ulo, R[3], s);
-            ulong d1 = D[1], d2 = n > 2 ? D[2] : 0;
-            ulong vhi = Shld(dhi, d1, s);
-            ulong vlo = Shld(d1, d2, s);
+            ulong u0 = Shld(R[3], n > 2 ? R[4] : 0, s);
+            ulong q = u2 > d1 || (u2 == d1 && u1 >= d0)
+                ? ulong.MaxValue                                   // the top words equal the divisor's
+                : FullHelper.Div3By2(u2, u1, u0, d1, d0, v, out _, out _);
 
-            // step 1: max and min candidates
-            ulong qmax = u2 >= vhi ? ulong.MaxValue : Div128(u2, u1, vhi, out _);
-            ulong qmin = vhi == ulong.MaxValue ? u2 : Div128(u2, u1, vhi + 1, out _);
-
-            // step 2: interpolate by the next divisor word, clamp to [min, max]
-            ulong q = qmax;
-            if (qmin != qmax)
-            {
-                ulong range = qmax - qmin + 1;
-                if (range != 0)
-                {
-                    ulong step = ulong.MaxValue / range;
-                    ulong offset = vlo / step;
-                    q = offset > qmax ? qmin : qmax - offset;
-                    if (q < qmin) q = qmin;
-                }
-            }
-
-            // step 3: window -= q * D  (D aligned with R[2 .. n+1], borrow runs into R[1], R[0])
+            // window -= q * D  (D aligned with R[2 .. n+1], borrow runs into R[1], R[0])
             ulong carry = 0;
             for (int i = n - 1; i >= 0; i--)
             {
-                Mult128(q, D[i], false, out ulong lo, out ulong hi);
+                ulong hi = FullHelper.BigMul(q, D[i], out ulong lo);
                 lo += carry;
                 if (lo < carry) hi++;
                 ulong r = R[i + 2];
@@ -350,9 +314,25 @@ namespace FullInt.Core
                 throw new System.DivideByZeroException();
             }
             ulong r = 0;
+            if (dividend.Length < 3)   // the reciprocal costs about one Div128
+            {
+                for (int i = 0; i < dividend.Length; i++)
+                {
+                    quotient[i] = Div128(r, dividend[i], divisor, out r);
+                }
+                remainder = r;
+                return;
+            }
+            // (r : w) / d = ((r : w) << s) / (d << s): the normalized divisor's reciprocal once, then one
+            // product a word (FullHelper.Div2By1) instead of a 128 / 64 division
+            int s = LeadingZeroCount(divisor);
+            ulong dn = divisor << s, v = FullHelper.Reciprocal2By1(dn);
             for (int i = 0; i < dividend.Length; i++)
             {
-                quotient[i] = Div128(r, dividend[i], divisor, out r);
+                ulong w = dividend[i];
+                ulong u1 = s == 0 ? r : (r << s) | (w >> (64 - s));
+                quotient[i] = FullHelper.Div2By1(u1, w << s, dn, v, out ulong rn);
+                r = rn >> s;
             }
             remainder = r;
         }
@@ -365,11 +345,13 @@ namespace FullInt.Core
             return r;
         }
 
+        private const ulong Base10 = 10000000000000000000UL;   // 10^19: the top bit set (normalized)
+        private static readonly ulong Base10Reciprocal = FullHelper.Reciprocal2By1(Base10);
+
         public void ToDecString(Span<ulong> value, Span<byte> resultBuf, out int resultStartIndex)
         {
-            const ulong BASE10 = 10000000000000000000UL; // 10^19
-
-            // repeated division by 10^19 (as ToDecString.asm); digits written right-aligned
+            // repeated division by 10^19 (as ToDecString.asm), each word by the reciprocal of 10^19; digits
+            // written right-aligned
             ulong[] tmp = value.ToArray();
             int start = 0;
             while (start < tmp.Length && tmp[start] == 0) start++;
@@ -380,7 +362,7 @@ namespace FullInt.Core
                 ulong rem = 0;
                 for (int i = start; i < tmp.Length; i++)
                 {
-                    tmp[i] = Div128(rem, tmp[i], BASE10, out rem);
+                    tmp[i] = FullHelper.Div2By1(rem, tmp[i], Base10, Base10Reciprocal, out rem);
                 }
                 while (start < tmp.Length && tmp[start] == 0) start++;
                 bool last = start == tmp.Length;
@@ -409,50 +391,44 @@ namespace FullInt.Core
             full.AsSpan(full.Length - r.Length).CopyTo(r);
         }
 
+        // result = value1 * value2: rows (operand scanning), one row per word of the shorter operand, the
+        // longer one's words times it added into result from the low end with a carry word. result.Length
+        // >= the two lengths: its words above the product 0; shorter: the low words of the product.
         public void Mult(Span<ulong> value1, Span<ulong> value2, Span<ulong> result)
         {
-            ulong multA, multB = 0;
-            ulong multHi, multLo = 0;
-            ulong addHi = 0, addMid = 0, addLo = 0;
-            var value1LastIndex = value1.Length - 1;
-            var value2LastIndex = value2.Length - 1;
-            var value1Index = 0;
-            var value1ShiftedIndex = 0;
-            var resultLastIndex = result.Length - 1;
-            byte carry = 0;
-
-            for (int i = 0; i < result.Length; i++)
+            int lr = result.Length;
+            if (lr < value1.Length + value2.Length)
             {
-                value1Index = value1LastIndex - i;
-                value1ShiftedIndex = value1Index;
-                for (int j = 0; j < value2.Length; j++)
+                var full = new ulong[value1.Length + value2.Length];
+                Mult(value1, value2, full);
+                full.AsSpan(full.Length - lr).CopyTo(result);
+                return;
+            }
+            if (value1.Length < value2.Length)
+            {
+                var t = value1;
+                value1 = value2;
+                value2 = t;
+            }
+            int la = value1.Length, lb = value2.Length;
+            result.Clear();
+            for (int j = 0; j < lb; j++)
+            {
+                ulong bj = value2[lb - 1 - j];
+                if (bj == 0) continue;
+                ulong carry = 0;
+                int k = lr - 1 - j;   // result's word of a_0 * b_j
+                for (int i = la - 1; i >= 0; i--, k--)
                 {
-                   
-                    if (value1ShiftedIndex >= 0 && value1ShiftedIndex < value1.Length)
-                    {
-                        multA = value1[value1ShiftedIndex];
-                        multB = value2[value2LastIndex - j];
-                        if (multA == 0 || multB == 0)
-                        {
-                            value1ShiftedIndex++; // `continue` skipped the increment below
-                            continue;
-                        }
-                        Multiply(multA, multB, Base == toBase.dec, out multLo, out multHi);
-                        
-                        //sum = sum + mult
-                        carry = 0;
-                        addLo = Adc64(addLo, multLo, ref carry);
-                        addMid = Adc64(addMid, multHi, ref carry);
-                        addHi += carry;
-                    }
-                    value1ShiftedIndex++;
+                    ulong hi = FullHelper.BigMul(value1[i], bj, out ulong lo);
+                    lo += carry;
+                    hi += lo < carry ? 1UL : 0UL;
+                    ulong t = result[k] + lo;
+                    hi += t < lo ? 1UL : 0UL;
+                    result[k] = t;
+                    carry = hi;
                 }
-
-                result[resultLastIndex - i] = addLo;
-                //свиг суммы вправо на 1 байт
-                addLo = addMid;
-                addMid = addHi;
-                addHi = 0;
+                result[k] = carry;   // the row's top word: not written by the rows before
             }
         }
 
@@ -484,38 +460,25 @@ namespace FullInt.Core
                 return compareResult;
             }
             
-            ulong sum;
-            ulong b1, b2 = 0;
-           
-            byte borrow = 0;
-            var valueGLastIndex = valueG.Length - 1;
-            var valueLLastIndex = valueL.Length - 1;
-            var resultLastIndex = result.Length - 1;
-
-            for (int i = 0; i < result.Length; i++)
+            // |G| - |L| from the low end, the borrow as 0 / 1
+            int ig = valueG.Length, il = valueL.Length, ir = result.Length;
+            ulong borrow = 0;
+            while (ir > 0 && il > 0)
             {
-                if (i < valueG.Length) { b1 = valueG[valueGLastIndex - i]; } else { b1 = 0; }
-                if (i < valueL.Length) { b2 = valueL[valueLLastIndex - i]; } else { b2 = 0; }
-
-                sum = Sbb64(b1, b2, ref borrow);
-
-                //dec correction
-                if(Base == toBase.dec && borrow == 1)
-                {
-                    sum -= (ulong.MaxValue - FullInt64.maxDecValue);
-                }
-                //if (b1 < b2 + borrow)
-                //{
-                //    sum = baseMaxValue - b2 - borrow + b1 + 1 - long + dec);
-                //    borrow = 1;
-                //}
-                //else
-                //{
-                //    sum = b1 - b2 - borrow;
-                //    borrow = 0;
-                //}
-                result[resultLastIndex - i] = sum;
+                ulong a = ig > 0 ? valueG[--ig] : 0, b = valueL[--il];
+                ulong d = a - b;
+                ulong bw = a < b ? 1UL : 0UL;
+                bw |= d < borrow ? 1UL : 0UL;
+                result[--ir] = d - borrow;
+                borrow = bw;
             }
+            while (ir > 0 && ig > 0)
+            {
+                ulong a = valueG[--ig];
+                result[--ir] = a - borrow;
+                borrow = a < borrow ? 1UL : 0UL;
+            }
+            if (ir > 0) result.Slice(0, ir).Clear();
 			return compareResult;
         }
 		
@@ -563,59 +526,42 @@ namespace FullInt.Core
         
         public void FromDecString(Span<byte> value, Span<ulong> resultBuf, out int resultStartIndex)
         {
-            const ulong BASE10 = 10000000000000000000UL; // 10^19
-
-            // --- Шаг 1. Парсинг строки в массив десятичных слов ---
+            // the digits as base-10^19 blocks, the most significant first
             int len = value.Length;
             int firstBlockSize = len % 19;
             if (firstBlockSize == 0) firstBlockSize = 19;
+            ulong[] decBuf = new ulong[(len - firstBlockSize) / 19 + 1];
 
-            List<ulong> decBuf = new List<ulong>();
-            int pos = 0;
-
-            // Первый блок
+            int pos = 0, count = 0;
             ulong block = 0;
             for (int i = 0; i < firstBlockSize; i++)
                 block = block * 10 + (ulong)(value[pos++] - (byte)'0');
-            decBuf.Add(block);
-
-            // Остальные блоки по 19 цифр
+            decBuf[count++] = block;
             while (pos < len)
             {
                 block = 0;
                 for (int i = 0; i < 19 && pos < len; i++)
                     block = block * 10 + (ulong)(value[pos++] - (byte)'0');
-                decBuf.Add(block);
+                decBuf[count++] = block;
             }
 
-            // --- Шаг 2. Многословное деление ---
+            // base 10^19 -> base 2^64: each pass divides the blocks by 2^64 (block = remainder * 10^19 + block,
+            // the high word the quotient, the low word the next remainder); the last remainder is a binary word
             int hexIndex = resultBuf.Length;
-
-            while (decBuf.Count > 0)
+            int start = 0;
+            while (start < count)
             {
                 ulong remainder = 0;
-
-                for (int i = 0; i < decBuf.Count; i++)
+                for (int i = start; i < count; i++)
                 {
-                    // block = remainder * BASE10 + decBuf[i]
-                    ulong hi, lo;
-                    Mult128(remainder, BASE10, false, out lo, out hi);
-
+                    ulong hi = FullHelper.BigMul(remainder, Base10, out ulong lo);
                     ulong blockLo = lo + decBuf[i];
-                    ulong blockHi = hi;
-                    if (blockLo < lo) blockHi++;
-
-                    // Делим на 2^64: hi = частное, lo = остаток
-                    decBuf[i] = blockHi;
+                    if (blockLo < lo) hi++;
+                    decBuf[i] = hi;
                     remainder = blockLo;
                 }
-
-                // Остаток = hex-слово
                 resultBuf[--hexIndex] = remainder;
-
-                // Убираем ведущие нули
-                while (decBuf.Count > 0 && decBuf[0] == 0)
-                    decBuf.RemoveAt(0);
+                while (start < count && decBuf[start] == 0) start++;
             }
 
             resultStartIndex = hexIndex;

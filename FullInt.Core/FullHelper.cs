@@ -199,6 +199,54 @@ namespace FullInt.Core
                 d1 = d1 << sh | d0 >> (64 - sh);
                 d0 <<= sh;
             }
+            ulong v = Reciprocal3By2(d1, d0);
+
+            ulong n2 = sh == 0 ? 0 : a[0] >> (64 - sh);   // u = A << sh: its top two words
+            ulong n1 = Shifted(a, 0, sh);
+            for (int i = 2; i <= la; i++)
+            {
+                q[i - 2] = Div3By2(n2, n1, Shifted(a, i - 1, sh), d1, d0, v, out n2, out n1);
+            }
+            rHi = sh != 0 ? n2 >> sh : n2;
+            rLo = sh != 0 ? n1 >> sh | n2 << (64 - sh) : n1;
+        }
+
+        // Division through the reciprocal of a normalized divisor (Moller, Granlund 2011): the quotient word
+        // from one product and a few corrections instead of a hardware 128 / 64 division.
+
+        /// <summary>v = floor((b^2 - 1) / d) - b for a normalized d (top bit set), b = 2^64.</summary>
+        public static ulong Reciprocal2By1(ulong d) => Div128(~d, ulong.MaxValue, d, out _);
+
+        /// <summary>(u1:u0) / d, u1 &lt; d, d normalized, v = Reciprocal2By1(d) (Algorithm 4).</summary>
+#if NETCOREAPP3_0_OR_GREATER
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+#endif
+        public static ulong Div2By1(ulong u1, ulong u0, ulong d, ulong v, out ulong r)
+        {
+            ulong q1 = BigMul(v, u1, out ulong q0);
+            q0 += u0;
+            q1 += u1 + (q0 < u0 ? 1UL : 0UL) + 1;
+            ulong rr = u0 - q1 * d;
+            if (rr > q0)
+            {
+                q1--;
+                rr += d;
+            }
+            if (rr >= d)   // rare
+            {
+                q1++;
+                rr -= d;
+            }
+            r = rr;
+            return q1;
+        }
+
+        /// <summary>
+        /// v for the 3-by-2 division by (d1:d0), d1 normalized: floor((b^3 - 1) / (d1:d0)) - b (invert_pi1, as
+        /// DivRecip.asm).
+        /// </summary>
+        public static ulong Reciprocal3By2(ulong d1, ulong d0)
+        {
             ulong v = Div128(~d1, ulong.MaxValue, d1, out _);   // floor((b^2 - 1) / d1) - b
             ulong p = d1 * v + d0;
             if (p < d0)
@@ -218,41 +266,42 @@ namespace FullInt.Core
                 v--;
                 if (p > d1 || (p == d1 && t0 >= d0)) v--;
             }
+            return v;
+        }
 
-            ulong n2 = sh == 0 ? 0 : a[0] >> (64 - sh);   // u = A << sh: its top two words
-            ulong n1 = Shifted(a, 0, sh);
-            for (int i = 2; i <= la; i++)
+        /// <summary>
+        /// (n2:n1:n0) / (d1:d0) with (n2:n1) &lt; (d1:d0), d1 normalized, v = Reciprocal3By2 (Algorithm 5): the
+        /// quotient word, the remainder (r1:r0).
+        /// </summary>
+#if NETCOREAPP3_0_OR_GREATER
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+#endif
+        public static ulong Div3By2(ulong n2, ulong n1, ulong n0, ulong d1, ulong d0, ulong v, out ulong r1, out ulong r0)
+        {
+            ulong qq = BigMul(v, n2, out ulong q0);
+            q0 += n1;
+            qq += n2 + (q0 < n1 ? 1UL : 0UL);
+            r1 = n1 - d1 * qq;
+            r0 = n0 - d0;
+            r1 = r1 - d1 - (n0 < d0 ? 1UL : 0UL);
+            ulong t1 = BigMul(d0, qq, out ulong t0);
+            r1 = r1 - t1 - (r0 < t0 ? 1UL : 0UL);
+            r0 -= t0;
+            qq++;
+            if (r1 >= q0)
             {
-                ulong n0 = Shifted(a, i - 1, sh);
-                ulong qq = BigMul(v, n2, out ulong q0);
-                q0 += n1;
-                qq += n2 + (q0 < n1 ? 1UL : 0UL);
-                ulong r1 = n1 - d1 * qq;
-                ulong r0 = n0 - d0;
-                r1 = r1 - d1 - (n0 < d0 ? 1UL : 0UL);
-                t1 = BigMul(d0, qq, out t0);
-                r1 = r1 - t1 - (r0 < t0 ? 1UL : 0UL);
-                r0 -= t0;
-                qq++;
-                if (r1 >= q0)
-                {
-                    qq--;
-                    ulong s = r0 + d0;
-                    r1 += d1 + (s < r0 ? 1UL : 0UL);
-                    r0 = s;
-                }
-                if (r1 >= d1 && (r1 > d1 || r0 >= d0))   // rare
-                {
-                    qq++;
-                    r1 = r1 - d1 - (r0 < d0 ? 1UL : 0UL);
-                    r0 -= d0;
-                }
-                q[i - 2] = qq;
-                n2 = r1;
-                n1 = r0;
+                qq--;
+                ulong s = r0 + d0;
+                r1 += d1 + (s < r0 ? 1UL : 0UL);
+                r0 = s;
             }
-            rHi = sh != 0 ? n2 >> sh : n2;
-            rLo = sh != 0 ? n1 >> sh | n2 << (64 - sh) : n1;
+            if (r1 >= d1 && (r1 > d1 || r0 >= d0))   // rare
+            {
+                qq++;
+                r1 = r1 - d1 - (r0 < d0 ? 1UL : 0UL);
+                r0 -= d0;
+            }
+            return qq;
         }
 
         // word i of A << sh in la + 1 words, counted from word 1 (a[i] with the top bits of a[i + 1])
