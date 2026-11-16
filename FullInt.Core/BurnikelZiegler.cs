@@ -215,10 +215,20 @@ namespace FullInt.Core
         public static int QuotientSplitFrom { get; set; } = 32;
 
         /// <summary>
-        /// The engine sends a / b to the quotient path from this many divisor words (shorter: the
-        /// core's Div; at 32 words the path is 0.95-0.99 of it, within noise).
+        /// The engine sends a / b here from this many divisor words with a quotient up to about as
+        /// long, from QuotientFrom / 2 with one up to twice as long, from QuotientFrom / 4 with a
+        /// longer one; shorter: the core's approximate quotient (<see cref="IFullIntCore.Quotient"/> -
+        /// it keeps up longer, its passes cut short: x64, Zen 3, C++ against this, 2N / N: 0.67 at
+        /// 48 words, 0.73 at 160, 0.95 at 192, 1.02 at 256; 3N / N: 0.87 at 48, 0.95 at 96-128,
+        /// 1.30 at 192; 5N / N: 0.90 at 48-64, 1.07 at 96).
         /// </summary>
-        public static int QuotientFrom { get; set; } = 48;
+        public static int QuotientFrom { get; set; } = 224;
+
+        public static bool QuotientByKernel(int la, int lb)
+        {
+            int qn = la - lb + 1, from = QuotientFrom;
+            return qn <= lb + 2 ? lb < from : qn <= 2 * lb + 2 ? lb < from * 5 / 8 : lb < from * 5 / 16;
+        }
 
         /// <summary>Same, with an explicit threshold (tests and tuning; at least 2).</summary>
         public static void Quotient(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> q, int threshold)
@@ -231,7 +241,7 @@ namespace FullInt.Core
             if (la - n + 2 < QuotientSplitFrom && n <= la - n + 4)
             {
                 // neither split nor cut below (see Approx): the exact division directly
-                Exact(core, a, b, q, rTmp, threshold);
+                ExactQuotient(core, a, b, q, threshold);
                 return;
             }
             Span<ulong> ae = la + 1 <= Local ? stackalloc ulong[la + 1] : new ulong[la + 1];   // A·β
@@ -272,8 +282,7 @@ namespace FullInt.Core
             // shorter: qn = 2 would split into a low half of 2 again, for ever)
             if (qn < Math.Max(4, QuotientSplitFrom))
             {
-                Span<ulong> rTmp = n + 2 <= Local ? stackalloc ulong[n + 2] : new ulong[n + 2];
-                Exact(core, a, b, q, rTmp, threshold);
+                ExactQuotient(core, a, b, q, threshold);
                 return 0;
             }
 
@@ -306,6 +315,22 @@ namespace FullInt.Core
             Span<ulong> qb = q.Slice(q.Length - (la - n + 1));
             if (n >= 2 * threshold && la - n >= 2 * threshold) DivRem(core, a, b, qb, r, threshold);
             else core.Div(a, b, qb, r);
+        }
+
+        // exact, the quotient alone (q as Exact): a kernel-sized block by the core's approximate
+        // quotient (it settles a doubtful guard word itself)
+        private static void ExactQuotient(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> q, int threshold)
+        {
+            a = FullHelper.DeleteZeros(a);
+            int la = a.Length, n = b.Length;
+            if ((n >= 2 * threshold && la - n >= 2 * threshold) || la <= n)
+            {
+                Span<ulong> rTmp = n + 2 <= Local ? stackalloc ulong[n + 2] : new ulong[n + 2];
+                Exact(core, a, b, q, rTmp, threshold);
+                return;
+            }
+            q.Clear();
+            core.Quotient(a, b, q.Slice(q.Length - (la - n + 1)));
         }
 
         private const int Local = 160;   // stack words per work buffer of the quotient path

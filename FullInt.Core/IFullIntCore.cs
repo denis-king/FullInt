@@ -19,6 +19,11 @@ namespace FullInt.Core
 		void MultLow(Span<ulong> a, Span<ulong> b, Span<ulong> r);
 		void Div(Span<ulong> dividend, Span<ulong> divisor, Span<ulong> quotient, Span<ulong> remainder);
 		void Div(Span<ulong> dividend, ulong divisor, Span<ulong> quotient, out ulong remainder);
+		// q = a / b alone (the Div contract, no remainder): the asm cores with the reciprocal kernel
+		// from 16 divisor words: DivRecip.asm's approximate quotient with a guard word (the passes of
+		// the last steps cut short: 2N / N about half the work; a guard in doubt is settled by q·B
+		// against A); the others Div into a scratch remainder
+		void Quotient(Span<ulong> dividend, Span<ulong> divisor, Span<ulong> quotient);
 
         // q = a / d for an a known to be a multiple of d (the Toom-Cook interpolation):
         // d = d'·2^t with d' odd and below 2^32 (t < 32); q.Length == a.Length, q may be a.

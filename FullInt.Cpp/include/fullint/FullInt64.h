@@ -126,23 +126,25 @@ private:
     uint64_t Word0() const noexcept { return Data()[0]; }
 
     // room for n words at offset 0 (the contents are not kept); returns the words
-    uint64_t* Prepare(uint32_t n)
+    FULLINT_FORCEINLINE uint64_t* Prepare(uint32_t n)
     {
-        if (n > cap_)
-        {
-            uint32_t capacity;
-            uint64_t* p = WordBuffers::Allocate(n, &capacity);
-            if (IsHeap()) WordBuffers::Free(heap_, cap_);
-            heap_ = p;
-            cap_ = capacity;
-        }
+        if (n > cap_) Grow(n);
         off_ = 0;
         size_ = n;
         return Base();
     }
 
+    FULLINT_NOINLINE void Grow(uint32_t n)
+    {
+        uint32_t capacity;
+        uint64_t* p = WordBuffers::Allocate(n, &capacity);
+        if (IsHeap()) WordBuffers::Free(heap_, cap_);
+        heap_ = p;
+        cap_ = capacity;
+    }
+
     // drops leading zero words (by the offset) and sets the sign; zero is never negative
-    void Normalize(bool negative) noexcept
+    FULLINT_FORCEINLINE void Normalize(bool negative) noexcept
     {
         const uint64_t* p = Base() + off_;
         while (size_ > 1 && *p == 0)
@@ -319,6 +321,23 @@ public:
     static void multInto(FullInt64& result, const FullInt64& value1, const FullInt64& value2);
     static void shiftLeftInto(FullInt64& result, const FullInt64& value, int shift);
     static void shiftRightInto(FullInt64& result, const FullInt64& value, int shift);
+    // op: 0 and, 1 or, 2 xor
+    static void bitwiseInto(FullInt64& result, int op, const FullInt64& value1, const FullInt64& value2);
+    // quotient / remainder straight into these numbers (either may be null; neither may be
+    // value1 or value2 - divRem takes care of that)
+    static void divRemInto(FullInt64* quotient, FullInt64* remainder, const FullInt64& value1, const FullInt64& value2)
+    {
+        divRem(value1, value2, quotient, remainder);
+    }
+private:
+    // the into-functions' rare cases that build a new number (kept out of them: the temporary
+    // gave each a large frame and an unwind state, several ns on every short call)
+    FULLINT_NOINLINE static void addIntoFresh(FullInt64& result, CSpan a, CSpan b, bool neg1, bool neg2);
+    FULLINT_NOINLINE static void multIntoAliased(FullInt64& result, const FullInt64& value1, const FullInt64& value2);
+    FULLINT_NOINLINE static void shiftIntoAliased(FullInt64& result, const FullInt64& value, int shift, bool left);
+    FULLINT_NOINLINE static void bitwiseIntoAliased(FullInt64& result, int op, const FullInt64& value1, const FullInt64& value2);
+    FULLINT_NOINLINE static void divRemAliased(const FullInt64& value1, const FullInt64& value2, FullInt64* quotient, FullInt64* remainder);
+public:
 
     // |a| vs |b| on normalized magnitudes: the length or the top word almost always decides
     static int CompareAbsQuick(CSpan value1, CSpan value2) noexcept
@@ -392,6 +411,12 @@ inline void Subtract(FullInt64& result, const FullInt64& a, const FullInt64& b) 
 inline void Multiply(FullInt64& result, const FullInt64& a, const FullInt64& b) { FullInt64Engine::multInto(result, a, b); }
 inline void ShiftLeft(FullInt64& result, const FullInt64& a, int shift) { FullInt64Engine::shiftLeftInto(result, a, shift); }
 inline void ShiftRight(FullInt64& result, const FullInt64& a, int shift) { FullInt64Engine::shiftRightInto(result, a, shift); }
+inline void And(FullInt64& result, const FullInt64& a, const FullInt64& b) { FullInt64Engine::bitwiseInto(result, 0, a, b); }
+inline void Or(FullInt64& result, const FullInt64& a, const FullInt64& b) { FullInt64Engine::bitwiseInto(result, 1, a, b); }
+inline void Xor(FullInt64& result, const FullInt64& a, const FullInt64& b) { FullInt64Engine::bitwiseInto(result, 2, a, b); }
+// truncating, as / and %
+inline void Divide(FullInt64& result, const FullInt64& a, const FullInt64& b) { FullInt64Engine::divRemInto(&result, nullptr, a, b); }
+inline void Remainder(FullInt64& result, const FullInt64& a, const FullInt64& b) { FullInt64Engine::divRemInto(nullptr, &result, a, b); }
 
 // compound assignment: in place where the operation allows it (+, - in a's own buffer)
 inline FullInt64& operator+=(FullInt64& a, const FullInt64& b) { FullInt64Engine::addInto(a, a, b, false); return a; }
@@ -399,9 +424,9 @@ inline FullInt64& operator-=(FullInt64& a, const FullInt64& b) { FullInt64Engine
 inline FullInt64& operator*=(FullInt64& a, const FullInt64& b) { FullInt64Engine::multInto(a, a, b); return a; }
 inline FullInt64& operator/=(FullInt64& a, const FullInt64& b) { return a = a / b; }
 inline FullInt64& operator%=(FullInt64& a, const FullInt64& b) { return a = a % b; }
-inline FullInt64& operator&=(FullInt64& a, const FullInt64& b) { return a = a & b; }
-inline FullInt64& operator|=(FullInt64& a, const FullInt64& b) { return a = a | b; }
-inline FullInt64& operator^=(FullInt64& a, const FullInt64& b) { return a = a ^ b; }
+inline FullInt64& operator&=(FullInt64& a, const FullInt64& b) { FullInt64Engine::bitwiseInto(a, 0, a, b); return a; }
+inline FullInt64& operator|=(FullInt64& a, const FullInt64& b) { FullInt64Engine::bitwiseInto(a, 1, a, b); return a; }
+inline FullInt64& operator^=(FullInt64& a, const FullInt64& b) { FullInt64Engine::bitwiseInto(a, 2, a, b); return a; }
 inline FullInt64& operator<<=(FullInt64& a, int shift) { return a = a << shift; }
 inline FullInt64& operator>>=(FullInt64& a, int shift) { return a = a >> shift; }
 inline FullInt64& operator++(FullInt64& a) { return a += FullInt64(1); }

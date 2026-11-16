@@ -14,6 +14,11 @@ namespace fullint {
 
 namespace {
 
+[[noreturn]] FULLINT_NOINLINE void ThrowDivideByZero()
+{
+    throw std::domain_error("division by zero");
+}
+
 // scratch for results that are dropped ("%" drops the quotient); grown on demand, per thread
 uint64_t* Scratch(size_t words)
 {
@@ -136,6 +141,31 @@ void FullInt64Engine::addInto(FullInt64& result, const FullInt64& value1, const 
         result.Normalize(negative);
         return;
     }
+    if (a.size() <= 2 && b.size() <= 2)   // two words: straight-line, no kernel call (all read first)
+    {
+        uint64_t a0 = a[a.size() - 1], a1 = a.size() == 2 ? a[0] : 0;
+        uint64_t b0 = b[b.size() - 1], b1 = b.size() == 2 ? b[0] : 0;
+        if (same)
+        {
+            uint64_t lo = a0 + b0, c = lo < a0 ? 1 : 0;
+            uint64_t mid = a1 + c, c2 = mid < c ? 1 : 0;
+            mid += b1;
+            c2 += mid < b1 ? 1 : 0;
+            uint64_t* q = result.Prepare(3);
+            q[0] = c2;
+            q[1] = mid;
+            q[2] = lo;
+            result.Normalize(neg1);
+            return;
+        }
+        bool aBig = a1 != b1 ? a1 > b1 : a0 >= b0;
+        uint64_t x1 = aBig ? a1 : b1, x0 = aBig ? a0 : b0, y1 = aBig ? b1 : a1, y0 = aBig ? b0 : a0;
+        uint64_t* q = result.Prepare(2);
+        q[0] = x1 - y1 - (x0 < y0 ? 1 : 0);
+        q[1] = x0 - y0;
+        result.Normalize(aBig ? neg1 : neg2);
+        return;
+    }
 
     uint32_t n = (uint32_t)std::max(a.size(), b.size()) + (same ? 1 : 0);
     uint64_t* p;
@@ -144,7 +174,7 @@ void FullInt64Engine::addInto(FullInt64& result, const FullInt64& value1, const 
         uint32_t end = result.off_ + result.size_;   // the aliased operand's words end here
         if (end < n)
         {
-            result = same ? addMagnitudes(a, b, neg1) : subMagnitudes(a, b, neg1, neg2);
+            addIntoFresh(result, a, b, neg1, neg2);
             return;
         }
         p = result.Base() + (end - n);
@@ -168,11 +198,26 @@ void FullInt64Engine::addInto(FullInt64& result, const FullInt64& value1, const 
     }
 }
 
+void FullInt64Engine::addIntoFresh(FullInt64& result, CSpan a, CSpan b, bool neg1, bool neg2)
+{
+    result = neg1 == neg2 ? addMagnitudes(a, b, neg1) : subMagnitudes(a, b, neg1, neg2);
+}
+
+void FullInt64Engine::multIntoAliased(FullInt64& result, const FullInt64& value1, const FullInt64& value2)
+{
+    result = mult(value1, value2);
+}
+
+void FullInt64Engine::shiftIntoAliased(FullInt64& result, const FullInt64& value, int shift, bool left)
+{
+    result = left ? shiftLeft(value, shift) : shiftRight(value, shift);
+}
+
 void FullInt64Engine::multInto(FullInt64& result, const FullInt64& value1, const FullInt64& value2)
 {
     if (&result == &value1 || &result == &value2)   // the multiply reads the operands throughout
     {
-        result = mult(value1, value2);
+        multIntoAliased(result, value1, value2);
         return;
     }
     CSpan a = value1.Words(), b = value2.Words();
@@ -193,12 +238,36 @@ void FullInt64Engine::shiftLeftInto(FullInt64& result, const FullInt64& value, i
 {
     if (&result == &value || shift < 0)
     {
-        result = shiftLeft(value, shift);
+        shiftIntoAliased(result, value, shift, true);
         return;
     }
     CSpan a = value.Words();
     uint32_t n = (uint32_t)a.size() + (uint32_t)shift / 64 + 1;
     bool negative = value.neg_;
+    if (a.size() <= 4)   // a few words: here, no kernel call (its entry cost more than the words)
+    {
+        size_t la = a.size();
+        int bits = shift % 64;
+        uint64_t* p = result.Prepare(n);
+        if (bits == 0)
+        {
+            p[0] = 0;
+            for (size_t i = 0; i < la; i++) p[1 + i] = a[i];
+        }
+        else
+        {
+            uint64_t prev = 0;   // the word above: its bits shifted out come down into p[i]
+            for (size_t i = 0; i < la; i++)
+            {
+                p[i] = prev << bits | a[i] >> (64 - bits);
+                prev = a[i];
+            }
+            p[la] = prev << bits;
+        }
+        for (size_t i = la + 1; i < n; i++) p[i] = 0;
+        result.Normalize(negative);
+        return;
+    }
     FullIntCore::ShiftLeft(a, shift, Span(result.Prepare(n), n));
     result.Normalize(negative);
 }
@@ -207,7 +276,7 @@ void FullInt64Engine::shiftRightInto(FullInt64& result, const FullInt64& value, 
 {
     if (&result == &value || shift < 0 || value.neg_)   // negative: floor rounding, the ordinary path
     {
-        result = shiftRight(value, shift);
+        shiftIntoAliased(result, value, shift, false);
         return;
     }
     CSpan a = value.Words();
@@ -285,9 +354,18 @@ FullInt64 FullInt64Engine::div(const FullInt64& value1, const FullInt64& value2,
 
 // The division itself. Truncating (the quotient rounds toward zero, the remainder has the
 // dividend's sign). Only the requested results are built; a dropped quotient goes to scratch.
+// The results are built in their own buffers; one that is an operand goes through
+// divRemAliased (locals moved in at the end - out of line: their unwind frame cost every short
+// division several ns).
 void FullInt64Engine::divRem(const FullInt64& value1, const FullInt64& value2, FullInt64* quotient, FullInt64* remainder)
 {
-    if (value2.IsZero()) throw std::domain_error("division by zero");
+    if ((quotient && (quotient == &value1 || quotient == &value2)) ||
+        (remainder && (remainder == &value1 || remainder == &value2 || remainder == quotient)))
+    {
+        divRemAliased(value1, value2, quotient, remainder);
+        return;
+    }
+    if (value2.IsZero()) ThrowDivideByZero();
 
     CSpan dividend = value1.Words(), divisor = value2.Words();   // normalized: divisor[0] != 0
     bool neg1 = value1.neg_, neg2 = value2.neg_;
@@ -305,7 +383,7 @@ void FullInt64Engine::divRem(const FullInt64& value1, const FullInt64& value2, F
     if (CompareAbsQuick(dividend, divisor) == -1)
     {
         if (remainder) *remainder = value1;
-        if (quotient) *quotient = FullInt64();
+        if (quotient) quotient->SetWords(false, 0, 0);
         return;
     }
 
@@ -328,10 +406,8 @@ void FullInt64Engine::divRem(const FullInt64& value1, const FullInt64& value2, F
         uint64_t r1 = 0;
         if (quotient)
         {
-            FullInt64 q;
-            FullIntCore::Div(dividend, divisor[0], Span(q.Prepare(la), la), &r1);
-            q.Normalize(neg1 != neg2);
-            *quotient = std::move(q);
+            FullIntCore::Div(dividend, divisor[0], Span(quotient->Prepare(la), la), &r1);
+            quotient->Normalize(neg1 != neg2);
         }
         else
         {
@@ -341,11 +417,32 @@ void FullInt64Engine::divRem(const FullInt64& value1, const FullInt64& value2, F
         return;
     }
 
-    // the remainder kernel buffer is lenB + 2 words (internal calculation), the value right-aligned
+#if defined(_M_X64) || defined(__x86_64__)
+    if (lb == 2 && Cpu::Has(Cpu::Recip))   // two words: the 3-by-2 steps directly (FullIntCore::DivBy2)
+    {
+        uint64_t local[32], rw[4];
+        uint64_t* pq = quotient ? quotient->Prepare(la - 1) : la - 1 <= std::size(local) ? local : Scratch(la - 1);
+        FullIntCore::DivBy2(dividend, divisor, Span(pq, la - 1), Span(rw, 4));
+        if (remainder)
+        {
+            uint64_t* p = remainder->Prepare(2);
+            p[0] = rw[2];
+            p[1] = rw[3];
+            remainder->Normalize(neg1);
+        }
+        if (quotient) quotient->Normalize(neg1 != neg2);
+        return;
+    }
+#endif
+
+    // the remainder kernel buffer is lenB + 2 words (internal calculation), the value right-aligned;
+    // a result not asked for goes to scratch (one of the two at most)
     uint32_t lq = la - lb + 1;
-    FullInt64 q, r;
-    uint64_t* pr = r.Prepare(lb + 2);
-    uint64_t* pq = quotient ? q.Prepare(lq) : Scratch(lq);
+    uint64_t local[32];   // a short dropped result: on the stack (the thread_local lookup cost a few ns)
+    uint32_t dropped = remainder ? lq : lb + 2;
+    uint64_t* scratch = dropped <= std::size(local) ? local : Scratch(dropped);
+    uint64_t* pr = remainder ? remainder->Prepare(lb + 2) : scratch;
+    uint64_t* pq = quotient ? quotient->Prepare(lq) : scratch;
     std::memset(pr, 0, (lb + 2) * sizeof(uint64_t));
     std::memset(pq, 0, lq * sizeof(uint64_t));
 
@@ -358,23 +455,26 @@ void FullInt64Engine::divRem(const FullInt64& value1, const FullInt64& value2, F
     }
     // the quotient alone (a / b): an approximate quotient with a guard word, no remainder;
     // a long divisor with a short quotient is cut down to the quotient's length there
-    else if (!remainder && lb >= (uint32_t)BurnikelZiegler::QuotientFrom)
-        BurnikelZiegler::Quotient(dividend, divisor, Span(pq, lq));
+    else if (!remainder)   // the remainder not computed
+    {
+        if (BurnikelZiegler::QuotientByKernel(la, lb)) FullIntCore::Quotient(dividend, divisor, Span(pq, lq));
+        else BurnikelZiegler::Quotient(dividend, divisor, Span(pq, lq));
+    }
     else if (lb >= 2 * (uint32_t)BurnikelZiegler::Threshold && la - lb >= 2 * (uint32_t)BurnikelZiegler::Threshold)
         BurnikelZiegler::DivRem(dividend, divisor, Span(pq, lq), Span(pr, lb + 2));
     else
         FullIntCore::Div(dividend, divisor, Span(pq, lq), Span(pr, lb + 2));
 
-    if (remainder)
-    {
-        r.Normalize(neg1);
-        *remainder = std::move(r);
-    }
-    if (quotient)
-    {
-        q.Normalize(neg1 != neg2);
-        *quotient = std::move(q);
-    }
+    if (remainder) remainder->Normalize(neg1);
+    if (quotient) quotient->Normalize(neg1 != neg2);
+}
+
+void FullInt64Engine::divRemAliased(const FullInt64& value1, const FullInt64& value2, FullInt64* quotient, FullInt64* remainder)
+{
+    FullInt64 q, r;
+    divRem(value1, value2, quotient ? &q : nullptr, remainder ? &r : nullptr);
+    if (remainder) *remainder = std::move(r);
+    if (quotient) *quotient = std::move(q);
 }
 
 #pragma endregion
@@ -383,6 +483,19 @@ void FullInt64Engine::divRem(const FullInt64& value1, const FullInt64& value2, F
 
 FullInt64 FullInt64Engine::bitwise(int op, const FullInt64& value1, const FullInt64& value2)
 {
+    FullInt64 r;
+    bitwiseInto(r, op, value1, value2);
+    return r;
+}
+
+// result = value1 op value2 in result's buffer; result aliased with an operand: a new number
+void FullInt64Engine::bitwiseInto(FullInt64& result, int op, const FullInt64& value1, const FullInt64& value2)
+{
+    if (&result == &value1 || &result == &value2)
+    {
+        bitwiseIntoAliased(result, op, value1, value2);
+        return;
+    }
     CSpan a = value1.Words(), b = value2.Words();
     if (!value1.neg_ && !value2.neg_)
     {
@@ -391,32 +504,36 @@ FullInt64 FullInt64Engine::bitwise(int op, const FullInt64& value1, const FullIn
         // 1-16 words through the kernel: 12-19 ns against GMP's 5-8)
         if (a.size() < b.size()) std::swap(a, b);
         size_t la = a.size(), lb = b.size(), d = la - lb;
-        FullInt64 r;
         if (op == 0)
         {
-            uint64_t* p = r.Prepare((uint32_t)lb);
+            uint64_t* p = result.Prepare((uint32_t)lb);
             for (size_t i = 0; i < lb; i++) p[i] = a[d + i] & b[i];
         }
         else
         {
-            uint64_t* p = r.Prepare((uint32_t)la);
+            uint64_t* p = result.Prepare((uint32_t)la);
             for (size_t i = 0; i < d; i++) p[i] = a[i];
             if (op == 1) for (size_t i = 0; i < lb; i++) p[d + i] = a[d + i] | b[i];
             else for (size_t i = 0; i < lb; i++) p[d + i] = a[d + i] ^ b[i];
         }
-        r.Normalize(false);
-        return r;
+        result.Normalize(false);
+        return;
     }
     uint32_t n = (uint32_t)std::max(a.size(), b.size()) + 1;
-    FullInt64 r;
-    Span rs(r.Prepare(n), n);
+    Span rs(result.Prepare(n), n);
 
     int negative = op == 0 ? FullIntCore::And(a, value1.neg_, b, value2.neg_, rs)
                  : op == 1 ? FullIntCore::Or(a, value1.neg_, b, value2.neg_, rs)
                  : FullIntCore::Xor(a, value1.neg_, b, value2.neg_, rs);
 
-    r.Normalize(negative != 0);
-    return r;
+    result.Normalize(negative != 0);
+}
+
+void FullInt64Engine::bitwiseIntoAliased(FullInt64& result, int op, const FullInt64& value1, const FullInt64& value2)
+{
+    FullInt64 r;
+    bitwiseInto(r, op, value1, value2);
+    result = std::move(r);
 }
 
 FullInt64 FullInt64Engine::shiftLeftGeneral(const FullInt64& value, int shift)

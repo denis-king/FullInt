@@ -83,6 +83,7 @@ int  Fullint64CompareWIN_avx2(const uint64_t* a, const uint64_t* b, int lenA, in
 void Fullint64FftAddSubWIN_adx(uint64_t* u, uint64_t* v, int n1);
 // DivRecip.asm's long division with the multiply-subtract pass on mulx / adcx / adox (BMI2 + ADX)
 void Fullint64DivWIN_recipadx(const uint64_t* a, const uint64_t* b, uint64_t* q, uint64_t* r, int lenA, int lenB, uint64_t* work);
+uint64_t Fullint64DivQWIN_recipadx(const uint64_t* a, const uint64_t* b, uint64_t* q, uint64_t* r, int lenA, int lenB, uint64_t* work);
 void Fullint64FftShlModWIN_bmi2(const uint64_t* x, uint64_t* dst, int n1, int s);
 // R = A² without BMI2 / ADX (Sqr.asm, mul / adc), the same contract as Fullint64SqrWIN_adx
 void Fullint64SqrWIN(const uint64_t* a, uint64_t* r, int lenA, int lenR);
@@ -97,6 +98,10 @@ int  Fullint64XorWIN_sse2(const uint64_t* a, const uint64_t* b, uint64_t* r, int
 // work = lenA + lenB + 2 words of scratch; otherwise the contracts of the baseline Div / Div2long.
 void Fullint64Div2longWIN_recip(const uint64_t* a, uint64_t b, uint64_t* q, uint64_t* r, int lenA);
 void Fullint64DivWIN_recip(const uint64_t* a, const uint64_t* b, uint64_t* q, uint64_t* r, int lenA, int lenB, uint64_t* work);
+// the quotient alone, approximately (sbpi1_divappr_q): q = lenA - lenB + 2 words ~ floor(A*beta / B)
+// within 1 (the last word the guard; returns 0), or 1: saturated, divide exactly; r unused,
+// work = lenA + 3 words, lenB >= 3; the rest as Div
+uint64_t Fullint64DivQWIN_recip(const uint64_t* a, const uint64_t* b, uint64_t* q, uint64_t* r, int lenA, int lenB, uint64_t* work);
 // ToDecString with the division by 10^19 through its reciprocal (ToDecStringRecip.asm, x64 and x86)
 void Fullint64ToDecStringWIN_recip(const uint64_t* value, uint64_t* valueBuf, uint8_t* resultBuf, int lenValue, int* lenResult);
 

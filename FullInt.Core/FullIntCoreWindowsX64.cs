@@ -127,6 +127,21 @@ namespace FullInt.Core
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern void Fullint64DivWIN_recipadx(IntPtr a, IntPtr b, IntPtr q, IntPtr r, int lenA, int lenB, IntPtr work);
 
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern ulong Fullint64DivQWIN_recip(IntPtr a, IntPtr b, IntPtr q, IntPtr r, int lenA, int lenB, IntPtr work);
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern ulong Fullint64DivQWIN_recipadx(IntPtr a, IntPtr b, IntPtr q, IntPtr r, int lenA, int lenB, IntPtr work);
+
+        // DivRecip.asm's approximate quotient (0: done; 1: saturated)
+        protected override bool QuotientKernel(IntPtr a, IntPtr b, IntPtr qa, int lenA, int lenB, IntPtr work)
+        {
+            if (!DivRecip) return false;
+            ulong saturated = MultAdx
+                ? Fullint64DivQWIN_recipadx(a, b, qa, IntPtr.Zero, lenA, lenB, work)
+                : Fullint64DivQWIN_recip(a, b, qa, IntPtr.Zero, lenA, lenB, work);
+            return saturated == 0;
+        }
+
         private static void DivRecipKernel(IntPtr a, IntPtr b, IntPtr q, IntPtr r, int lenA, int lenB, IntPtr work)
         {
             // the multiply-subtract pass on mulx / adcx / adox: 1.06-1.10x from 64-word divisors,

@@ -28,11 +28,20 @@ struct BurnikelZiegler
     static void Quotient(CSpan a, CSpan b, Span q);
 
     // Quotient splits (the top half exact, the low half approximately) from this many quotient
-    // words; the engine sends a / b here from QuotientFrom words of divisor (shorter: the kernel).
-    // x64, Zen 3, 2N / N, of the kernel division: 0.93 at 48 words, 0.85 at 64, 0.76-0.78 at
-    // 96-128, 0.57 at 192 (GMP mpz_tdiv_q: 0.74 / 0.69 / 0.59 / 0.55); 24-32 words 1.02-1.07.
+    // words.
     static inline int QuotientSplitFrom = 32;
-    static inline int QuotientFrom = 48;
+    // The engine sends a / b here from QuotientFrom words of divisor with a quotient up to about
+    // as long, from QuotientFrom / 2 with one up to twice as long, from QuotientFrom / 4 with a
+    // longer one; shorter: the kernel's approximate quotient (FullIntCore::Quotient - it keeps up
+    // longer, its passes cut short: x64, Zen 3, the kernel against this, 2N / N: 0.67 at 48
+    // words, 0.73 at 160, 0.95 at 192, 1.02 at 256; 3N / N: 0.87 at 48, 0.95 at 96-128, 1.30
+    // at 192; 5N / N: 0.90 at 48-64, 1.07 at 96).
+    static inline int QuotientFrom = 224;
+    static bool QuotientByKernel(size_t la, size_t lb)
+    {
+        size_t qn = la - lb + 1, from = (size_t)QuotientFrom;
+        return qn <= lb + 2 ? lb < from : qn <= 2 * lb + 2 ? lb < from * 5 / 8 : lb < from * 5 / 16;
+    }
     static void Quotient(CSpan a, CSpan b, Span q, int threshold);
 
 private:
@@ -41,6 +50,7 @@ private:
     static void Basecase(CSpan a, CSpan b, Span q, Span r, Span scratch);
     static int Approx(CSpan a, CSpan b, Span q, int threshold);
     static void Exact(CSpan a, CSpan b, Span q, Span r, int threshold);
+    static void ExactQuotient(CSpan a, CSpan b, Span q, int threshold);
     // the recursion's work words for a block of n: Div2n1n(n) takes 3n/2 + Div3n2n, which takes
     // 2n + 1 + Div2n1n(n/2); a leaf 2n + 3 (its quotient and remainder)
     // (an odd block splits into ceil/floor halves: <= 7n + O(log n) + a leaf of 2·threshold + 3;

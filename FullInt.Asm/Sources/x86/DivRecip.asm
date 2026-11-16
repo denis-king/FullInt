@@ -568,8 +568,12 @@ Fullint64DivWIN_recip_v1:
 %%done:
 %endmacro
 
-global Fullint64DivWIN_recip_v2
-Fullint64DivWIN_recip_v2:
+; %1 the name, %2 = 1: the approximate quotient (x64/DivRecip.asm, Fullint64DivQWIN_recip:
+; Q' = lenA - lenB + 2 words ~ floor(A·β / B) within 1, returns 0; or saturated, returns 1;
+; R unused; work: lenA + 3 words; lenA > lenB >= 3)
+%macro DIV_RECIP_V2 2
+global %1
+%1:
 	push ebp
 	push ebx
 	push esi
@@ -594,6 +598,11 @@ Fullint64DivWIN_recip_v2:
 	inc edx
 	cmp edx, ecx
 	jb .copyA
+%if %2
+	xor eax, eax                ; U = [0, A, 0]
+	mov [edi + edx*8 + 16], eax
+	mov [edi + edx*8 + 20], eax
+%endif
 
 	; sh = a * 32 + b: the leading zeros of B[0]
 	mov esi, [VA_B]
@@ -641,6 +650,9 @@ Fullint64DivWIN_recip_v2:
 	mov eax, [VA_LA]
 	sub eax, [VA_LB]
 	inc eax
+%if %2
+	inc eax                     ; and the guard word
+%endif
 	mov [V_STEPS], eax          ; lenA - lenB + 1 quotient words
 	mov eax, [VA_Q]
 	mov [V_QP], eax
@@ -679,6 +691,25 @@ Fullint64DivWIN_recip_v2:
 %assign k k + 1
 %endrep
 
+%if %2
+	; the top 4 digits of T == S: q^ = 2^64 - 1; above S: saturated (the left-out error)
+	mov eax, [TT]
+	cmp eax, [L_D1]
+	jb .mini
+	ja .saturate
+	mov eax, [TT + 4]
+	cmp eax, [L_D0]
+	jb .mini
+	ja .saturate
+	mov eax, [TT + 8]
+	cmp eax, [V_S1]
+	jb .mini
+	ja .saturate
+	mov eax, [TT + 12]
+	cmp eax, [V_S0]
+	jb .mini
+	ja .saturate
+%else
 	; the top 4 digits of T == S: q^ = 2^64 - 1
 	mov eax, [TT]
 	cmp eax, [L_D1]
@@ -692,6 +723,7 @@ Fullint64DivWIN_recip_v2:
 	mov eax, [TT + 12]
 	cmp eax, [V_S0]
 	jne .mini
+%endif
 	mov dword [QLO], -1
 	mov dword [QHI], -1
 	jmp .submul
@@ -706,6 +738,14 @@ Fullint64DivWIN_recip_v2:
 .submul:                        ; W -= q^ * B, from the low end (as the q·D pass of Div.asm)
 	mov edi, [VA_B]
 	mov esi, [V_LB]
+%if %2
+	mov eax, [V_STEPS]
+	add eax, 4                  ; the words of B kept: min(lenB, steps left + 4)
+	cmp esi, eax
+	jbe .submulCount
+	mov esi, eax
+.submulCount:
+%endif
 	dec esi
 .submulLoop:
 	mov eax, [edi + esi*8]      ; B[i] * q^ = P3:P2:P1:P0 (P2:P1 in ecx:ebx)
@@ -743,7 +783,14 @@ Fullint64DivWIN_recip_v2:
 
 	mov eax, [ebp]
 	or eax, [ebp + 4]
+%if %2
+	jz .stored
+	test dword [ebp + 4], 80000000h
+	jnz .addBack                ; W < 0 (rare): its top word is beta - 1 or - 2
+	jmp .saturate               ; a small top word: the window reached B (the left-out error)
+%else
 	jnz .addBack                ; W < 0 (rare): its top word is not 0
+%endif
 .stored:
 	mov edx, [V_QP]
 	mov eax, [QLO]
@@ -755,6 +802,11 @@ Fullint64DivWIN_recip_v2:
 	add ebp, 8                  ; the next window
 	dec dword [V_STEPS]
 	jnz .step
+%if %2
+	xor eax, eax                ; 0: Q' within 1
+.done:
+	xor edx, edx                ; (the result is u64: edx:eax)
+%else
 
 	; the remainder: the low lenB words of the last window (at ebp now) -> R[2 ..]
 	mov edx, [VA_R]
@@ -773,6 +825,7 @@ Fullint64DivWIN_recip_v2:
 	inc esi
 	cmp esi, ecx
 	jb .copyR
+%endif
 
 	add esp, FRV
 	pop edi
@@ -795,11 +848,33 @@ Fullint64DivWIN_recip_v2:
 	dec eax
 	jmp .borrowLoop
 
+%if %2
+.saturate:                      ; the rest of Q' (this word on) is beta - 1
+	mov edx, [V_QP]
+	mov ecx, [V_STEPS]
+.saturateLoop:
+	mov dword [edx], -1
+	mov dword [edx + 4], -1
+	add edx, 8
+	dec ecx
+	jnz .saturateLoop
+	mov eax, 1                  ; 1: saturated
+	jmp .done
+%endif
+
 .addBack:                       ; q^ - 1, W += B, until the top word of W is 0
 	sub dword [QLO], 1
 	sbb dword [QHI], 0
 	mov edi, [VA_B]
 	mov esi, [V_LB]
+%if %2
+	mov eax, [V_STEPS]
+	add eax, 4                  ; the same words of B as the pass
+	cmp esi, eax
+	jbe .addBackCount
+	mov esi, eax
+.addBackCount:
+%endif
 	xor eax, eax                ; CF = 0
 .addBackLoop:
 	mov eax, [edi + esi*8 - 8]
@@ -814,3 +889,7 @@ Fullint64DivWIN_recip_v2:
 	or eax, [ebp + 4]
 	jnz .addBack
 	jmp .stored
+%endmacro
+
+DIV_RECIP_V2 Fullint64DivWIN_recip_v2, 0
+DIV_RECIP_V2 Fullint64DivQWIN_recip, 1

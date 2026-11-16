@@ -125,8 +125,28 @@ Fullint64Div2longWIN_recip:
 ;  rbx q^; rax / rdx / rbp / r11 / r15 scratch. R's address waits in the home slot of r9.
 ; =============================================================================
 
-; the long division; %1 the name, %2 = 1: the multiply-subtract pass with mulx / adcx / adox
-%macro DIV_RECIP_LONG 2
+;------------------------------------------------------------------------------
+;  u64 Fullint64DivQWIN_recip(A, B, Q, R, int lenA, int lenB, u64* work)   (and _recipadx)
+;  The quotient alone, approximately (GMP's sbpi1_divappr_q): Q' ~ floor(A*beta / B), lenA -
+;  lenB + 2 words (the quotient and one guard word below it), R unused, work: lenA + 2
+;  words. U = [0, A, 0]; the window moves down as above, but the multiply-subtract pass
+;  leaves out every word of U below index L = steps + 4 (counted from U's top; a step uses
+;  only the top min(lenB, steps left + 4) words of B): the last lenB - 5 steps get shorter
+;  and shorter (2N / N: about half the passes' work). The words left out change the window
+;  by less than steps·beta^-(steps + 3) of U's scale - two words below anything the estimate
+;  reads - so each q^ stays the exact quotient of what is kept, and
+;    Q' = floor(A*beta / B) + {-1, 0, 1}
+;  (the final window is in [0, B + that error)), returns 0. The caller takes Q'[0 .. steps - 2]
+;  when the guard word is not 0 or beta - 1, otherwise checks that against A by one product.
+;  (n2 n1) == (d1 d0) gives q^ = beta - 1 as above (with the error the window may then stay a
+;  little above B: the next words and the bound take that). A window above B's top words
+;  (n2 n1 > d1 d0) or a nonzero top word after the pass - only the left-out error can do
+;  that - ends it: the rest of Q' is beta - 1, returns 1 (the caller divides exactly).
+;------------------------------------------------------------------------------
+
+; the long division; %1 the name, %2 = 1: the multiply-subtract pass with mulx / adcx / adox,
+; %3 = 1: the approximate quotient (above)
+%macro DIV_RECIP_LONG 3
 global %1
 %1:
 	push rbx
@@ -154,6 +174,10 @@ global %1
 	jb .copyA
 	sub r10, r9
 	inc r10                     ; steps = lenA - lenB + 1
+%if %3
+	mov qword [rdi + rax*8 + 8], 0   ; U = [0, A, 0]
+	inc r10                     ; one more step: the guard word
+%endif
 
 	; d1, d0: the top two words of B normalized
 	mov r12, [rsi]
@@ -215,10 +239,19 @@ global %1
 	shld rbx, r11, cl
 	shld r11, r15, cl
 	shld r15, rax, cl
+%if %3
+	cmp rbx, r12
+	jb .estimate
+	ja .saturate                ; (n2, n1) > (d1, d0): the left-out error only
+	cmp r11, r13
+	je .qMax                    ; (n2, n1) == (d1, d0): q^ = beta - 1 (exact data, all-ones B)
+	ja .saturate
+%else
 	cmp rbx, r12
 	jne .estimate
 	cmp r11, r13
 	je .qMax                    ; (n2, n1) == (d1, d0)
+%endif
 
 .estimate:                      ; 3-by-2: (n2 n1 n0) / (d1 d0) -> rbx
 	mov rax, r14
@@ -257,6 +290,11 @@ global %1
 	; W[i] + ~that + 1 on the OF chain (a subtraction as an add); loop control by lea / jrcxz
 	mov rdx, rbx
 	mov rcx, r9                 ; index (rcx free here: sh reloaded per step)
+%if %3
+	lea rax, [r10 + 4]          ; the words of B kept: min(lenB, steps left + 4)
+	cmp rcx, rax
+	cmova rcx, rax
+%endif
 	xor r11d, r11d              ; the previous high half; OF = 1 (the + 1), CF = 0 set below
 	test ecx, 1                 ; (flags: only OF / CF matter from here, and test clears both:
 	jz .submulAdxPairs          ;  set them again below)
@@ -296,8 +334,17 @@ global %1
 	seto al                     ; 0: a borrow out of the top - W < 0
 	test al, al
 	jz .addBack
+%if %3
+	cmp qword [rdi], 0
+	jne .saturate               ; the window reached B (the left-out error)
+%endif
 %else
 	mov rbp, r9
+%if %3
+	lea rax, [r10 + 4]          ; the words of B kept: min(lenB, steps left + 4)
+	cmp rbp, rax
+	cmova rbp, rax
+%endif
 	xor r11d, r11d              ; carry
 	test ebp, 1
 	jz .submulPairs
@@ -326,6 +373,9 @@ global %1
 	jnz .submulPairs
 	sub [rdi], r11
 	jc .addBack                 ; rare: q^ was one too many
+%if %3
+	jnz .saturate               ; the window reached B (the left-out error)
+%endif
 %endif
 .stored:
 	mov [r8], rbx
@@ -334,6 +384,10 @@ global %1
 	mov ecx, [rsp+58h]          ; sh
 	dec r10
 	jnz .step
+%if %3
+	xor eax, eax                ; 0: Q' within 1
+.done:
+%else
 
 	; the remainder: the last window's low lenB words (its top word is 0) -> R[2 ..]
 	mov rdx, [rsp+60h]
@@ -347,6 +401,7 @@ global %1
 	inc rcx
 	cmp rcx, r9
 	jb .copyR
+%endif
 
 	pop r15
 	pop r14
@@ -373,9 +428,24 @@ global %1
 	inc rbx
 	jmp .submul
 
+%if %3
+.saturate:                      ; the rest of Q' (this word on) is beta - 1
+	mov qword [r8], -1
+	add r8, 8
+	dec r10
+	jnz .saturate
+	mov eax, 1                  ; 1: saturated
+	jmp .done
+%endif
+
 .addBack:                       ; W < 0: q^ - 1, W += B (until the carry comes out of the top)
 	dec rbx
 	mov rbp, r9
+%if %3
+	lea rax, [r10 + 4]          ; the same words of B as the pass
+	cmp rbp, rax
+	cmova rbp, rax
+%endif
 	xor eax, eax                ; CF = 0
 .addBackLoop:
 	mov rax, [rsi + rbp*8 - 8]
@@ -387,5 +457,7 @@ global %1
 	jmp .stored
 %endmacro
 
-DIV_RECIP_LONG Fullint64DivWIN_recip, 0
-DIV_RECIP_LONG Fullint64DivWIN_recipadx, 1     ; BMI2 + ADX
+DIV_RECIP_LONG Fullint64DivWIN_recip, 0, 0
+DIV_RECIP_LONG Fullint64DivWIN_recipadx, 1, 0     ; BMI2 + ADX
+DIV_RECIP_LONG Fullint64DivQWIN_recip, 0, 1
+DIV_RECIP_LONG Fullint64DivQWIN_recipadx, 1, 1

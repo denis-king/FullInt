@@ -636,6 +636,31 @@ void InPlaceApi()
         CHECK(shared == (a << shift), "ShiftLeft " + ctx);
         fullint::ShiftRight(shared, a, shift);
         CHECK(shared == (a >> shift), "ShiftRight " + ctx);
+        fullint::And(shared, a, b);
+        CHECK(shared == (a & b), "And " + ctx);
+        fullint::Or(shared, a, b);
+        CHECK(shared == (a | b), "Or " + ctx);
+        fullint::Xor(shared, a, b);
+        CHECK(shared == (a ^ b), "Xor " + ctx);
+        if (!b.IsZero())
+        {
+            fullint::Divide(shared, a, b);
+            CHECK(shared == a / b, "Divide " + ctx);
+            fullint::Remainder(shared, a, b);
+            CHECK(shared == a % b, "Remainder " + ctx);
+            FullInt64 d(a), m(a), e(b);
+            fullint::Divide(d, d, b);
+            CHECK(d == a / b, "Divide into a " + ctx);
+            fullint::Remainder(m, m, b);
+            CHECK(m == a % b, "Remainder into a " + ctx);
+            fullint::Divide(e, a, e);
+            CHECK(e == a / b, "Divide into b " + ctx);
+        }
+        FullInt64 g(a), h(b);
+        g &= b;
+        CHECK(g == (a & b), "&= " + ctx);
+        h ^= a;
+        CHECK(h == (a ^ b), "^= " + ctx);
 
         FullInt64 x(a);   // into a
         fullint::Add(x, x, b);

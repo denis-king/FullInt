@@ -399,6 +399,9 @@ namespace FullInt.Core
 
         public void Sqr(Span<ulong> a, Span<ulong> r) => Mult(a, a, r);
 
+        public void Quotient(Span<ulong> dividend, Span<ulong> divisor, Span<ulong> quotient) =>
+            Div(dividend, divisor, quotient, new ulong[divisor.Length + 2]);
+
         public void MultLow(Span<ulong> a, Span<ulong> b, Span<ulong> r)
         {
             var full = new ulong[a.Length + b.Length];

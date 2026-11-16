@@ -17,8 +17,10 @@
 #pragma once
 
 #include <fullint/Cpu.h>
+#include <fullint/FullHelper.h>
 
 #include <utility>
+#include <vector>
 #include <fullint/kernels.h>
 
 #include <cstdint>
@@ -56,7 +58,7 @@ struct FullIntCore
     // one word longer: AddSubN.asm on the shorter operand's words and the carry through the
     // other one's top here (the general kernel resolves lengths and runs, which cost more than
     // the words on a few: 4.9 ns on one word against 1.4); otherwise Add.asm.
-    static uint64_t Add(CSpan a, CSpan b, Span r) noexcept
+    FULLINT_FORCEINLINE static uint64_t Add(CSpan a, CSpan b, Span r) noexcept
     {
         if (a.size() < b.size()) std::swap(a, b);
         size_t la = a.size(), lb = b.size(), lr = r.size();
@@ -76,7 +78,7 @@ struct FullIntCore
 
     // r = |a - b|; returns the sign of a - b. Equal lengths: compared from the top here, then
     // AddSubN.asm on the larger minus the smaller; otherwise Sub.asm (it skips leading zeros).
-    static int Sub(CSpan a, CSpan b, Span r) noexcept
+    FULLINT_FORCEINLINE static int Sub(CSpan a, CSpan b, Span r) noexcept
     {
         size_t n = a.size();
         if (n != b.size() || r.size() < n || n == 0)
@@ -128,6 +130,13 @@ struct FullIntCore
 
     static void Div(CSpan dividend, CSpan divisor, Span quotient, Span remainder) noexcept
     {
+#if defined(_M_X64) || defined(__x86_64__)
+        if (divisor.size() == 2 && dividend.size() > 2 && Cpu::Has(Cpu::Recip))
+        {
+            DivBy2(dividend, divisor, quotient, remainder);
+            return;
+        }
+#endif
         // DivRecip.asm; equal lengths (a quotient of 0 or 1) stay with the baseline: it decides
         // those by a compare, the reciprocal's own div would not pay off
         if (Cpu::Has(Cpu::Recip) && divisor.size() >= 2 && dividend.size() > divisor.size())
@@ -151,6 +160,168 @@ struct FullIntCore
         }
         Fullint64DivWin(dividend.data(), divisor.data(), quotient.data(), remainder.data(), (int)dividend.size(), (int)divisor.size());
     }
+
+    // The quotient alone (a / b; the Div contract, quotient.size() = lenA - lenB + 1, no
+    // remainder): DivRecip.asm's approximate quotient (the multiply-subtract passes of the last
+    // lenB steps cut short: 2N / N about half the work) with a guard word below it -
+    // floor(A*beta / B) within 1, so the words above are exact unless the guard is 0 or beta - 1
+    // (an exact multiple: 0): then the true quotient is they or one less / one more, decided by
+    // q*B against A (one product, as GMP's mpn_div_q). Saturated (or without the kernel): Div.
+    // below: the guard word's extra step costs more than the shorter passes save (x64, Zen 3,
+    // 2N / N against Div: 3-6 words 1.15-1.38, 8-12 0.9-1.1, 16 0.84, 32 0.74, 64 0.63)
+    static constexpr size_t QuotientWordsMin = 16;
+
+    static void Quotient(CSpan dividend, CSpan divisor, Span quotient) noexcept
+    {
+        size_t la = dividend.size(), lb = divisor.size(), lq = quotient.size();
+        if (Cpu::Has(Cpu::Recip) && lb >= QuotientWordsMin && la > lb)
+        {
+            size_t words = (lq + 1) + (la + 3);
+            uint64_t stackWork[96];
+            uint64_t* qa = words <= std::size(stackWork) ? stackWork : DivWork(words);
+            uint64_t* work = qa + lq + 1;
+#if defined(_M_X64) || defined(__x86_64__)
+            uint64_t saturated = Cpu::Has(Cpu::Bmi2 | Cpu::Adx)
+                ? Fullint64DivQWIN_recipadx(dividend.data(), divisor.data(), qa, nullptr, (int)la, (int)lb, work)
+                : Fullint64DivQWIN_recip(dividend.data(), divisor.data(), qa, nullptr, (int)la, (int)lb, work);
+#else
+            uint64_t saturated = Fullint64DivQWIN_recip(dividend.data(), divisor.data(), qa, nullptr, (int)la, (int)lb, work);
+#endif
+            if (!saturated)
+            {
+                std::copy(qa, qa + lq, quotient.data());
+                if (qa[lq] + 1 > 1) return;   // the guard neither 0 nor beta - 1
+                QuotientFix(dividend, divisor, quotient, Span(work, la + 1));
+                return;
+            }
+        }
+        size_t rn = divisor.size() + 2;
+        if (rn > 64)
+        {
+            QuotientByDivLong(dividend, divisor, quotient);
+            return;
+        }
+        uint64_t r[64];
+        std::fill(r, r + rn, 0);   // the kernels take both zeroed (as the engine leaves them)
+        std::fill(quotient.begin(), quotient.end(), 0);
+        Div(dividend, divisor, quotient, Span(r, rn));
+    }
+
+    // (out of line: the vector would give Quotient an unwind frame on every short call)
+    FULLINT_NOINLINE static void QuotientByDivLong(CSpan dividend, CSpan divisor, Span quotient)
+    {
+        std::vector<uint64_t> r(divisor.size() + 2);
+        std::fill(quotient.begin(), quotient.end(), 0);
+        Div(dividend, divisor, quotient, Span(r.data(), r.size()));
+    }
+
+    // q within 1 of floor(A / B): fixed by D = A - q*B (p: la + 1 words of scratch)
+    static void QuotientFix(CSpan a, CSpan b, Span q, Span p) noexcept
+    {
+        size_t la = a.size();
+        Mult(q, b, p);   // lq + lb = la + 1 words
+        uint64_t borrow = 0;
+        for (size_t i = la + 1; i-- > 0;)   // p = [0, A] - p
+        {
+            uint64_t x = i ? a[i - 1] : 0, y = p[i];
+            uint64_t d = x - y;
+            uint64_t b1 = x < y ? 1 : 0;
+            p[i] = d - borrow;
+            borrow = b1 | (d < borrow ? 1 : 0);
+        }
+        if (borrow)   // q*B > A: q - 1
+        {
+            for (size_t i = q.size(); i-- > 0;)
+                if (q[i]-- != 0) break;
+            return;
+        }
+        size_t s = 0;
+        while (s < p.size() && p[s] == 0) s++;
+        if (s < p.size() && Compare(CSpan(p.data() + s, p.size() - s), b) >= 0)   // D >= B: q + 1
+            for (size_t i = q.size(); i-- > 0;)
+                if (++q[i] != 0) break;
+    }
+
+#if defined(_M_X64) || defined(__x86_64__)
+    // A two-word divisor (GMP's mpn_divrem_2): one 3-by-2 division per quotient word with the
+    // reciprocal of the normalized divisor (Moller, Granlund 2011, Algorithm 5; v as invert_pi1
+    // in DivRecip.asm), the dividend shifted on the fly, no kernel call (its entry, copy and
+    // multiply-subtract set-up cost more than the words here: 2N / N at 2 words 35 ns, GMP 24).
+    // The Div contract: quotient lenA - 1 words, remainder 4 words (the value in the low two).
+    static void DivBy2(CSpan a, CSpan b, Span q, Span r) noexcept
+    {
+        size_t la = a.size();
+        int sh = FullHelper::LeadingZeroCount(b[0]);
+        uint64_t d1 = b[0], d0 = b[1];
+        if (sh)
+        {
+            d1 = d1 << sh | d0 >> (64 - sh);
+            d0 <<= sh;
+        }
+        uint64_t rem, p, t0, t1;
+        uint64_t v = FullHelper::Div128(~d1, ~0ull, d1, &rem);   // floor((b^2 - 1) / d1) - b
+        p = d1 * v + d0;
+        if (p < d0)
+        {
+            v--;
+            if (p >= d1)
+            {
+                v--;
+                p -= d1;
+            }
+            p -= d1;
+        }
+        t1 = FullHelper::BigMul(d0, v, &t0);
+        p += t1;
+        if (p < t1)
+        {
+            v--;
+            if (p > d1 || (p == d1 && t0 >= d0)) v--;
+        }
+
+        // u = A << sh, la + 1 words: (n2 n1) = its top two (below d), one quotient word per word after
+        auto U = [&](size_t i) -> uint64_t {   // u[i], 0 <= i <= la
+            uint64_t hi = i == 0 ? 0 : a[i - 1];
+            if (!sh) return hi;
+            uint64_t lo = i < la ? a[i] : 0;
+            return hi << sh | lo >> (64 - sh);
+        };
+        uint64_t n2 = U(0), n1 = U(1);
+        for (size_t i = 2; i <= la; i++)
+        {
+            uint64_t n0 = U(i), q0, qq = FullHelper::BigMul(v, n2, &q0);
+            q0 += n1;
+            qq += n2 + (q0 < n1 ? 1 : 0);
+            uint64_t r1 = n1 - d1 * qq;
+            uint64_t r0 = n0 - d0;
+            r1 = r1 - d1 - (n0 < d0 ? 1 : 0);
+            t1 = FullHelper::BigMul(d0, qq, &t0);
+            r1 = r1 - t1 - (r0 < t0 ? 1 : 0);
+            r0 -= t0;
+            qq++;
+            if (r1 >= q0)
+            {
+                qq--;
+                uint64_t s = r0 + d0;
+                r1 += d1 + (s < r0 ? 1 : 0);
+                r0 = s;
+            }
+            if (r1 >= d1 && (r1 > d1 || r0 >= d0))   // rare
+            {
+                qq++;
+                r1 = r1 - d1 - (r0 < d0 ? 1 : 0);
+                r0 -= d0;
+            }
+            q[i - 2] = qq;
+            n2 = r1;
+            n1 = r0;
+        }
+        r[0] = 0;
+        r[1] = 0;
+        r[2] = sh ? n2 >> sh : n2;
+        r[3] = sh ? n1 >> sh | n2 << (64 - sh) : n1;
+    }
+#endif
 
     static void Div(CSpan dividend, uint64_t divisor, Span quotient, uint64_t* remainder) noexcept
     {

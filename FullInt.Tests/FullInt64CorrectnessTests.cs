@@ -552,6 +552,14 @@ namespace FullInt.Tests
                         FullInt64.Multiply(result, a, b); Assert.AreEqual(A * B, Big(result), "mul " + ctx);
                         FullInt64.ShiftLeft(result, a, shift); Assert.AreEqual(A << shift, Big(result), "shl " + ctx);
                         FullInt64.ShiftRight(result, a, shift); Assert.AreEqual(BigCompat.ShiftRightFloor(A, shift), Big(result), "shr " + ctx);
+                        FullInt64.And(result, a, b); Assert.AreEqual(A & B, Big(result), "and " + ctx);
+                        FullInt64.Or(result, a, b); Assert.AreEqual(A | B, Big(result), "or " + ctx);
+                        FullInt64.Xor(result, a, b); Assert.AreEqual(A ^ B, Big(result), "xor " + ctx);
+                        if (!B.IsZero)
+                        {
+                            FullInt64.Divide(result, a, b); Assert.AreEqual(BigInteger.Divide(A, B), Big(result), "div " + ctx);
+                            FullInt64.Remainder(result, a, b); Assert.AreEqual(BigInteger.Remainder(A, B), Big(result), "rem " + ctx);
+                        }
                         break;
                     case 1:
                         var x = new FullInt64(a.Sing, (ulong[])a.value.Clone());
@@ -560,12 +568,29 @@ namespace FullInt.Tests
                         FullInt64.Multiply(x, x, b); Assert.AreEqual(A * B, Big(x), "mul into a " + ctx);
                         FullInt64.ShiftLeft(x, x, shift); Assert.AreEqual((A * B) << shift, Big(x), "shl into a " + ctx);
                         FullInt64.ShiftRight(x, x, shift); Assert.AreEqual(BigCompat.ShiftRightFloor((A * B) << shift, shift), Big(x), "shr into a " + ctx);
+                        FullInt64.And(x, x, b); Assert.AreEqual(A * B & B, Big(x), "and into a " + ctx);
+                        var x2 = new FullInt64(a.Sing, (ulong[])a.value.Clone());
+                        FullInt64.Xor(x2, x2, b); Assert.AreEqual(A ^ B, Big(x2), "xor into a " + ctx);
+                        if (!B.IsZero)
+                        {
+                            var x3 = new FullInt64(a.Sing, (ulong[])a.value.Clone());
+                            FullInt64.Divide(x3, x3, b); Assert.AreEqual(BigInteger.Divide(A, B), Big(x3), "div into a " + ctx);
+                            var x4 = new FullInt64(a.Sing, (ulong[])a.value.Clone());
+                            FullInt64.Remainder(x4, x4, b); Assert.AreEqual(BigInteger.Remainder(A, B), Big(x4), "rem into a " + ctx);
+                        }
                         break;
                     default:
                         var y = new FullInt64(b.Sing, (ulong[])b.value.Clone());
                         FullInt64.Add(y, a, y); Assert.AreEqual(A + B, Big(y), "add into b " + ctx);
                         FullInt64.Subtract(y, a, y); Assert.AreEqual(-B, Big(y), "sub into b " + ctx);
                         FullInt64.Multiply(y, a, y); Assert.AreEqual(-A * B, Big(y), "mul into b " + ctx);
+                        var y2 = new FullInt64(b.Sing, (ulong[])b.value.Clone());
+                        FullInt64.Or(y2, a, y2); Assert.AreEqual(A | B, Big(y2), "or into b " + ctx);
+                        if (!B.IsZero)
+                        {
+                            var y3 = new FullInt64(b.Sing, (ulong[])b.value.Clone());
+                            FullInt64.Divide(y3, a, y3); Assert.AreEqual(BigInteger.Divide(A, B), Big(y3), "div into b " + ctx);
+                        }
                         break;
                 }
             }

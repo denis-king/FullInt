@@ -119,6 +119,9 @@ namespace FullInt.Core
         /// </summary>
         public static ulong BigMul(ulong x, ulong y, out ulong lo)
         {
+#if NET5_0_OR_GREATER
+            return Math.BigMul(x, y, out lo);   // one mul on x64 (the split below: ~4x the time)
+#else
             const ulong mask32 = 0xFFFFFFFF;
             ulong x0 = x & mask32, x1 = x >> 32, y0 = y & mask32, y1 = y >> 32;
             ulong z0 = x0 * y0;
@@ -126,6 +129,90 @@ namespace FullInt.Core
             ulong mid2 = x1 * y0 + (mid1 & mask32);
             lo = (mid2 << 32) | (z0 & mask32);
             return x1 * y1 + (mid1 >> 32) + (mid2 >> 32);
+#endif
+        }
+
+        // A two-word divisor (GMP's mpn_divrem_2): one 3-by-2 division per quotient word with the
+        // reciprocal of the normalized divisor (Moller, Granlund 2011, Algorithm 5; v as invert_pi1
+        // in DivRecip.asm), the dividend shifted on the fly. a: at least 3 words, a[0] != 0;
+        // b: 2 words, b[0] != 0; q: a.Length - 1 words; the remainder (rHi, rLo).
+        // (fully optimized from the first call: a short-lived run left this loop in a lower JIT tier
+        // and the path at 3x the time of the core's Div it replaces)
+#if NETCOREAPP3_0_OR_GREATER
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
+#endif
+        public static void DivBy2(Span<ulong> a, Span<ulong> b, Span<ulong> q, out ulong rHi, out ulong rLo)
+        {
+            int la = a.Length;
+            int sh = LeadingZeroCount(b[0]);
+            ulong d1 = b[0], d0 = b[1];
+            if (sh != 0)
+            {
+                d1 = d1 << sh | d0 >> (64 - sh);
+                d0 <<= sh;
+            }
+            ulong v = Div128(~d1, ulong.MaxValue, d1, out _);   // floor((b^2 - 1) / d1) - b
+            ulong p = d1 * v + d0;
+            if (p < d0)
+            {
+                v--;
+                if (p >= d1)
+                {
+                    v--;
+                    p -= d1;
+                }
+                p -= d1;
+            }
+            ulong t1 = BigMul(d0, v, out ulong t0);
+            p += t1;
+            if (p < t1)
+            {
+                v--;
+                if (p > d1 || (p == d1 && t0 >= d0)) v--;
+            }
+
+            ulong n2 = sh == 0 ? 0 : a[0] >> (64 - sh);   // u = A << sh: its top two words
+            ulong n1 = Shifted(a, 0, sh);
+            for (int i = 2; i <= la; i++)
+            {
+                ulong n0 = Shifted(a, i - 1, sh);
+                ulong qq = BigMul(v, n2, out ulong q0);
+                q0 += n1;
+                qq += n2 + (q0 < n1 ? 1UL : 0UL);
+                ulong r1 = n1 - d1 * qq;
+                ulong r0 = n0 - d0;
+                r1 = r1 - d1 - (n0 < d0 ? 1UL : 0UL);
+                t1 = BigMul(d0, qq, out t0);
+                r1 = r1 - t1 - (r0 < t0 ? 1UL : 0UL);
+                r0 -= t0;
+                qq++;
+                if (r1 >= q0)
+                {
+                    qq--;
+                    ulong s = r0 + d0;
+                    r1 += d1 + (s < r0 ? 1UL : 0UL);
+                    r0 = s;
+                }
+                if (r1 >= d1 && (r1 > d1 || r0 >= d0))   // rare
+                {
+                    qq++;
+                    r1 = r1 - d1 - (r0 < d0 ? 1UL : 0UL);
+                    r0 -= d0;
+                }
+                q[i - 2] = qq;
+                n2 = r1;
+                n1 = r0;
+            }
+            rHi = sh != 0 ? n2 >> sh : n2;
+            rLo = sh != 0 ? n1 >> sh | n2 << (64 - sh) : n1;
+        }
+
+        // word i of A << sh in la + 1 words, counted from word 1 (a[i] with the top bits of a[i + 1])
+        private static ulong Shifted(Span<ulong> a, int i, int sh)
+        {
+            if (sh == 0) return a[i];
+            ulong lo = i + 1 < a.Length ? a[i + 1] : 0;
+            return a[i] << sh | lo >> (64 - sh);
         }
 
         /// <summary>

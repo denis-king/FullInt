@@ -164,6 +164,73 @@ namespace FullInt.Core
 
 		protected abstract void Div(IntPtr a, IntPtr b, IntPtr q, IntPtr r, int lenA, int lenB);
 		protected abstract void Div(IntPtr a, ulong b, IntPtr q, out ulong r, int lenA);
+
+		public unsafe void Quotient(Span<ulong> dividend, Span<ulong> divisor, Span<ulong> quotient)
+		{
+			int la = dividend.Length, lb = divisor.Length, lq = quotient.Length;
+			if (lb >= QuotientWordsMin && la > lb)
+			{
+				int words = lq + 1 + la + 3;   // Q' (lq + 1), the kernel's work (la + 3)
+				ulong[]? rented = null;
+				Span<ulong> buf = words <= FullHelper.StackAllocLimitWords
+					? stackalloc ulong[words]
+					: (rented = System.Buffers.ArrayPool<ulong>.Shared.Rent(words));
+				bool done;
+				fixed (ulong* pA = dividend)
+				fixed (ulong* pB = divisor)
+				fixed (ulong* pQ = quotient)
+				fixed (ulong* pW = buf)
+				{
+					done = QuotientKernel((IntPtr)pA, (IntPtr)pB, (IntPtr)pW, la, lb, (IntPtr)(pW + lq + 1))
+						&& QuotientFinish(pA, pB, pQ, pW, la, lb, lq, pW + lq + 1);
+				}
+				if (rented != null) System.Buffers.ArrayPool<ulong>.Shared.Return(rented);
+				if (done) return;
+			}
+			int rn = lb + 2;
+			ulong[]? rRented = null;
+			Span<ulong> r = rn <= FullHelper.StackAllocLimitWords ? stackalloc ulong[rn] : FullHelper.RentZeroed(rn, out rRented);
+			Div(dividend, divisor, quotient, r);
+			FullHelper.Return(rRented);
+		}
+
+		// below: the guard word's extra step costs more than the shorter passes save (x64, Zen 3,
+		// 2N / N against Div: 3-6 words 1.15-1.38, 8-12 0.9-1.1, 16 0.84, 32 0.74, 64 0.63)
+		protected const int QuotientWordsMin = 16;
+
+		// the approximate quotient: Q' = lenA - lenB + 2 words into qa (floor(A·β / B) within 1),
+		// work: lenA + 3 words; false: no such kernel here, or it saturated (divide exactly)
+		protected virtual bool QuotientKernel(IntPtr a, IntPtr b, IntPtr qa, int lenA, int lenB, IntPtr work) => false;
+
+		// Q' -> q: the words above the guard; a guard of 0 or β - 1 (an exact multiple: 0) leaves
+		// the quotient they or one less / one more, decided by D = A - q·B (p: la + 1 words)
+		private unsafe bool QuotientFinish(ulong* a, ulong* b, ulong* q, ulong* qa, int la, int lb, int lq, ulong* p)
+		{
+			for (int i = 0; i < lq; i++) q[i] = qa[i];
+			if (qa[lq] + 1 > 1) return true;
+			Mult((IntPtr)q, (IntPtr)b, (IntPtr)p, lq, lb, la + 1);
+			ulong borrow = 0;
+			for (int i = la; i >= 0; i--)   // p = [0, A] - p
+			{
+				ulong x = i > 0 ? a[i - 1] : 0, y = p[i];
+				ulong d = x - y;
+				ulong b1 = x < y ? 1UL : 0UL;
+				p[i] = d - borrow;
+				borrow = b1 | (d < borrow ? 1UL : 0UL);
+			}
+			if (borrow != 0)   // q·B > A: q - 1
+			{
+				for (int i = lq - 1; i >= 0; i--)
+					if (q[i]-- != 0) break;
+				return true;
+			}
+			int s = 0;
+			while (s <= la && p[s] == 0) s++;
+			if (s <= la && Compare((IntPtr)(p + s), (IntPtr)b, la + 1 - s, lb) >= 0)   // D >= B: q + 1
+				for (int i = lq - 1; i >= 0; i--)
+					if (++q[i] != 0) break;
+			return true;
+		}
 		
 		public int Compare(Span<ulong> a, Span<ulong> b)
 		{

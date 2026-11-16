@@ -195,7 +195,7 @@ void BurnikelZiegler::Quotient(CSpan a, CSpan b, Span q, int threshold)
     if (la - n + 2 < (size_t)QuotientSplitFrom && n <= la - n + 4)
     {
         // neither split nor cut below (see Approx): the exact division directly
-        Exact(a, b, q, rTmp.span(), threshold);
+        ExactQuotient(a, b, q, threshold);
         return;
     }
     LocalWords ae(la + 1);                                           // A·β
@@ -235,8 +235,7 @@ int BurnikelZiegler::Approx(CSpan a, CSpan b, Span q, int threshold)
     // shorter: qn = 2 would split into a low half of 2 again, for ever)
     if (qn < (size_t)std::max(4, QuotientSplitFrom))
     {
-        LocalWords rTmp(n + 2);
-        Exact(a, b, q, rTmp.span(), threshold);
+        ExactQuotient(a, b, q, threshold);
         return 0;
     }
 
@@ -269,6 +268,22 @@ void BurnikelZiegler::Exact(CSpan a, CSpan b, Span q, Span r, int threshold)
     Span qb = q.subspan(q.size() - (la - n + 1));
     if (n >= 2 * (size_t)threshold && la - n >= 2 * (size_t)threshold) DivRem(a, b, qb, r, threshold);
     else FullIntCore::Div(a, b, qb, r);
+}
+
+// exact, the quotient alone (q as Exact): a kernel-sized block by the kernel's approximate
+// quotient (it settles a doubtful guard word itself)
+void BurnikelZiegler::ExactQuotient(CSpan a, CSpan b, Span q, int threshold)
+{
+    a = DeleteZeros(a);
+    size_t la = a.size(), n = b.size();
+    if ((n >= 2 * (size_t)threshold && la - n >= 2 * (size_t)threshold) || la <= n)
+    {
+        LocalWords rTmp(n + 2);
+        Exact(a, b, q, rTmp.span(), threshold);
+        return;
+    }
+    Clear(q);
+    FullIntCore::Quotient(a, b, q.subspan(q.size() - (la - n + 1)));
 }
 
 // the kernel division on one block: A (2n) < B·β^n -> Q (n), R (n)

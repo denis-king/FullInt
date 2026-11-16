@@ -244,6 +244,35 @@ namespace FullInt.Core
             result.SetResult(negative);
         }
 
+        // op: 0 and, 1 or, 2 xor. Both non-negative: word by word into result's buffer;
+        // otherwise the ordinary operation
+        public void bitwiseInto(FullInt64 result, int op, FullInt64 value1, FullInt64 value2)
+        {
+            if (value1.IsDec || value2.IsDec || value1.Sing || value2.Sing)
+            {
+                result.Assign(bitwise(op, value1, value2));
+                return;
+            }
+            Span<ulong> a = FullHelper.DeleteZeros(value1.value), b = FullHelper.DeleteZeros(value2.value);
+            if (a.Length < b.Length) { var t = a; a = b; b = t; }
+            int la = a.Length, lb = b.Length, d = la - lb, len = op == 0 ? lb : la;
+            bool aliased = ReferenceEquals(result.value, value1.value) || ReferenceEquals(result.value, value2.value);
+            ulong[] r = result.WritableBuffer(len, mustBeNew: aliased);
+            int top = r.Length - len;
+            if (top > 0) r.AsSpan(0, top).Clear();
+            if (op == 0)
+            {
+                for (int i = 0; i < lb; i++) r[top + i] = a[d + i] & b[i];
+            }
+            else
+            {
+                for (int i = 0; i < d; i++) r[top + i] = a[i];
+                if (op == 1) for (int i = 0; i < lb; i++) r[top + d + i] = a[d + i] | b[i];
+                else for (int i = 0; i < lb; i++) r[top + d + i] = a[d + i] ^ b[i];
+            }
+            result.SetResult(false);
+        }
+
         public void shiftRightInto(FullInt64 result, FullInt64 value, int shift)
         {
             if (value.IsDec || shift < 0 || value.Sing)   // negative: floor rounding, the ordinary path
@@ -550,6 +579,15 @@ namespace FullInt.Core
             return wantQuotient ? new FullInt64(negA != negB, qh == 0 ? new ulong[] { ql } : new ulong[] { qh, ql }) : null;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static FullInt64? divByTwoWords(Span<ulong> dividend, Span<ulong> divisor, bool negA, bool negB, bool wantQuotient, bool wantRemainder, out FullInt64? remainder)
+        {
+            var q = new ulong[dividend.Length - 1];
+            FullHelper.DivBy2(dividend, divisor, q, out ulong rHi, out ulong rLo);
+            remainder = wantRemainder ? new FullInt64(negA, rHi == 0 ? new ulong[] { rLo } : new ulong[] { rHi, rLo }) : null;
+            return wantQuotient ? new FullInt64(negA != negB, FullHelper.DeleteZeros(q).ToArray()) : null;
+        }
+
         public void div_internal(Span<ulong> value1, ulong value2, Span<ulong> result, out ulong remainder)
         {
             _core.Div(value1, value2, result, out remainder);
@@ -596,6 +634,12 @@ namespace FullInt.Core
             if (divisor.Length == 1 && dividend.Length == 2 && Base == toBase.hex && (wantQuotient || IntPtr.Size == 8))
             {
                 return divTwoByOne(dividend[0], dividend[1], divisor[0], value1.Sing, value2.Sing, wantQuotient, wantRemainder, out remainder);
+            }
+            // a two-word divisor (x64): the 3-by-2 steps here (FullHelper.DivBy2), no native call
+            // (.NET 8, x64, 2N / N: 3-16 words 0.9-0.97 of the core's Div; 64 words 1.07: the core)
+            if (divisor.Length == 2 && dividend.Length <= 32 && Base == toBase.hex && IntPtr.Size == 8)
+            {
+                return divByTwoWords(dividend, divisor, value1.Sing, value2.Sing, wantQuotient, wantRemainder, out remainder);
             }
 
             if (divisor.Length == 1)
@@ -668,11 +712,13 @@ namespace FullInt.Core
                 else NewtonDivision.DivRem(_core, dividend, divisor, result, remainder);
                 return;
             }
-            // the quotient alone (a / b): an approximate quotient with a guard word, no remainder;
-            // a long divisor with a short quotient is cut down to the quotient's length there
-            if (Base == toBase.hex && quotientOnly && divisor.Length >= BurnikelZiegler.QuotientFrom)
+            // the quotient alone (a / b): an approximate quotient with a guard word, no remainder -
+            // the core's kernel up to a few hundred words, Burnikel–Ziegler above (a long divisor
+            // with a short quotient is cut down to the quotient's length there)
+            if (Base == toBase.hex && quotientOnly && dividend.Length > divisor.Length)
             {
-                BurnikelZiegler.Quotient(_core, dividend, divisor, result);
+                if (BurnikelZiegler.QuotientByKernel(dividend.Length, divisor.Length)) _core.Quotient(dividend, divisor, result);
+                else BurnikelZiegler.Quotient(_core, dividend, divisor, result);
                 return;
             }
             if (Base == toBase.hex && divisor.Length >= 2 * BurnikelZiegler.Threshold

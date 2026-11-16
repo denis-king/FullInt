@@ -309,6 +309,12 @@ namespace FullInt.Core
         public static void Multiply(FullInt64 result, FullInt64 a, FullInt64 b) => _engine.multInto(result, a, b);
         public static void ShiftLeft(FullInt64 result, FullInt64 a, int shift) => _engine.shiftLeftInto(result, a, shift);
         public static void ShiftRight(FullInt64 result, FullInt64 a, int shift) => _engine.shiftRightInto(result, a, shift);
+        public static void And(FullInt64 result, FullInt64 a, FullInt64 b) => _engine.bitwiseInto(result, 0, a, b);
+        public static void Or(FullInt64 result, FullInt64 a, FullInt64 b) => _engine.bitwiseInto(result, 1, a, b);
+        public static void Xor(FullInt64 result, FullInt64 a, FullInt64 b) => _engine.bitwiseInto(result, 2, a, b);
+        // truncating, as / and %
+        public static void Divide(FullInt64 result, FullInt64 a, FullInt64 b) => result.Assign(_engine.div(a, b));
+        public static void Remainder(FullInt64 result, FullInt64 a, FullInt64 b) => result.Assign(_engine.mod(a, b));
         // explicit: use ToString()/ToString(base); an implicit conversion silently allocated a string
         public static explicit operator string(FullInt64 value)
         {

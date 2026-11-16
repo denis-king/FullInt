@@ -4,6 +4,16 @@
 // tests run both, and a "how does an old CPU do" measurement on a new one.
 #pragma once
 
+// small hot helpers on the short-number paths (Prepare, Normalize, the Add / Sub wrappers):
+// MSVC left them as calls inside the larger into-functions (a few ns each on 1-8 words)
+#if defined(_MSC_VER)
+#define FULLINT_FORCEINLINE __forceinline
+#define FULLINT_NOINLINE __declspec(noinline)
+#else
+#define FULLINT_FORCEINLINE inline __attribute__((always_inline))
+#define FULLINT_NOINLINE __attribute__((noinline))
+#endif
+
 #include <fullint/kernels.h>
 
 #include <cstdlib>

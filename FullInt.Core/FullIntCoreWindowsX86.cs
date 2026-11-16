@@ -104,6 +104,12 @@ namespace FullInt.Core
 
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern void Fullint64DivWIN_recip(IntPtr a, IntPtr b, IntPtr q, IntPtr r, int lenA, int lenB, IntPtr work);
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern ulong Fullint64DivQWIN_recip(IntPtr a, IntPtr b, IntPtr q, IntPtr r, int lenA, int lenB, IntPtr work);
+
+        // DivRecip.asm's approximate quotient (the word version; 0: done, 1: saturated)
+        protected override bool QuotientKernel(IntPtr a, IntPtr b, IntPtr qa, int lenA, int lenB, IntPtr work)
+            => DivRecip && Fullint64DivQWIN_recip(a, b, qa, IntPtr.Zero, lenA, lenB, work) == 0;
 
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern void Fullint64Div2longWIN_recip(IntPtr a, ulong b, IntPtr q, out ulong r, int lenA);
