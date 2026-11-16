@@ -25,16 +25,37 @@ int DecimalPowerWords(int k) { return (int)std::ceil(BitsPerPower0 * (double)(1L
 std::mutex powersLock;
 std::vector<std::unique_ptr<FullInt64>> powers;   // [k] = P_k; the objects never move
 
-// [k] = P_k prepared for the division (its reciprocal), made on first use
-std::mutex preparedLock;
-std::vector<std::unique_ptr<NewtonDivision::Prepared>> prepared;
-
-const NewtonDivision::Prepared& PreparedPower(int k, const FullInt64& pk)
+// P_k = 10^(19·2^k) = 2^(19·2^k)·5^(19·2^k): its low 19·2^k bits are zero, about 30% of its words.
+// The divisions divide by P_k without its zero low words (P'), the dividend's low words go to the
+// remainder as they are (GMP's power table does the same): x = xh·β^z + xl, xh = q·P' + r' ->
+// x = q·P_k + (r'·β^z + xl). [k] made on first use, with P' prepared for the division (its
+// reciprocal) when it is long enough.
+struct ShiftedPower
 {
-    std::lock_guard<std::mutex> guard(preparedLock);
-    if ((int)prepared.size() <= k) prepared.resize(k + 1);
-    if (!prepared[k]) prepared[k] = std::make_unique<NewtonDivision::Prepared>(NewtonDivision::Prepare(pk.Words()));
-    return *prepared[k];
+    FullInt64 p;      // P_k without its zero low words
+    uint32_t zeros;   // those words
+    std::unique_ptr<NewtonDivision::Prepared> prepared;
+};
+std::mutex shiftedLock;
+std::vector<std::unique_ptr<ShiftedPower>> shifted;
+
+const ShiftedPower& ShiftedDecimalPower(int k, const FullInt64& pk)
+{
+    std::lock_guard<std::mutex> guard(shiftedLock);
+    if ((int)shifted.size() <= k) shifted.resize(k + 1);
+    if (!shifted[k])
+    {
+        CSpan w = pk.Words();
+        uint32_t z = 0;
+        while (z + 1 < w.size() && w[w.size() - 1 - z] == 0) z++;
+        auto e = std::make_unique<ShiftedPower>();
+        e->p = FullInt64(false, w.subspan(0, w.size() - z));
+        e->zeros = z;
+        if (w.size() - z >= (size_t)DecimalConversion::PreparedFrom)
+            e->prepared = std::make_unique<NewtonDivision::Prepared>(NewtonDivision::Prepare(e->p.Words()));
+        shifted[k] = std::move(e);
+    }
+    return *shifted[k];
 }
 
 }  // namespace
@@ -79,21 +100,31 @@ size_t FullInt64Engine::WriteDecimal(const FullInt64& x, char* text, size_t end,
     // P_k of about half of x's words
     int k = 0;
     while ((size_t)DecimalPowerWords(k + 1) * 2 <= w.size()) k++;
-    const FullInt64& pk = DecimalPower(k);
-    FullInt64 q, r;
-    CSpan pw = pk.Words();
-    if (pw.size() >= (size_t)DecimalConversion::PreparedFrom)
+    const ShiftedPower& sp = ShiftedDecimalPower(k, DecimalPower(k));
+    size_t z = sp.zeros;
+    CSpan pw = sp.p.Words(), xh = w.subspan(0, w.size() - z), xl = w.subspan(w.size() - z);
+    FullInt64 q, rh;
+    if (sp.prepared)
     {
         // the same P_k divides 2^level numbers: its reciprocal once, then a product for the
         // quotient and one (cyclic when long) for the remainder per division
-        const NewtonDivision::Prepared& p = PreparedPower(k, pk);
-        uint32_t lq = (uint32_t)(w.size() - pw.size() + 1), lr = (uint32_t)pw.size() + 2;
-        NewtonDivision::DivRem(w, p, Span(q.Prepare(lq), lq), Span(r.Prepare(lr), lr));
+        uint32_t lq = (uint32_t)(xh.size() - pw.size() + 1), lr = (uint32_t)pw.size() + 2;
+        NewtonDivision::DivRem(xh, *sp.prepared, Span(q.Prepare(lq), lq), Span(rh.Prepare(lr), lr));
         q.Normalize(false);
-        r.Normalize(false);
+        rh.Normalize(false);
     }
+    else if (z == 0)
+        divRem(x, sp.p, &q, &rh);
     else
-        divRem(x, pk, &q, &r);
+        divRem(FullInt64(false, xh), sp.p, &q, &rh);
+    // r = r'·β^z + xl
+    FullInt64 r;
+    CSpan rw = rh.Words();
+    uint32_t lr = (uint32_t)(rw.size() + z);
+    uint64_t* pr = r.Prepare(lr);
+    std::memcpy(pr, rw.data(), rw.size_bytes());
+    if (z) std::memcpy(pr + rw.size(), xl.data(), xl.size_bytes());
+    r.Normalize(false);
     size_t low = (size_t)19 << k;
     WriteDecimal(r, text, end, (ptrdiff_t)low);
     return WriteDecimal(q, text, end - low, width < 0 ? -1 : width - (ptrdiff_t)low);

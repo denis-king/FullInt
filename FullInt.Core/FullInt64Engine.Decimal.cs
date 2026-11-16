@@ -39,21 +39,39 @@ namespace FullInt.Core
     public partial class FullInt64Engine
     {
         private static FullInt64[] _decimalPowers = Array.Empty<FullInt64>();   // [k] = P_k
-        private static NewtonDivision.Prepared?[] _preparedPowers = Array.Empty<NewtonDivision.Prepared?>();   // [k] = P_k prepared
-
-        private NewtonDivision.Prepared PreparedPower(int k, FullInt64 pk)
+        // P_k = 10^(19·2^k) = 2^(19·2^k)·5^(19·2^k): its low 19·2^k bits are zero, about 30% of its
+        // words. ToString divides by P_k without its zero low words (P'), the dividend's low words go
+        // to the remainder as they are (GMP's power table does the same): x = xh·β^z + xl,
+        // xh = q·P' + r' -> x = q·P_k + (r'·β^z + xl). P' prepared for the division (its reciprocal)
+        // when it is long enough.
+        private sealed class ShiftedPower
         {
-            var prepared = Volatile.Read(ref _preparedPowers);
-            if (k < prepared.Length && prepared[k] != null) return prepared[k]!;
+            public FullInt64 P = null!;                  // P_k without its zero low words
+            public int Zeros;                            // those words
+            public NewtonDivision.Prepared? Prepared;
+        }
+        private static ShiftedPower?[] _shiftedPowers = Array.Empty<ShiftedPower?>();   // [k]
+
+        private ShiftedPower ShiftedDecimalPower(int k)
+        {
+            var shifted = Volatile.Read(ref _shiftedPowers);
+            if (k < shifted.Length && shifted[k] != null) return shifted[k]!;
+            var pk = DecimalPower(k);
             lock (_decimalPowersLock)
             {
-                prepared = _preparedPowers;
-                if (k < prepared.Length && prepared[k] != null) return prepared[k]!;
-                var grown = new NewtonDivision.Prepared?[Math.Max(prepared.Length, k + 1)];
-                Array.Copy(prepared, grown, prepared.Length);
-                grown[k] = NewtonDivision.Prepare(_core, FullHelper.DeleteZeros(pk.value));
-                Volatile.Write(ref _preparedPowers, grown);
-                return grown[k]!;
+                shifted = _shiftedPowers;
+                if (k < shifted.Length && shifted[k] != null) return shifted[k]!;
+                Span<ulong> w = FullHelper.DeleteZeros(pk.value);
+                int z = 0;
+                while (z + 1 < w.Length && w[w.Length - 1 - z] == 0) z++;
+                var e = new ShiftedPower { P = new FullInt64(false, w.Slice(0, w.Length - z).ToArray()), Zeros = z };
+                if (w.Length - z >= DecimalConversion.PreparedFrom)
+                    e.Prepared = NewtonDivision.Prepare(_core, e.P.value);
+                var grown = new ShiftedPower?[Math.Max(shifted.Length, k + 1)];
+                Array.Copy(shifted, grown, shifted.Length);
+                grown[k] = e;
+                Volatile.Write(ref _shiftedPowers, grown);
+                return e;
             }
         }
         private static readonly object _decimalPowersLock = new object();
@@ -116,24 +134,32 @@ namespace FullInt.Core
             // P_k of about half of x's words
             int k = 0;
             while (DecimalPowerWords(k + 1) * 2 <= w.Length) k++;
-            var pk = DecimalPower(k);
-            Span<ulong> pw = FullHelper.DeleteZeros(pk.value);
-            FullInt64 q, r;
-            if (pw.Length >= DecimalConversion.PreparedFrom)
+            var sp = ShiftedDecimalPower(k);
+            int z = sp.Zeros;
+            Span<ulong> pw = sp.P.value, xh = w.Slice(0, w.Length - z), xl = w.Slice(w.Length - z);
+            FullInt64 q;
+            Span<ulong> rh;
+            if (sp.Prepared != null)
             {
                 // the same P_k divides 2^level numbers: its reciprocal once, then a product for the
                 // quotient and one (cyclic when long) for the remainder per division
-                var qw = new ulong[w.Length - pw.Length + 1];
+                var qw = new ulong[xh.Length - pw.Length + 1];
                 var rw = new ulong[pw.Length + 2];
-                NewtonDivision.DivRem(_core, w, PreparedPower(k, pk), qw, rw);
+                NewtonDivision.DivRem(_core, xh, sp.Prepared, qw, rw);
                 q = new FullInt64(false, qw);
-                r = new FullInt64(false, rw);
+                rh = FullHelper.DeleteZeros(rw);
             }
             else
             {
-                q = divRem(x, pk, wantQuotient: true, wantRemainder: true, out var rr)!;
-                r = rr!;
+                var xd = z == 0 ? x : new FullInt64(false, xh.ToArray());
+                q = divRem(xd, sp.P, wantQuotient: true, wantRemainder: true, out var rr)!;
+                rh = FullHelper.DeleteZeros(rr!.value);
             }
+            // r = r'·β^z + xl
+            var rWords = new ulong[rh.Length + z];
+            rh.CopyTo(rWords);
+            xl.CopyTo(rWords.AsSpan(rh.Length));
+            var r = new FullInt64(false, rWords);
             int low = 19 << k;
             WriteDecimal(r, text, end, low);
             return WriteDecimal(q, text, end - low, width < 0 ? -1 : width - low);
