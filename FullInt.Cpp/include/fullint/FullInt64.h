@@ -156,6 +156,20 @@ private:
         neg_ = negative && !(size_ == 1 && *p == 0);
     }
 
+    // a result of up to three words (hi : mid : lo) in the buffer as it is (it holds at least
+    // InlineWords words): no Grow, no Release; leading zero words dropped by the offset
+    FULLINT_FORCEINLINE void SetShort(uint64_t hi, uint64_t mid, uint64_t lo, bool negative) noexcept
+    {
+        uint64_t* p = Base();
+        p[0] = hi;
+        p[1] = mid;
+        p[2] = lo;
+        uint32_t z = hi != 0 ? 0 : mid != 0 ? 1 : 2;
+        off_ = z;
+        size_ = 3 - z;
+        neg_ = negative && (hi | mid | lo) != 0;
+    }
+
     void SetWords(bool negative, uint64_t hi, uint64_t lo) noexcept   // a one- or two-word result
     {
         Release();   // a fresh result is inline already; this keeps it safe for any object
@@ -345,6 +359,12 @@ public:
 private:
     // the into-functions' rare cases that build a new number (kept out of them: the temporary
     // gave each a large frame and an unwind state, several ns on every short call)
+    // both operands at most two words: here, into result's buffer (FullInt64Engine.cpp)
+#if defined(_M_X64) || defined(__x86_64__)
+    FULLINT_NOINLINE static void addIntoShort(FullInt64& result, const FullInt64& value1, const FullInt64& value2, bool negate2) noexcept;
+#endif
+    // addInto's cases other than its short common one (see FullInt64Engine.cpp)
+    FULLINT_NOINLINE static void addIntoGeneral(FullInt64& result, const FullInt64& value1, const FullInt64& value2, bool negate2);
     FULLINT_NOINLINE static void addIntoFresh(FullInt64& result, CSpan a, CSpan b, bool neg1, bool neg2);
     FULLINT_NOINLINE static void addIntoAliased(FullInt64& result, CSpan a, CSpan b, bool neg1, bool neg2);
     FULLINT_NOINLINE static void multIntoAliased(FullInt64& result, const FullInt64& value1, const FullInt64& value2);

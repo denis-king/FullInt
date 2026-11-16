@@ -148,7 +148,7 @@ void WordBuffers::Free(uint64_t* p, uint32_t capacity) noexcept
 FullInt64 FullInt64Engine::addOrSub(const FullInt64& value1, const FullInt64& value2, bool negate2)
 {
     FullInt64 r;
-    addInto(r, value1, value2, negate2);
+    addIntoGeneral(r, value1, value2, negate2);   // a fresh number: the thin entry's checks would not apply
     return r;
 }
 
@@ -183,12 +183,109 @@ FullInt64 FullInt64Engine::subMagnitudes(CSpan a, CSpan b, bool neg1, bool neg2)
 // place: it reads both words before writing, from the low end, and the operand ends where the
 // result ends. A result that is not an operand just reuses its capacity. Otherwise (aliased,
 // no room) a new number is made and moved in.
+#if defined(_M_X64) || defined(__x86_64__)
+// a ± b when both are at most two words (the caller checks): plain 64-bit arithmetic, no kernel call, all words read
+// first (result may be an operand). Writes straight into result's buffer: every buffer holds at
+// least InlineWords words, so no Prepare / Grow - and no call: the function stays a leaf.
+void FullInt64Engine::addIntoShort(FullInt64& result, const FullInt64& value1, const FullInt64& value2, bool negate2) noexcept
+{
+    CSpan a = value1.Words(), b = value2.Words();
+    bool neg1 = value1.neg_, neg2 = value2.neg_ != negate2;
+    size_t la = a.size(), lb = b.size();
+    uint64_t a0 = a[la - 1], a1 = la == 2 ? a[0] : 0;
+    uint64_t b0 = b[lb - 1], b1 = lb == 2 ? b[0] : 0;
+    uint64_t hi, mid, lo;
+    bool negative;
+    if (neg1 == neg2)
+    {
+        lo = a0 + b0;
+        uint64_t c = lo < a0 ? 1 : 0;
+        mid = a1 + c;
+        hi = mid < c ? 1 : 0;
+        mid += b1;
+        hi += mid < b1 ? 1 : 0;
+        negative = neg1;
+    }
+    else
+    {
+        bool aBig = a1 != b1 ? a1 > b1 : a0 >= b0;
+        uint64_t x1 = aBig ? a1 : b1, x0 = aBig ? a0 : b0, y1 = aBig ? b1 : a1, y0 = aBig ? b0 : a0;
+        hi = 0;
+        mid = x1 - y1 - (x0 < y0 ? 1 : 0);
+        lo = x0 - y0;
+        negative = aBig ? neg1 : neg2;
+    }
+    result.SetShort(hi, mid, lo, negative);
+}
+#endif
+
+// The common case alone, small (only the kernel call inside, few registers to keep - the whole
+// function saved 8-9 registers on every call): equal lengths of at least 3 words, room in result's
+// buffer, result neither operand; same signs: AddN, opposite: the first differing word from the top
+// decides, SubN on the words from it. Everything else: addIntoGeneral.
 void FullInt64Engine::addInto(FullInt64& result, const FullInt64& value1, const FullInt64& value2, bool negate2)
+{
+#if defined(_M_X64) || defined(__x86_64__)
+    uint32_t n = value1.size_;
+    if (n <= 2 && value2.size_ <= 2)   // out of line, a leaf: its registers stay out of this entry (a jump: the same arguments)
+    {
+        addIntoShort(result, value1, value2, negate2);
+        return;
+    }
+    if (n >= 3 && n == value2.size_ && n < result.cap_ && &result != &value1 && &result != &value2)
+    {
+        const uint64_t* a = value1.Data();
+        const uint64_t* b = value2.Data();
+        uint64_t* p = result.Base();   // n + 1 <= cap_: no Grow
+        bool neg1 = value1.neg_, neg2 = value2.neg_ != negate2;
+        if (neg1 == neg2)
+        {
+            uint64_t c = Fullint64AddNWIN(a, b, p + 1, (int64_t)n);
+            p[0] = c;
+            result.off_ = c == 0 ? 1 : 0;
+            result.size_ = n + (uint32_t)c;
+            result.neg_ = neg1;
+            return;
+        }
+        uint32_t i = 0;
+        while (i < n && a[i] == b[i]) i++;
+        if (i == n)
+        {
+            p[0] = 0;
+            result.off_ = 0;
+            result.size_ = 1;
+            result.neg_ = false;
+            return;
+        }
+        bool aBig = a[i] > b[i];
+        uint32_t m = n - i;   // the words from the first differing one: the difference fits them
+        Fullint64SubNWIN((aBig ? a : b) + i, (aBig ? b : a) + i, p, (int64_t)m);
+        uint32_t z = 0;
+        while (p[z] == 0) z++;   // the top difference word is nonzero below somewhere (a != b)
+        result.off_ = z;
+        result.size_ = m - z;
+        result.neg_ = aBig ? neg1 : neg2;
+        return;
+    }
+#endif
+    addIntoGeneral(result, value1, value2, negate2);
+}
+
+void FullInt64Engine::addIntoGeneral(FullInt64& result, const FullInt64& value1, const FullInt64& value2, bool negate2)
 {
     bool neg1 = value1.neg_, neg2 = value2.neg_ != negate2;
     CSpan a = value1.Words(), b = value2.Words();
     bool same = neg1 == neg2;
 
+#if defined(_M_X64) || defined(__x86_64__)
+    if (a.size() <= 2 && b.size() <= 2)
+    {
+        addIntoShort(result, value1, value2, negate2);
+        return;
+    }
+#else
+    // x86: the short cases inline here, as before (the out-of-line leaf with its 64-bit arithmetic
+    // on 32-bit registers cost 1-2 words 20-60%)
     if (a.size() == 1 && b.size() == 1)   // one word: plain 64-bit arithmetic (both read first)
     {
         uint64_t x = a[0], y = b[0], hi = 0, lo;
@@ -227,6 +324,8 @@ void FullInt64Engine::addInto(FullInt64& result, const FullInt64& value1, const 
         result.Normalize(aBig ? neg1 : neg2);
         return;
     }
+#endif
+
 
     if (&result == &value1 || &result == &value2)
     {
