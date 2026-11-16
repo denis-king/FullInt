@@ -132,12 +132,17 @@ NewtonDivision::Prepared NewtonDivision::Prepare(CSpan b)
     p.shifted.assign(n + 1, 0);
     FullIntCore::ShiftLeft(b, p.sigma, p.shifted);
     p.inverse = Inverse(CSpan(p.shifted).subspan(1), InverseBase, (size_t)CyclicFrom);   // n + 1 words
+    if (n >= (size_t)Karatsuba::NttThreshold / 2 && Karatsuba::NttWorth(2 * n, n >= (size_t)Karatsuba::NttThreshold))
+    {
+        p.inverseImage = Karatsuba::NttPrepare(CSpan(p.inverse).subspan(1), 2 * n, false);
+        if (size_t m = Karatsuba::NttCyclicLength(n + 2)) p.divisorImage = Karatsuba::NttPrepare(CSpan(p.shifted).subspan(1), m, true);
+    }
     return p;
 }
 
 void NewtonDivision::DivRem(CSpan a, const Prepared& p, Span q, Span r)
 {
-    Run(a, CSpan(p.shifted).subspan(1), p.sigma, &p.inverse, 1, InverseBase, (size_t)CyclicFrom, q, r);
+    Run(a, CSpan(p.shifted).subspan(1), p.sigma, &p.inverse, 1, InverseBase, (size_t)CyclicFrom, q, r, false, &p);
 }
 
 // the division by B' = B << sigma (n words, top bit set); inverseN: B''s whole reciprocal (n + 1
@@ -155,7 +160,7 @@ void NewtonDivision::Quotient(CSpan a, CSpan b, Span q)
 }
 
 bool NewtonDivision::Run(CSpan a, CSpan bn, int sigma, const std::vector<uint64_t>* inverseN, int split, int inverseBase,
-                         size_t cyclicFrom, Span q, Span r, bool quotientOnly)
+                         size_t cyclicFrom, Span q, Span r, bool quotientOnly, const Prepared* prepared)
 {
     size_t la = a.size(), n = bn.size();
     // quotientOnly: A'·β, the quotient one guard word longer
@@ -207,8 +212,11 @@ bool NewtonDivision::Run(CSpan a, CSpan bn, int sigma, const std::vector<uint64_
         Words x(n + s), prod(2 * s + 1), tb(n + s);
         // long: T = q̂·B' only modulo β^m - 1 (m >= n + 2, the cyclic FFT, about half the
         // product): R = X - T is below 8·B' < β^m / 2 in size, so its residue gives it back
-        bool wrap = n + 2 >= cyclicFrom;
-        size_t mw = wrap ? Karatsuba::MulModLength(n + 2, cyclicFrom) : 0;
+        // (a prepared divisor with its transform: always the cyclic product, with that transform)
+        const Karatsuba::NttImage* bImage = prepared && prepared->divisorImage.L ? &prepared->divisorImage : nullptr;
+        const Karatsuba::NttImage* iImage = prepared && prepared->inverseImage.L ? &prepared->inverseImage : nullptr;
+        bool wrap = bImage || n + 2 >= cyclicFrom;
+        size_t mw = bImage ? bImage->words : wrap ? Karatsuba::MulModLength(n + 2, cyclicFrom) : 0;
         Words xm(mw), tm(mw);
         for (size_t pos = n; pos < at.size(); pos += t, t = s)
         {
@@ -223,7 +231,8 @@ bool NewtonDivision::Run(CSpan a, CSpan bn, int sigma, const std::vector<uint64_
             // v is 1 (2 for a power of two): X·I = X·v·β^t + X·I', I' its next t words - a t by t
             // product, whose length stays on the transform sizes (t + 1 words would not)
             Span p = Span(prod).subspan(0, 2 * t + 1);
-            Karatsuba::Multiply(xs.subspan(0, t), CSpan(*inv).subspan(1, t), p.subspan(1));
+            if (iImage && t == s) Karatsuba::NttMultiplyImage(xs.subspan(0, t), *iImage, p.subspan(1));
+            else Karatsuba::Multiply(xs.subspan(0, t), CSpan(*inv).subspan(1, t), p.subspan(1));
             p[0] = 0;
             for (uint64_t v = (*inv)[0]; v > 0; v--)
                 p[0] += FullIntCore::Add(p.subspan(1, t), xs.subspan(0, t), p.subspan(1, t));
@@ -243,7 +252,8 @@ bool NewtonDivision::Run(CSpan a, CSpan bn, int sigma, const std::vector<uint64_
             if (wrap && 8 * t >= n)
             {
                 Karatsuba::FoldMod(xs, xm);
-                Karatsuba::MultiplyMod(bn, qb, tm, cyclicFrom);
+                if (bImage) Karatsuba::NttMultiplyImage(qb, *bImage, tm);
+                else Karatsuba::MultiplyMod(bn, qb, tm, cyclicFrom);
                 bool negative = SignedResidue(xm, tm);              // R = X - T, |R| in xm
                 // R < 0: R += B', q̂ -= 1 (|R| > B' stays negative: |R| - B'; else B' - |R|)
                 while (negative)

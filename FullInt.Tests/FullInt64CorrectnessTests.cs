@@ -475,14 +475,15 @@ namespace FullInt.Tests
             {
                 var rnd = new Random(4141);
                 var cases = new List<BigInteger>();
-                foreach (int e in new[] { 19, 38, 76, 152, 304, 608, 1216, 2432, 4864, 9728, 20000 })
+                // (40000 digits: the prepared powers keep their NTT transforms, from ~20000 digits)
+                foreach (int e in new[] { 19, 38, 76, 152, 304, 608, 1216, 2432, 4864, 9728, 20000, 40000 })
                 {
                     var p = BigInteger.Pow(10, e);
                     cases.Add(p); cases.Add(p - 1); cases.Add(p + 1); cases.Add(p * 7 + 3);
                 }
-                for (int i = 0; i < 40; i++)
+                for (int i = 0; i < 42; i++)
                 {
-                    int digits = rnd.Next(20, i < 36 ? 3000 : 20000);   // BigInteger's own text conversion is n² as well
+                    int digits = rnd.Next(20, i < 36 ? 3000 : i < 40 ? 20000 : 45000);   // BigInteger's own text conversion is n² as well
                     var sb = new StringBuilder();
                     sb.Append((char)('1' + rnd.Next(9)));
                     for (int d = 1; d < digits; d++)

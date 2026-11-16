@@ -669,16 +669,16 @@ void InPlaceApi()
 void DecimalByHalves()
 {
     std::vector<std::string> texts;
-    for (int e : { 19, 38, 76, 152, 304, 608, 1216, 2432, 4864, 9728, 20000 })
+    for (int e : { 19, 38, 76, 152, 304, 608, 1216, 2432, 4864, 9728, 20000, 40000, 80000 })   // (the prepared powers' NTT transforms from ~20000)
     {
         std::string p = "1" + std::string(e, '0');
         texts.push_back(p);                          // 10^e
         texts.push_back(std::string(e, '9'));        // 10^e - 1
         texts.push_back("1" + std::string(e - 1, '0') + "1");   // 10^e + 1
     }
-    for (int i = 0; i < 30; i++)
+    for (int i = 0; i < 33; i++)
     {
-        size_t digits = 20 + rng() % (i < 25 ? 3000 : 30000);
+        size_t digits = 20 + rng() % (i < 25 ? 3000 : i < 30 ? 30000 : 120000);
         std::string t(1, (char)('1' + rng() % 9));
         while (t.size() < digits)
             t += (rng() % 10 == 0) ? std::string(1 + rng() % 120, '0') : std::string(1, (char)('0' + rng() % 10));

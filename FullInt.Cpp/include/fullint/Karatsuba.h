@@ -6,6 +6,8 @@
 
 #include <fullint/FullIntCore.h>
 
+#include <vector>
+
 namespace fullint {
 
 struct Karatsuba
@@ -51,6 +53,21 @@ struct Karatsuba
     // digits, the carry out of the top brought in at the bottom, β^m - 1 written as 0
     static size_t NttCyclicLength(size_t minWords);
     static void NttMultiplyCyclic(CSpan a, CSpan b, Span r);
+
+    // A factor used many times (the prepared divisors of ToString): its forward transforms for
+    // the three primes, computed once; a product with it then transforms only the other factor
+    // (two transforms instead of three). Full: products of productWords words (the length the
+    // full product would take); cyclic: products modulo β^m - 1 (m from NttCyclicLength).
+    struct NttImage
+    {
+        size_t L = 0;                  // the transform length (0: none)
+        size_t words = 0;              // full: the product's words; cyclic: m
+        bool cyclic = false;
+        std::vector<uint32_t> data;    // 3·L values
+    };
+    static NttImage NttPrepare(CSpan b, size_t words, bool cyclic);
+    // r = a·b (full: r.size() = image.words) or a·b mod β^m - 1 (cyclic: r.size() = m)
+    static void NttMultiplyImage(CSpan a, const NttImage& b, Span r);
 
 #if defined(_M_X64) || defined(__x86_64__)
     // Shorter operand below this many words: the basecase (column) multiply.

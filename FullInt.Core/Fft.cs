@@ -58,6 +58,16 @@ namespace FullInt.Core
         /// </summary>
         public static int NttThreshold { get; set; } = Environment.Is64BitProcess ? 896 : 96;
 
+        // the transforms of a fixed factor (NttOps.Image) when the core has the NTT kernels and the
+        // products of words words would take them (the rule of the dispatcher); otherwise null
+        internal static NttOps.Image? NttPrepare(IFullIntCore core, Span<ulong> b, int words, bool cyclic, int shorter)
+        {
+            if (!NativeNtt(core) || shorter < NttThreshold / 2 || !NttOps.Worth(words, shorter >= NttThreshold)) return null;
+            return NttOps.Prepare(b, words, cyclic);
+        }
+
+        internal static int NttCyclicLength(IFullIntCore core, int minWords) => NativeNtt(core) ? NttOps.CyclicLength(minWords) : 0;
+
         // the same rule as NativeFft: the x64 core's flag through an instance property
         private static bool NativeNtt(IFullIntCore core) =>
             core is FullIntCoreWindowsX64 x64 ? x64.HasNttKernels : core is FullIntCoreWindowsX86 x86 && x86.HasNttKernels;

@@ -168,10 +168,60 @@ namespace FullInt.Core
         /// [0, β^m - 1) (β^m - 1 written as 0); a and b at most m words. The cyclic convolution of
         /// L = 2m digits wraps at 2^(32L) = β^m, the carry out of the top comes in at the bottom.
         /// </summary>
-        public static void MultiplyCyclic(Span<ulong> a, Span<ulong> b, Span<ulong> r)
+        public static void MultiplyCyclic(Span<ulong> a, Span<ulong> b, Span<ulong> r) =>
+            WrapCarry(r, Convolve(a, b, r, 2 * r.Length, null));
+
+        /// <summary>
+        /// A factor used many times (the prepared divisors of ToString): its forward transforms
+        /// for the three primes, computed once; a product with it then transforms only the other
+        /// factor (two transforms instead of three). Full: products of Words words; cyclic:
+        /// modulo β^m - 1, m = Words (from <see cref="CyclicLength"/>).
+        /// </summary>
+        public sealed class Image
+        {
+            internal readonly int L, Words;
+            internal readonly bool Cyclic;
+            internal readonly uint[] Data;   // 3·L values
+            internal Image(int l, int words, bool cyclic, uint[] data) { L = l; Words = words; Cyclic = cyclic; Data = data; }
+        }
+
+        /// <summary>b's transforms for products of words words (full) or modulo β^words - 1 (cyclic).</summary>
+        public static unsafe Image Prepare(Span<ulong> b, int words, bool cyclic)
+        {
+            int L = cyclic ? 2 * words : Length(2L * words);
+            var data = new uint[3 * L];
+            bool r3 = (L & (L - 1)) != 0;
+            int M = r3 ? L / 3 : L;
+            fixed (uint* pd = data)
+            fixed (ulong* pb = b)
+            {
+                for (int k = 0; k < 3; k++)
+                {
+                    Tables t = Get(k, M);
+                    uint[] fk = r3 ? R3Constants(k, t, L, false) : null;
+                    fixed (uint* w = t.W)
+                    fixed (uint* wq = t.Wq)
+                    fixed (uint* pf = fk)
+                    {
+                        Load(pb, b.Length, pd + k * L, L, t.P);
+                        Forward3(pd + k * L, M, r3, pf, w, wq, t.P);
+                    }
+                }
+            }
+            return new Image(L, words, cyclic, data);
+        }
+
+        /// <summary>r = a·b (full: r.Length = the image's Words) or a·b mod β^m - 1 (cyclic: r.Length = m).</summary>
+        public static void MultiplyImage(Span<ulong> a, Image b, Span<ulong> r)
+        {
+            ulong carry = Convolve(a, Span<ulong>.Empty, r, b.L, b.Data);
+            if (b.Cyclic) WrapCarry(r, carry);
+        }
+
+        // + carry modulo β^m - 1 (the end-around carry), β^m - 1 written as 0
+        private static void WrapCarry(Span<ulong> r, ulong carry)
         {
             int m = r.Length;
-            ulong carry = Convolve(a, b, r, 2 * m);
             while (carry != 0)                       // + carry (mod β^m - 1): the end-around carry
             {
                 ulong c = carry;
@@ -192,9 +242,9 @@ namespace FullInt.Core
         // the cyclic convolution of a and b in L 32-bit digits (L = 2^k or 3·2^k, at least the
         // digits of both), its digits put together into the r.Length <= L/2 words of r; returns
         // the carry out of the top
-        private static unsafe ulong Convolve(Span<ulong> a, Span<ulong> b, Span<ulong> r, int L)
+        private static unsafe ulong Convolve(Span<ulong> a, Span<ulong> b, Span<ulong> r, int L, uint[]? image = null)
         {
-            bool square = a == b;
+            bool square = image == null && a == b;
             int len = r.Length, nd = 2 * len;
             uint[] buf = ArrayPool<uint>.Shared.Rent(4 * L);
             try
@@ -204,6 +254,7 @@ namespace FullInt.Core
                 fixed (ulong* pbb = b)
                 fixed (ulong* pr = r)
                 fixed (ulong* pk = CrtConstants)
+                fixed (uint* pimg = image)
                 {
                     uint* y = pb + 3 * L;
                     bool r3 = (L & (L - 1)) != 0;            // 3·2^k: a radix-3 level on top
@@ -222,7 +273,11 @@ namespace FullInt.Core
                         {
                             Load(pa, a.Length, x, L, t.P);
                             Forward3(x, M, r3, pf, w, wq, t.P);
-                            if (square)
+                            if (pimg != null)
+                            {
+                                Point(x, pimg + k * L, L, t.P, t.PInv);   // b's transform kept
+                            }
+                            else if (square)
                             {
                                 Point(x, x, L, t.P, t.PInv);
                             }

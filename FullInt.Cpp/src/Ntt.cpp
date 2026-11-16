@@ -232,9 +232,9 @@ void Inverse3(uint32_t* x, size_t M, const R3Constants* k, const Tables& t)
 // the cyclic convolution of a and b in L 32-bit digits (L = 2^k or 3·2^k, at least the digits
 // of both; a and b the same words: a square), its digits put together into the r.size() <= L/2
 // words of r; returns the carry out of the top
-uint64_t NttConvolve(CSpan a, CSpan b, Span r, size_t L)
+uint64_t NttConvolve(CSpan a, CSpan b, Span r, size_t L, const uint32_t* image = nullptr)
 {
-    bool square = a.data() == b.data() && a.size() == b.size();
+    bool square = !image && a.data() == b.data() && a.size() == b.size();
     size_t len = r.size(), nd = 2 * len;
     // one buffer per thread, grown on demand (the transforms call nothing that multiplies)
     thread_local std::unique_ptr<uint32_t[]> buffer;
@@ -260,7 +260,11 @@ uint64_t NttConvolve(CSpan a, CSpan b, Span r, size_t L)
         }
         Fullint64NttLoadWIN_avx2(a.data(), (int64_t)a.size(), x, (int64_t)L, t.p);
         Forward3(x, M, fk.get(), t);
-        if (square)
+        if (image)
+        {
+            Fullint64NttPointWIN_avx2(x, image + k * L, (int64_t)L, t.p, t.pinv);   // b's transform kept
+        }
+        else if (square)
         {
             Fullint64NttPointWIN_avx2(x, x, (int64_t)L, t.p, t.pinv);
         }
@@ -280,6 +284,25 @@ uint64_t NttConvolve(CSpan a, CSpan b, Span r, size_t L)
 }
 
 bool Fits(size_t len) { return 2 * len <= (size_t(1) << MaxLog); }
+
+// + carry modulo β^m - 1 (the end-around carry), β^m - 1 written as 0
+void WrapCarry(Span r, uint64_t carry)
+{
+    size_t m = r.size();
+    while (carry != 0)
+    {
+        uint64_t c = carry;
+        for (size_t i = m; i-- > 0 && c != 0;)
+        {
+            uint64_t v = r[i] + c;
+            c = v < c ? 1 : 0;
+            r[i] = v;
+        }
+        carry = c;
+    }
+    for (uint64_t w : r) if (w != ~0ull) return;
+    std::fill(r.begin(), r.end(), 0);
+}
 
 }  // namespace
 
@@ -309,21 +332,36 @@ size_t Karatsuba::NttCyclicLength(size_t minWords)
 
 void Karatsuba::NttMultiplyCyclic(CSpan a, CSpan b, Span r)
 {
-    size_t m = r.size();
-    uint64_t carry = NttConvolve(a, b, r, 2 * m);
-    while (carry != 0)                                   // + carry (mod β^m - 1): the end-around carry
+    WrapCarry(r, NttConvolve(a, b, r, 2 * r.size()));
+}
+
+Karatsuba::NttImage Karatsuba::NttPrepare(CSpan b, size_t words, bool cyclic)
+{
+    NttImage img;
+    if (!Available() || !Fits(words)) return img;
+    size_t L = cyclic ? 2 * words : Length(2 * words);
+    img.L = L;
+    img.words = words;
+    img.cyclic = cyclic;
+    img.data.resize(3 * L);
+    bool r3 = (L & (L - 1)) != 0;
+    size_t M = r3 ? L / 3 : L;
+    for (int k = 0; k < 3; k++)
     {
-        uint64_t c = carry;
-        for (size_t i = m; i-- > 0 && c != 0;)
-        {
-            uint64_t v = r[i] + c;
-            c = v < c ? 1 : 0;
-            r[i] = v;
-        }
-        carry = c;
+        const Tables& t = Get(k, M);
+        uint32_t* y = img.data.data() + k * L;
+        std::unique_ptr<R3Constants> fk;
+        if (r3) fk = std::make_unique<R3Constants>(k, t, L, false);
+        Fullint64NttLoadWIN_avx2(b.data(), (int64_t)b.size(), y, (int64_t)L, t.p);
+        Forward3(y, M, fk.get(), t);
     }
-    for (uint64_t w : r) if (w != ~0ull) return;
-    std::fill(r.begin(), r.end(), 0);                    // β^m - 1: the other zero
+    return img;
+}
+
+void Karatsuba::NttMultiplyImage(CSpan a, const NttImage& b, Span r)
+{
+    uint64_t carry = NttConvolve(a, CSpan(), r, b.L, b.data.data());
+    if (b.cyclic) WrapCarry(r, carry);
 }
 
 }  // namespace fullint

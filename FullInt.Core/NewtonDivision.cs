@@ -141,6 +141,10 @@ namespace FullInt.Core
             internal readonly ulong[] Shifted;   // n + 1 words: [0] = the word shifted out (0), then B'
             internal readonly ulong[] Inverse;   // n + 1 words: ~ β^(2n) / B'
             internal readonly int Sigma;
+            // with the NTT (n from half of NttThreshold) the two products of every block keep their
+            // fixed factor transformed: I' (the reciprocal without its top word) for q̂, and B' for
+            // q̂·B' modulo β^m - 1 (cyclic: m from n + 2, below CyclicFrom too)
+            internal NttOps.Image? InverseImage, DivisorImage;
 
             internal Prepared(ulong[] shifted, ulong[] inverse, int sigma)
             {
@@ -155,19 +159,23 @@ namespace FullInt.Core
             int sigma = FullHelper.LeadingZeroCount(b[0]);
             var shifted = new ulong[n + 1];
             core.ShiftLeft(b, sigma, shifted);
-            return new Prepared(shifted, Inverse(core, shifted.AsSpan(1), InverseBase, CyclicFrom), sigma);
+            var p = new Prepared(shifted, Inverse(core, shifted.AsSpan(1), InverseBase, CyclicFrom), sigma);
+            p.InverseImage = Karatsuba.NttPrepare(core, p.Inverse.AsSpan(1), 2 * n, false, n);
+            int m = p.InverseImage != null ? Karatsuba.NttCyclicLength(core, n + 2) : 0;
+            if (m != 0) p.DivisorImage = NttOps.Prepare(shifted.AsSpan(1), m, true);
+            return p;
         }
 
         /// <summary>The core.Div contract (q: a.Length - b.Length + 1 words, r: b.Length + 2) with a prepared divisor.</summary>
         public static void DivRem(IFullIntCore core, Span<ulong> a, Prepared p, Span<ulong> q, Span<ulong> r) =>
-            Run(core, a, p.Shifted.AsSpan(1), p.Sigma, p.Inverse, 1, InverseBase, CyclicFrom, q, r);
+            Run(core, a, p.Shifted.AsSpan(1), p.Sigma, p.Inverse, 1, InverseBase, CyclicFrom, q, r, false, p);
 
         // the division by B' = B << sigma (n words, top bit set); inverseN: B''s whole reciprocal
         // (n + 1 words, the blocks then take n words, shorter ones truncate it), or null: one of
         // the length the split asks for, computed here. quotientOnly: the guard word scheme of
         // Quotient; false when the guard word is too close to a boundary (q then not written)
         private static bool Run(IFullIntCore core, Span<ulong> a, Span<ulong> bn, int sigma, ulong[]? inverseN, int split,
-            int inverseBase, int cyclicFrom, Span<ulong> q, Span<ulong> r, bool quotientOnly = false)
+            int inverseBase, int cyclicFrom, Span<ulong> q, Span<ulong> r, bool quotientOnly = false, Prepared? prepared = null)
         {
             int la = a.Length, n = bn.Length;
             // quotientOnly: A'·β, the quotient one guard word longer
@@ -219,8 +227,10 @@ namespace FullInt.Core
                 var tb = new ulong[n + s];
                 // long: T = q̂·B' only modulo β^m - 1 (m >= n + 2, the cyclic FFT, about half the
                 // product): R = X - T is below 8·B' < β^m / 2 in size, so its residue gives it back
-                bool wrap = n + 2 >= cyclicFrom;
-                int mw = wrap ? Karatsuba.MulModLength(core, n + 2, cyclicFrom) : 0;
+                // (a prepared divisor with its transform: always the cyclic product, with that transform)
+                NttOps.Image? bImage = prepared?.DivisorImage, iImage = prepared?.InverseImage;
+                bool wrap = bImage != null || n + 2 >= cyclicFrom;
+                int mw = bImage != null ? bImage.Words : wrap ? Karatsuba.MulModLength(core, n + 2, cyclicFrom) : 0;
                 var xm = new ulong[mw];
                 var tm = new ulong[mw];
                 for (int pos = n; pos < at.Length; pos += t, t = s)
@@ -236,7 +246,8 @@ namespace FullInt.Core
                     // word v is 1 (2 for a power of two): X·I = X·v·β^t + X·I', I' its next t words -
                     // a t by t product, whose length stays on the transform sizes (t + 1 would not)
                     Span<ulong> p = prod.AsSpan(0, 2 * t + 1);
-                    Karatsuba.Multiply(core, xs.Slice(0, t), inv.AsSpan(1, t), p.Slice(1));
+                    if (iImage != null && t == s) NttOps.MultiplyImage(xs.Slice(0, t), iImage, p.Slice(1));
+                    else Karatsuba.Multiply(core, xs.Slice(0, t), inv.AsSpan(1, t), p.Slice(1));
                     p[0] = 0;
                     for (ulong v = inv[0]; v > 0; v--)
                         p[0] += core.Add(p.Slice(1, t), xs.Slice(0, t), p.Slice(1, t));
@@ -256,7 +267,8 @@ namespace FullInt.Core
                     if (wrap && 8 * t >= n)
                     {
                         Karatsuba.FoldMod(core, xs, xm);
-                        Karatsuba.MultiplyMod(core, bn, qb, tm, cyclicFrom);
+                        if (bImage != null) NttOps.MultiplyImage(qb, bImage, tm);
+                        else Karatsuba.MultiplyMod(core, bn, qb, tm, cyclicFrom);
                         bool negative = SignedResidue(core, xm, tm);   // R = X - T, |R| in xm
                         // R < 0: R += B', q̂ -= 1 (|R| > B' stays negative: |R| - B'; else B' - |R|)
                         while (negative)

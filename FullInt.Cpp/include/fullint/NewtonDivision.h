@@ -2,6 +2,7 @@
 #pragma once
 
 #include <fullint/FullIntCore.h>
+#include <fullint/Karatsuba.h>
 
 #include <vector>
 
@@ -63,11 +64,16 @@ struct NewtonDivision
 
     // A divisor used many times (the powers of ToString): B << sigma and its whole reciprocal
     // computed once; DivRem then divides in blocks of n words with it, nothing recomputed.
+    // With the NTT (n from half of NttThreshold) the two products of every block keep their
+    // fixed factor transformed: I' (the reciprocal without its top word) for q̂, and B' for
+    // q̂·B' modulo β^m - 1 (cyclic: m from n + 2, below CyclicFrom too).
     struct Prepared
     {
         std::vector<uint64_t> shifted;   // n + 1 words: [0] = the word shifted out (0), then B'
         std::vector<uint64_t> inverse;   // n + 1 words: ~ β^(2n) / B'
         int sigma = 0;
+        Karatsuba::NttImage inverseImage;   // I' for X·I' (2n-word products), or none
+        Karatsuba::NttImage divisorImage;   // B' modulo β^m - 1, or none
     };
     static Prepared Prepare(CSpan b);
     static void DivRem(CSpan a, const Prepared& p, Span q, Span r);
@@ -83,7 +89,7 @@ private:
     // quotientOnly: the guard word scheme of Quotient; false when the guard word is too close
     // to a boundary (q then not written)
     static bool Run(CSpan a, CSpan bn, int sigma, const std::vector<uint64_t>* inverseN, int split, int inverseBase,
-                    size_t cyclicFrom, Span q, Span r, bool quotientOnly = false);
+                    size_t cyclicFrom, Span q, Span r, bool quotientOnly = false, const Prepared* prepared = nullptr);
 };
 
 }  // namespace fullint
