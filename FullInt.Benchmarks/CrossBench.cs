@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Globalization;
 using System.Numerics;
 using FullInt.Core;
@@ -67,10 +67,17 @@ namespace FullInt.Benchmarks
         }
 
         // up to 3000 calls, but at most ~50 ms (a large BigInteger division takes 0.3 s per call)
+        // The process runs pinned to one core at high priority: the background JIT thread that
+        // compiles the tier-1 code only gets the core when this thread sleeps. Without the pauses
+        // the small cells were measured partly on tier-0 code (2-4x off, varying run to run).
         private static void Warm(Action f)
         {
-            var sw = Stopwatch.StartNew();
-            for (int i = 0; i < 3000 && sw.ElapsedMilliseconds < 50; i++) f();
+            for (int pass = 0; pass < 3; pass++)
+            {
+                var sw = Stopwatch.StartNew();
+                for (int i = 0; i < 3000 && sw.ElapsedMilliseconds < 50; i++) f();
+                Thread.Sleep(pass == 0 ? 150 : 30);   // past the 100 ms call counting delay, then the JIT's turn
+            }
         }
 
         private static (double ours, double big) Run(Action ours, Action big)
@@ -113,6 +120,11 @@ namespace FullInt.Benchmarks
             csv?.WriteLine("op,n,fullint_net_ns,biginteger_ns");
             Console.WriteLine($"{"op",-8} {"words",6}  {"FullInt",12}  {"BigInteger",12}");
 
+            // all cells first; every op at every size warmed (both sides) before any is measured:
+            // with Dynamic PGO a method compiled while only the 1-word cells ran keeps its other
+            // paths cold, so a cell's time depended on the order of the cells
+            var cells = new List<(string op, int n, Action ours, Action big)>();
+            var keep = new List<object>();
             _state = 42;
             foreach (int n in Sizes)
             {
@@ -126,37 +138,57 @@ namespace FullInt.Benchmarks
                 var a2 = new FullInt64(false, (ulong[])wa.Clone());
                 BigInteger ba = Big(wa), bb = Big(wb), bc = Big(wc), ba2 = Big(wa);
                 string text = ba.ToString(CultureInfo.InvariantCulture);
-
-                FullInt64 r = a;
-                BigInteger br = ba;
-                string s = "";
-                int sink = 0;
+                var sinks = new Sinks();
+                keep.Add(sinks);
+                var ri = new FullInt64(0);   // into an existing result (FullInt64.Add(result, a, b))
 
                 void Row(string op, Action ours, Action big)
                 {
                     if (ops != null && !ops.Contains("," + op + ",")) return;
-                    var (o, g) = Run(ours, big);
-                    Console.WriteLine($"{op,-8} {n,6}  {o,12:F1}  {g,12:F1}");
-                    csv?.WriteLine(FormattableString.Invariant($"{op},{n},{o:F2},{g:F2}"));
+                    cells.Add((op, n, ours, big));
                 }
 
-                Row("add", () => r = a + b, () => br = ba + bb);
-                Row("sub", () => r = a - b, () => br = ba - bb);
-                var ri = new FullInt64(0);   // into an existing result (FullInt64.Add(result, a, b))
-                Row("addto", () => FullInt64.Add(ri, a, b), () => br = ba + bb);
-                Row("multo", () => FullInt64.Multiply(ri, a, b), () => br = ba * bb);
-                Row("mul", () => r = a * b, () => br = ba * bb);
-                Row("div", () => r = c / b, () => br = bc / bb);
-                Row("mod", () => r = c % b, () => br = bc % bb);
-                Row("shl", () => r = a << 13, () => br = ba << 13);
-                Row("shr", () => r = a >> 13, () => br = ba >> 13);
-                Row("and", () => r = a & b, () => br = ba & bb);
-                Row("cmp", () => sink += a > a2 ? 1 : 0, () => sink += BigInteger.Compare(ba, ba2));
-                Row("todec", () => s = a.ToString(10), () => s = ba.ToString(CultureInfo.InvariantCulture));
-                Row("parse", () => r = FullInt64.Parse(text), () => br = BigInteger.Parse(text, CultureInfo.InvariantCulture));
-                GC.KeepAlive(r); GC.KeepAlive(s); GC.KeepAlive(sink);
+                Row("add", () => sinks.r = a + b, () => sinks.br = ba + bb);
+                Row("sub", () => sinks.r = a - b, () => sinks.br = ba - bb);
+                Row("addto", () => FullInt64.Add(ri, a, b), () => sinks.br = ba + bb);
+                Row("multo", () => FullInt64.Multiply(ri, a, b), () => sinks.br = ba * bb);
+                Row("mul", () => sinks.r = a * b, () => sinks.br = ba * bb);
+                Row("div", () => sinks.r = c / b, () => sinks.br = bc / bb);
+                Row("mod", () => sinks.r = c % b, () => sinks.br = bc % bb);
+                Row("shl", () => sinks.r = a << 13, () => sinks.br = ba << 13);
+                Row("shr", () => sinks.r = a >> 13, () => sinks.br = ba >> 13);
+                Row("and", () => sinks.r = a & b, () => sinks.br = ba & bb);
+                Row("cmp", () => sinks.i += a > a2 ? 1 : 0, () => sinks.i += BigInteger.Compare(ba, ba2));
+                Row("todec", () => sinks.s = a.ToString(10), () => sinks.s = ba.ToString(CultureInfo.InvariantCulture));
+                Row("parse", () => sinks.r = FullInt64.Parse(text), () => sinks.br = BigInteger.Parse(text, CultureInfo.InvariantCulture));
             }
+
+            for (int pass = 0; pass < 3; pass++)
+            {
+                foreach (var cell in cells)
+                {
+                    var sw = Stopwatch.StartNew();
+                    for (int i = 0; i < 200 && sw.ElapsedMilliseconds < 10; i++) { cell.ours(); cell.big(); }
+                }
+                Thread.Sleep(pass == 0 ? 200 : 50);
+            }
+
+            foreach (var (op, n, ours, big) in cells)
+            {
+                var (o, g) = Run(ours, big);
+                Console.WriteLine($"{op,-8} {n,6}  {o,12:F1}  {g,12:F1}");
+                csv?.WriteLine(FormattableString.Invariant($"{op},{n},{o:F2},{g:F2}"));
+            }
+            GC.KeepAlive(keep);
             return 0;
+        }
+
+        private sealed class Sinks
+        {
+            public FullInt64? r;
+            public BigInteger br;
+            public string? s;
+            public int i;
         }
     }
 }
