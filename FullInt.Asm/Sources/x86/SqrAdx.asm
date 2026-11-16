@@ -65,12 +65,17 @@ Fullint64SqrWIN_adx:
 	push edi
 	sub esp, FRM
 
-	; R = 0 (lenR words)
+	; R = 0 (lenR words; a store loop: rep stosd's start-up outweighs a short square, as in
+	; x64/SqrAdx.asm)
 	mov edi, [AR_R]
 	mov ecx, [AR_LR]
-	add ecx, ecx
 	xor eax, eax
-	rep stosd
+.clear:
+	mov [edi], eax
+	mov [edi + 4], eax
+	lea edi, [edi + 8]
+	dec ecx
+	jnz .clear
 
 	mov eax, [AR_A]
 	mov ecx, [AR_LA]

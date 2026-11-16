@@ -384,6 +384,29 @@ void FullInt64Engine::divRem(const FullInt64& value1, const FullInt64& value2, F
 FullInt64 FullInt64Engine::bitwise(int op, const FullInt64& value1, const FullInt64& value2)
 {
     CSpan a = value1.Words(), b = value2.Words();
+    if (!value1.neg_ && !value2.neg_)
+    {
+        // both non-negative (the common case): word by word here, no kernel call - and: the
+        // low min(la, lb) words; or / xor: the longer one's top words as they are (a & b on
+        // 1-16 words through the kernel: 12-19 ns against GMP's 5-8)
+        if (a.size() < b.size()) std::swap(a, b);
+        size_t la = a.size(), lb = b.size(), d = la - lb;
+        FullInt64 r;
+        if (op == 0)
+        {
+            uint64_t* p = r.Prepare((uint32_t)lb);
+            for (size_t i = 0; i < lb; i++) p[i] = a[d + i] & b[i];
+        }
+        else
+        {
+            uint64_t* p = r.Prepare((uint32_t)la);
+            for (size_t i = 0; i < d; i++) p[i] = a[i];
+            if (op == 1) for (size_t i = 0; i < lb; i++) p[d + i] = a[d + i] | b[i];
+            else for (size_t i = 0; i < lb; i++) p[d + i] = a[d + i] ^ b[i];
+        }
+        r.Normalize(false);
+        return r;
+    }
     uint32_t n = (uint32_t)std::max(a.size(), b.size()) + 1;
     FullInt64 r;
     Span rs(r.Prepare(n), n);

@@ -73,8 +73,10 @@ struct Karatsuba
     // Shorter operand below this many words: the basecase (column) multiply.
     // C# uses 64: there each core call costs ~10-15 ns more (interop). Here a kernel call is
     // a direct call; tuned with fullint_kara_tune (Zen 3): 28..48 are equal within noise and
-    // 7-22% faster than 64 at 48..96 words, below 24 it loses. 32 is the middle.
-    static inline int Threshold = 32;
+    // 7-22% faster than 64 at 48..96 words, below 24 it loses. 32 was the middle; with the
+    // 8-way MultAdx.asm the kernel alone wins up to ~44 words (40: 603 ns against a Karatsuba
+    // level's 786; 48: 856 against 778): 48.
+    static inline int Threshold = 48;
 
     // From this many words in the shorter operand (operands not too unbalanced): Toom-3.
     // Tuned with fullint_kara_tune toom: Toom-3 gains from ~384 words, 96..256 equal within

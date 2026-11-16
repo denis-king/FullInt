@@ -697,6 +697,27 @@ namespace FullInt.Core
             RequireBinary(value1, value2);
             var a = FullHelper.DeleteZeros(value1.value);
             var b = FullHelper.DeleteZeros(value2.value);
+            if (!value1.Sing && !value2.Sing)
+            {
+                // both non-negative (the common case): word by word here, no kernel call - and:
+                // the low min(la, lb) words; or / xor: the longer one's top words as they are
+                if (a.Length < b.Length) { var t = a; a = b; b = t; }
+                int la = a.Length, lb = b.Length, d = la - lb;
+                ulong[] w;
+                if (op == 0)
+                {
+                    w = new ulong[lb];
+                    for (int i = 0; i < lb; i++) w[i] = a[d + i] & b[i];
+                }
+                else
+                {
+                    w = new ulong[la];
+                    a.Slice(0, d).CopyTo(w);
+                    if (op == 1) for (int i = 0; i < lb; i++) w[d + i] = a[d + i] | b[i];
+                    else for (int i = 0; i < lb; i++) w[d + i] = a[d + i] ^ b[i];
+                }
+                return Normalized(false, w);
+            }
             var r = new ulong[Math.Max(a.Length, b.Length) + 1];
 
             int negative = op == 0 ? _core.And(a, value1.Sing, b, value2.Sing, r)

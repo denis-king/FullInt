@@ -70,3 +70,5 @@ Fullint64NttLoadWIN_avx2
 Fullint64NttCrtWIN
 Fullint64NttR3DifWIN_avx2
 Fullint64NttR3DitWIN_avx2
+Fullint64AddNWIN
+Fullint64SubNWIN

@@ -41,9 +41,13 @@ Fullint64SqrWIN_adx:
 	movsxd r15, r8d             ; n
 	movsxd r9, r9d              ; lenR
 	mov rdi, r11                ; R cleared: the rows add into it, their top words are new
-	mov rcx, r9
-	xor eax, eax
-	rep stosq
+	mov rcx, r9                 ; (a store loop: rep stosq's start-up, ~30 cycles, was a fifth
+	xor eax, eax                ; of a square of 4 words; lenR is at most 2·SqrThreshold here)
+.clear:
+	mov [rdi], rax
+	lea rdi, [rdi + 8]
+	dec rcx
+	jnz .clear
 	lea r10, [r10 + r15*8 - 8]  ; a_0
 	lea r11, [r11 + r9*8 - 8]   ; r_0
 	lea r12, [r15 - 1]          ; row 0: n - 1 words

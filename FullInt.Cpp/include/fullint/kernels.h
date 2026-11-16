@@ -20,6 +20,9 @@
 extern "C" {
 
 uint64_t Fullint64AddWIN(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR);
+// equal-length add / sub (AddSubN.asm, x64 and x86): r = a ± b on n words, the carry / borrow returned
+uint64_t Fullint64AddNWIN(const uint64_t* a, const uint64_t* b, uint64_t* r, int64_t n);
+uint64_t Fullint64SubNWIN(const uint64_t* a, const uint64_t* b, uint64_t* r, int64_t n);
 int      Fullint64SubWIN(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR);
 uint64_t Fullint64MultWIN(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR);
 uint64_t Fullint64DivWin(const uint64_t* a, const uint64_t* b, uint64_t* q, uint64_t* r, int lenA, int lenB);

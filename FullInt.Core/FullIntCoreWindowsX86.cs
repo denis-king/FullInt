@@ -176,11 +176,52 @@ namespace FullInt.Core
         }
 
         // the asm kernels behind the base class (pinned buffers)
-        protected override ulong Add(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR)
-            => Fullint64AddWIN(a, b, r, lenA, lenB, lenR);
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern unsafe ulong Fullint64AddNWIN(ulong* a, ulong* b, ulong* r, long n);
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern unsafe ulong Fullint64SubNWIN(ulong* a, ulong* b, ulong* r, long n);
 
-        protected override int Sub(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR)
-            => Fullint64SubWIN(a, b, r, lenA, lenB, lenR);
+        // equal lengths through x86/AddSubN.asm, as the x64 core does (see there)
+        protected override unsafe ulong Add(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR)
+        {
+            if (lenA < lenB)
+            {
+                (a, b) = (b, a);
+                (lenA, lenB) = (lenB, lenA);
+            }
+            if (lenB == 0 || lenR < lenA || lenR > lenA + 1) return Fullint64AddWIN(a, b, r, lenA, lenB, lenR);
+            ulong* pa = (ulong*)a, pr = (ulong*)r;
+            ulong c = Fullint64AddNWIN(pa + (lenA - lenB), (ulong*)b, pr + (lenR - lenB), lenB);
+            for (int i = lenA - lenB - 1; i >= 0; i--)
+            {
+                ulong v = pa[i] + c;
+                c = v < c ? 1UL : 0UL;
+                pr[lenR - lenA + i] = v;
+            }
+            if (lenR == lenA) return c;
+            pr[0] = c;
+            return 0;
+        }
+
+        protected override unsafe int Sub(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR)
+        {
+            int n = lenA;
+            if (n != lenB || lenR < n || n == 0) return Fullint64SubWIN(a, b, r, lenA, lenB, lenR);
+            ulong* pa = (ulong*)a, pb = (ulong*)b, pr = (ulong*)r;
+            int i = 0;
+            while (i < n && pa[i] == pb[i]) i++;
+            int top = lenR - n;
+            for (int k = 0; k < top; k++) pr[k] = 0;
+            if (i == n)
+            {
+                for (int k = top; k < lenR; k++) pr[k] = 0;
+                return 0;
+            }
+            bool aBig = pa[i] > pb[i];
+            Fullint64SubNWIN((aBig ? pa : pb) + i, (aBig ? pb : pa) + i, pr + top + i, n - i);
+            for (int k = top; k < top + i; k++) pr[k] = 0;
+            return aBig ? 1 : -1;
+        }
 
         protected override void Mult(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR)
         {

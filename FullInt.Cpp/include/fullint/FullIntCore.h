@@ -17,6 +17,8 @@
 #pragma once
 
 #include <fullint/Cpu.h>
+
+#include <utility>
 #include <fullint/kernels.h>
 
 #include <cstdint>
@@ -50,14 +52,51 @@ struct FullIntCore
         return buffer.get();
     }
 
+    // r = a + b; returns the carry out of r's top word. r at least as long as a and b, at most
+    // one word longer: AddSubN.asm on the shorter operand's words and the carry through the
+    // other one's top here (the general kernel resolves lengths and runs, which cost more than
+    // the words on a few: 4.9 ns on one word against 1.4); otherwise Add.asm.
     static uint64_t Add(CSpan a, CSpan b, Span r) noexcept
     {
-        return Fullint64AddWIN(a.data(), b.data(), r.data(), (int)a.size(), (int)b.size(), (int)r.size());
+        if (a.size() < b.size()) std::swap(a, b);
+        size_t la = a.size(), lb = b.size(), lr = r.size();
+        if (lb == 0 || lr < la || lr > la + 1)
+            return Fullint64AddWIN(a.data(), b.data(), r.data(), (int)la, (int)lb, (int)lr);
+        uint64_t c = Fullint64AddNWIN(a.data() + (la - lb), b.data(), r.data() + (lr - lb), (int64_t)lb);
+        for (size_t i = la - lb; i-- > 0;)   // a's top words with the carry (r's words line up with a's at the low end)
+        {
+            uint64_t v = a[i] + c;
+            c = v < c ? 1 : 0;
+            r[lr - la + i] = v;
+        }
+        if (lr == la) return c;
+        r[0] = c;
+        return 0;
     }
 
+    // r = |a - b|; returns the sign of a - b. Equal lengths: compared from the top here, then
+    // AddSubN.asm on the larger minus the smaller; otherwise Sub.asm (it skips leading zeros).
     static int Sub(CSpan a, CSpan b, Span r) noexcept
     {
-        return Fullint64SubWIN(a.data(), b.data(), r.data(), (int)a.size(), (int)b.size(), (int)r.size());
+        size_t n = a.size();
+        if (n != b.size() || r.size() < n || n == 0)
+            return Fullint64SubWIN(a.data(), b.data(), r.data(), (int)a.size(), (int)b.size(), (int)r.size());
+        size_t i = 0;
+        while (i < n && a[i] == b[i]) i++;
+        size_t top = r.size() - n;
+        for (size_t k = 0; k < top; k++) r[k] = 0;
+        if (i == n)
+        {
+            for (size_t k = top; k < r.size(); k++) r[k] = 0;
+            return 0;
+        }
+        // the words above i are equal: their difference is zero, the rest is n - i words
+        bool aBig = a[i] > b[i];
+        const uint64_t* x = (aBig ? a : b).data() + i;
+        const uint64_t* y = (aBig ? b : a).data() + i;
+        Fullint64SubNWIN(x, y, r.data() + top + i, (int64_t)(n - i));
+        for (size_t k = top; k < top + i; k++) r[k] = 0;
+        return aBig ? 1 : -1;
     }
 
     static void Mult(CSpan a, CSpan b, Span r) noexcept
