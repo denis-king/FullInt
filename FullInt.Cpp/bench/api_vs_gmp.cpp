@@ -1,6 +1,10 @@
-// API against API: FullInt64 (C++) against GMP's mpz, the way each is normally used:
-//   FullInt64: r = a op b   (a new value, moved into r); addto / multo: Add(r, a, b) into r
-//   GMP:       mpz_op(r, a, b)  (into r's existing buffer)
+// API against API: FullInt64 (C++) against GMP's mpz, in like-for-like pairs:
+//   op    (add, sub, mul, ...): a new value each time, memory included -
+//         FullInt64: r = a op b (a new number, moved into r, r's old buffer released);
+//         GMP: mpz_init(t); mpz_op(t, a, b); mpz_swap(r, t); mpz_clear(t)
+//   opto  (addto, subto, ...): into an existing result, the arithmetic alone -
+//         FullInt64: Op(r, a, b) into r's buffer; GMP: mpz_op(r, a, b) into r's buffer
+//   todec: a new std::string on both sides; parse: a new number on both sides
 // The same operations, sizes and numbers as the .NET half (FullInt.Benchmarks "cross"):
 // the inputs come from the same splitmix64 sequence. With --net <csv> from that run, the
 // table shows all four: GMP, FullInt C++, FullInt .NET, BigInteger.
@@ -194,20 +198,36 @@ int main(int argc, char** argv)
             std::fflush(stdout);
         };
 
-        row("add", [&] { r = a + b; }, [&] { mpz_add(gr, ga, gb); });
-        row("sub", [&] { r = a - b; }, [&] { mpz_sub(gr, ga, gb); });
-        FullInt64 ri;   // into an existing result: the same call shape as GMP's
+        // GMP's "new value": a fresh mpz per operation (its buffer allocated by the operation),
+        // swapped into gr, the old one freed - as r = a op b does with FullInt64
+        auto fresh = [&](auto op) {
+            mpz_t t;
+            mpz_init(t);
+            op(t);
+            mpz_swap(gr, t);
+            mpz_clear(t);
+        };
+        FullInt64 ri;   // into an existing result: the same call shape as GMP's mpz_op(r, a, b)
+
+        row("add", [&] { r = a + b; }, [&] { fresh([&](mpz_ptr t) { mpz_add(t, ga, gb); }); });
         row("addto", [&] { fullint::Add(ri, a, b); }, [&] { mpz_add(gr, ga, gb); });
+        row("sub", [&] { r = a - b; }, [&] { fresh([&](mpz_ptr t) { mpz_sub(t, ga, gb); }); });
+        row("subto", [&] { fullint::Subtract(ri, a, b); }, [&] { mpz_sub(gr, ga, gb); });
+        row("mul", [&] { r = a * b; }, [&] { fresh([&](mpz_ptr t) { mpz_mul(t, ga, gb); }); });
         row("multo", [&] { fullint::Multiply(ri, a, b); }, [&] { mpz_mul(gr, ga, gb); });
-        row("mul", [&] { r = a * b; }, [&] { mpz_mul(gr, ga, gb); });
-        row("div", [&] { r = c / b; }, [&] { mpz_tdiv_q(gr, gc, gb); });
-        row("mod", [&] { r = c % b; }, [&] { mpz_tdiv_r(gr, gc, gb); });
-        row("shl", [&] { r = a << 13; }, [&] { mpz_mul_2exp(gr, ga, 13); });
-        row("shr", [&] { r = a >> 13; }, [&] { mpz_fdiv_q_2exp(gr, ga, 13); });
-        row("and", [&] { r = a & b; }, [&] { mpz_and(gr, ga, gb); });
+        row("div", [&] { r = c / b; }, [&] { fresh([&](mpz_ptr t) { mpz_tdiv_q(t, gc, gb); }); });
+        row("divto", [&] { fullint::Divide(ri, c, b); }, [&] { mpz_tdiv_q(gr, gc, gb); });
+        row("mod", [&] { r = c % b; }, [&] { fresh([&](mpz_ptr t) { mpz_tdiv_r(t, gc, gb); }); });
+        row("modto", [&] { fullint::Remainder(ri, c, b); }, [&] { mpz_tdiv_r(gr, gc, gb); });
+        row("shl", [&] { r = a << 13; }, [&] { fresh([&](mpz_ptr t) { mpz_mul_2exp(t, ga, 13); }); });
+        row("shlto", [&] { fullint::ShiftLeft(ri, a, 13); }, [&] { mpz_mul_2exp(gr, ga, 13); });
+        row("shr", [&] { r = a >> 13; }, [&] { fresh([&](mpz_ptr t) { mpz_fdiv_q_2exp(t, ga, 13); }); });
+        row("shrto", [&] { fullint::ShiftRight(ri, a, 13); }, [&] { mpz_fdiv_q_2exp(gr, ga, 13); });
+        row("and", [&] { r = a & b; }, [&] { fresh([&](mpz_ptr t) { mpz_and(t, ga, gb); }); });
+        row("andto", [&] { fullint::And(ri, a, b); }, [&] { mpz_and(gr, ga, gb); });
         row("cmp", [&] { sink = a > a2; }, [&] { sink = mpz_cmp(ga, ga2); });
-        row("todec", [&] { s = a.ToString(); }, [&] { mpz_get_str(gbuf.data(), 10, ga); });
-        row("parse", [&] { r = FullInt64::Parse(text); }, [&] { mpz_set_str(gr, text.c_str(), 10); });
+        row("todec", [&] { s = a.ToString(); }, [&] { mpz_get_str(gbuf.data(), 10, ga); s = std::string(gbuf.data()); });
+        row("parse", [&] { r = FullInt64::Parse(text); }, [&] { fresh([&](mpz_ptr t) { mpz_set_str(t, text.c_str(), 10); }); });
 
         mpz_clears(ga, gb, gc, ga2, gr, nullptr);
     }

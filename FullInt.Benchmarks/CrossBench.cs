@@ -148,16 +148,25 @@ namespace FullInt.Benchmarks
                     cells.Add((op, n, ours, big));
                 }
 
+                // op: a new value each time (both sides); opto: FullInt64 into an existing result
+                // (FullInt64.Add(result, a, b) ...) - BigInteger has no such form, its side is the
+                // same new-value operation, so the pair shows what the into-API saves
                 Row("add", () => sinks.r = a + b, () => sinks.br = ba + bb);
-                Row("sub", () => sinks.r = a - b, () => sinks.br = ba - bb);
                 Row("addto", () => FullInt64.Add(ri, a, b), () => sinks.br = ba + bb);
-                Row("multo", () => FullInt64.Multiply(ri, a, b), () => sinks.br = ba * bb);
+                Row("sub", () => sinks.r = a - b, () => sinks.br = ba - bb);
+                Row("subto", () => FullInt64.Subtract(ri, a, b), () => sinks.br = ba - bb);
                 Row("mul", () => sinks.r = a * b, () => sinks.br = ba * bb);
+                Row("multo", () => FullInt64.Multiply(ri, a, b), () => sinks.br = ba * bb);
                 Row("div", () => sinks.r = c / b, () => sinks.br = bc / bb);
+                Row("divto", () => FullInt64.Divide(ri, c, b), () => sinks.br = bc / bb);
                 Row("mod", () => sinks.r = c % b, () => sinks.br = bc % bb);
+                Row("modto", () => FullInt64.Remainder(ri, c, b), () => sinks.br = bc % bb);
                 Row("shl", () => sinks.r = a << 13, () => sinks.br = ba << 13);
+                Row("shlto", () => FullInt64.ShiftLeft(ri, a, 13), () => sinks.br = ba << 13);
                 Row("shr", () => sinks.r = a >> 13, () => sinks.br = ba >> 13);
+                Row("shrto", () => FullInt64.ShiftRight(ri, a, 13), () => sinks.br = ba >> 13);
                 Row("and", () => sinks.r = a & b, () => sinks.br = ba & bb);
+                Row("andto", () => FullInt64.And(ri, a, b), () => sinks.br = ba & bb);
                 Row("cmp", () => sinks.i += a > a2 ? 1 : 0, () => sinks.i += BigInteger.Compare(ba, ba2));
                 Row("todec", () => sinks.s = a.ToString(10), () => sinks.s = ba.ToString(CultureInfo.InvariantCulture));
                 Row("parse", () => sinks.r = FullInt64.Parse(text), () => sinks.br = BigInteger.Parse(text, CultureInfo.InvariantCulture));
