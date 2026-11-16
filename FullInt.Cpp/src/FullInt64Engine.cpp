@@ -142,13 +142,14 @@ void WordBuffers::Free(uint64_t* p, uint32_t capacity) noexcept
 
 #pragma region add
 
-// a + b, or a - b with negate2 (no FullInt64 is made for -b). The signs are read once.
+// a + b, or a - b with negate2 (no FullInt64 is made for -b), built by addInto in a fresh number
+// (never aliased): its short paths (two words straight-line, the kernel entered directly, the
+// length set from the carry) serve both API forms. x64 2-64 words: 0.8-0.95 of the separate path.
 FullInt64 FullInt64Engine::addOrSub(const FullInt64& value1, const FullInt64& value2, bool negate2)
 {
-    bool neg1 = value1.neg_, neg2 = value2.neg_ != negate2;
-    // two separate paths, as in C# (there for Dynamic PGO; here they keep each path's code small)
-    return neg1 == neg2 ? addMagnitudes(value1.Words(), value2.Words(), neg1)
-                        : subMagnitudes(value1.Words(), value2.Words(), neg1, neg2);
+    FullInt64 r;
+    addInto(r, value1, value2, negate2);
+    return r;
 }
 
 // C# allocates the exact size and widens on a carry out; here the carry word is reserved in
@@ -726,12 +727,16 @@ FullInt64 FullInt64Engine::shiftRightGeneral(const FullInt64& value, int shift)
 {
     if (shift < 0) return shiftLeft(value, shift == INT32_MIN ? INT32_MAX : -shift);
 
-    CSpan a = value.Words();
     if (!value.neg_)   // zero is never negative
     {
-        int64_t left = (int64_t)a.size() - shift / 64;
-        uint32_t n = (uint32_t)std::max<int64_t>(left, 1);
         FullInt64 r;
+        if constexpr (SHIFT_INLINE > 0)   // x64 16-64 words: 0.6-0.75 of the kernel path below; x86: only a layer more
+        {
+            shiftRightInto(r, value, shift);
+            return r;
+        }
+        CSpan a = value.Words();
+        uint32_t n = (uint32_t)std::max<int64_t>((int64_t)a.size() - shift / 64, 1);
         FullIntCore::ShiftRight(a, shift, Span(r.Prepare(n), n));
         r.Normalize(false);
         return r;

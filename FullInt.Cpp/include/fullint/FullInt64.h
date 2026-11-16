@@ -188,13 +188,26 @@ private:
         {
             heap_ = other.heap_;
             cap_ = other.cap_;
+            off_ = other.off_;
+        }
+        else if (other.size_ <= 2)
+        {
+            // one or two words (just written by SetWords etc.): word loads, to the start. The 16-byte
+            // loads of the whole-buffer copy spanned those 8-byte stores - no store forwarding, ~3 ns
+            // on every short r = a op b. Longer: the whole-buffer copy is faster than a word loop.
+            volatile uint64_t* d = inl_;
+            const uint64_t* s = other.inl_ + other.off_;
+            d[0] = s[0];
+            if (other.size_ == 2) d[1] = s[1];
+            cap_ = InlineWords;
+            off_ = 0;
         }
         else
         {
             std::memcpy(inl_, other.inl_, sizeof(inl_));
             cap_ = InlineWords;
+            off_ = other.off_;
         }
-        off_ = other.off_;
         size_ = other.size_;
         neg_ = other.neg_;
         other.cap_ = InlineWords;
