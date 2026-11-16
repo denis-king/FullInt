@@ -42,10 +42,28 @@ namespace FullInt.Core
         private static bool NativeFft(IFullIntCore core) => core is FullIntCoreWindowsX64 x64 && x64.HasFftKernels;
 
         /// <summary>
+        /// From this many words in the shorter operand (and when the operands are not too
+        /// unbalanced) the product goes through the AVX2 number-theoretic transforms (NttOps.cs,
+        /// NttAvx2.asm; x64 and x86 with AVX2), up to products of 2^21 words; the FFT above them. Below
+        /// 4·NttThreshold only when the product fills 0.6 of the transform (NttOps.Worth).
+        /// `FullInt.Benchmarks kara ntt` (Zen 3), with the NTT / the Toom and FFT levels alone:
+        /// x64 768 words 0.78 (from 1024: 0.99), 896 0.64, 1024 0.60, 1536 0.57, 2048 0.45-0.49,
+        /// 4096 0.35, 8192-131072 0.24-0.29 (C++ x64, whose Toom levels are faster: 0.73 at 1024,
+        /// 0.40-0.50 from 4096, 0.42-0.63 of GMP); x86 (32-bit multiplies in the Toom levels,
+        /// none in the transforms) 96 words 0.85, 112 0.64, 128 0.57, 512 0.28, 2048 0.17, 8192
+        /// 0.11, 32768 0.08.
+        /// </summary>
+        public static int NttThreshold { get; set; } = Environment.Is64BitProcess ? 768 : 96;
+
+        // the same rule as NativeFft: the x64 core's flag through an instance property
+        private static bool NativeNtt(IFullIntCore core) =>
+            core is FullIntCoreWindowsX64 x64 ? x64.HasNttKernels : core is FullIntCoreWindowsX86 x86 && x86.HasNttKernels;
+
+        /// <summary>
         /// The words of a product modulo β^m - 1 that <see cref="MultiplyMod"/> takes for at least
-        /// <paramref name="minWords"/> words: through the cyclic FFT (no zero padding, about half
-        /// the transform of the full product) from <see cref="FftThreshold"/> words, otherwise
-        /// minWords itself (the full product, folded).
+        /// <paramref name="minWords"/> words: through the cyclic NTT (a power of two; AVX2) or the
+        /// cyclic FFT (no zero padding, about half the transform of the full product) from
+        /// <see cref="FftThreshold"/> words, otherwise minWords itself (the full product, folded).
         /// </summary>
         public static int MulModLength(IFullIntCore core, int minWords) => MulModLength(core, minWords, FftThreshold);
 
@@ -53,6 +71,11 @@ namespace FullInt.Core
         public static int MulModLength(IFullIntCore core, int minWords, int cyclicFrom)
         {
             if (minWords < cyclicFrom) return minWords;
+            if (NativeNtt(core))
+            {
+                int mn = NttOps.CyclicLength(minWords);   // the cyclic NTT: a power of two
+                if (mn != 0) return mn;
+            }
             ChooseFftCyclic(minWords, false, NativeFft(core), out int k, out int m, out _);
             return m << k;
         }
@@ -70,7 +93,12 @@ namespace FullInt.Core
         public static void MultiplyMod(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> r, int cyclicFrom)
         {
             int m = r.Length;
-            var lim = new Limits(Threshold, Toom3Threshold, Toom4Threshold, Toom6Threshold, FftThreshold, SqrThreshold);
+            var lim = new Limits(Threshold, Toom3Threshold, Toom4Threshold, Toom6Threshold, FftThreshold, SqrThreshold, NttThreshold);
+            if (m >= cyclicFrom && NativeNtt(core) && NttOps.CyclicLength(m) == m)
+            {
+                NttOps.MultiplyCyclic(a, b, r);   // the cyclic NTT (MulModLength's powers of two)
+                return;
+            }
             if (m >= cyclicFrom)
             {
                 bool native = NativeFft(core);

@@ -330,9 +330,10 @@ namespace FullInt.Tests
         }
 
         /// <summary>
-        /// Products modulo β^m - 1 (the cyclic FFT without zero padding, and the folded full
-        /// product), against BigInteger: the cyclic path forced from small sizes, operands up to
-        /// m words, all-ones operands (the β^m - 1 = 0 representation), m of any K·M shape.
+        /// Products modulo β^m - 1 (the cyclic NTT on the native core with AVX2, the cyclic FFT
+        /// without zero padding on the managed one, and the folded full product), against
+        /// BigInteger: the cyclic path forced from small sizes, operands up to m words, squares,
+        /// all-ones operands (the end-around carry, the β^m - 1 = 0 representation).
         /// </summary>
         [DataTestMethod]
         [DynamicData(nameof(Cores), DynamicDataSourceType.Method)]
@@ -350,6 +351,7 @@ namespace FullInt.Tests
                 var b = Next(rnd, rnd.Next(1, m + 1));
                 if (rnd.Next(5) == 0) a.AsSpan().Fill(ulong.MaxValue);
                 if (rnd.Next(5) == 0) b.AsSpan().Fill(ulong.MaxValue);
+                if (rnd.Next(4) == 0) b = a;
                 var r = new ulong[m];
                 r.AsSpan().Fill(0xDEAD_BEEF_DEAD_BEEFUL);
                 Karatsuba.MultiplyMod(core, a, b, r, cyclicFrom);
@@ -583,6 +585,47 @@ namespace FullInt.Tests
             {
                 var x = FullInt64.Parse(big.ToString());
                 Assert.AreEqual(big.ToString(), x.ToString(10), $"{big.ToString().Length} digits");
+            }
+        }
+
+        /// <summary>
+        /// The NTT product (NttAvx2.asm; x64 with AVX2), against BigInteger: from the smallest
+        /// transform (16 digits) to a few hundred thousand digits, unbalanced, squares, all-ones
+        /// and sparse operands; and through the dispatcher with its default thresholds.
+        /// </summary>
+        [TestMethod]
+        public void Ntt_MatchesBigInteger()
+        {
+            var core = FullIntCoreFactory.Create();
+            var probe = new ulong[2];
+            if (!Karatsuba.NttMultiply(core, new ulong[] { 1 }, new ulong[] { 1 }, probe))
+                Assert.Inconclusive("no NTT kernels on this core / CPU");
+            var rnd = new Random(2626);
+            ulong[] Shaped(int length) => rnd.Next(6) switch
+            {
+                0 => Enumerable.Repeat(ulong.MaxValue, length).ToArray(),
+                1 => Enumerable.Range(0, length).Select(i => i % 3 == 0 ? 0UL : ulong.MaxValue).ToArray(),
+                _ => Next(rnd, length),
+            };
+            for (int it = 0; it < 700; it++)
+            {
+                int max = it % 50 == 0 ? 40000 : it % 5 == 0 ? 3000 : 70;
+                int la = rnd.Next(1, max), lb = rnd.Next(1, max);
+                var a = Shaped(la);
+                var b = it % 4 == 0 ? a : Shaped(lb);
+                var r = new ulong[a.Length + b.Length];
+                r.AsSpan().Fill(0xDEAD_BEEF_DEAD_BEEFUL);
+                Assert.IsTrue(Karatsuba.NttMultiply(core, a, b, r));
+                Assert.AreEqual(ToBig(a) * ToBig(b), ToBig(r), $"ntt {a.Length}x{b.Length} (iteration {it})");
+            }
+            for (int it = 0; it < 6; it++)
+            {
+                int la = rnd.Next(1000, 9000), lb = rnd.Next(1000, 9000);
+                var a = Shaped(la);
+                var b = it == 0 ? a : Shaped(lb);
+                var r = new ulong[a.Length + b.Length];
+                Karatsuba.Multiply(core, a, b, r);
+                Assert.AreEqual(ToBig(a) * ToBig(b), ToBig(r), $"dispatcher {a.Length}x{b.Length}");
             }
         }
 

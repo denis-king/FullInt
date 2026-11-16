@@ -360,6 +360,51 @@ void SquaresCheck()
     }
 }
 
+// the NTT product (NttAvx2.asm; x64 with AVX2) against GMP: the smallest transforms to a few
+// hundred thousand digits, unbalanced, squares, all-ones and sparse operands; the dispatcher
+void NttCheck()
+{
+    std::vector<uint64_t> probe(2);
+    uint64_t one = 1;
+    if (!fullint::Karatsuba::NttMultiply(fullint::CSpan(&one, 1), fullint::CSpan(&one, 1), probe)) return;
+    auto shaped = [](size_t len) {
+        std::vector<uint64_t> v(len);
+        int kind = (int)(rng() % 6);
+        for (size_t i = 0; i < len; i++) v[i] = kind == 0 ? ~0ull : kind == 1 ? (i % 3 == 0 ? 0 : ~0ull) : rng();
+        return v;
+    };
+    for (int round = 0; round < 700; round++)
+    {
+        size_t max = round % 50 == 0 ? 40000 : round % 5 == 0 ? 3000 : 70;
+        size_t la = 1 + rng() % (max - 1), lb = 1 + rng() % (max - 1);
+        auto a = shaped(la);
+        auto b = round % 4 == 0 ? a : shaped(lb);
+        bool square = round % 4 == 0;
+        std::vector<uint64_t> r(a.size() + b.size(), 0xDEADBEEFDEADBEEFull);
+        fullint::CSpan sb = square ? fullint::CSpan(a) : fullint::CSpan(b);
+        CHECK(fullint::Karatsuba::NttMultiply(a, sb, r), "NttMultiply available");
+        Mpz ma, mb, e, got;
+        mpz_import(ma.v, a.size(), 1, 8, 0, 0, a.data());
+        mpz_import(mb.v, b.size(), 1, 8, 0, 0, b.data());
+        mpz_mul(e.v, ma.v, mb.v);
+        mpz_import(got.v, r.size(), 1, 8, 0, 0, r.data());
+        CHECK(mpz_cmp(e.v, got.v) == 0, "NttMultiply " + std::to_string(a.size()) + "x" + std::to_string(b.size()));
+    }
+    for (int round = 0; round < 6; round++)
+    {
+        auto a = shaped(1000 + rng() % 8000);
+        auto b = round == 0 ? a : shaped(1000 + rng() % 8000);
+        std::vector<uint64_t> r(a.size() + b.size());
+        fullint::Karatsuba::Multiply(a, round == 0 ? fullint::CSpan(a) : fullint::CSpan(b), r);
+        Mpz ma, mb, e, got;
+        mpz_import(ma.v, a.size(), 1, 8, 0, 0, a.data());
+        mpz_import(mb.v, b.size(), 1, 8, 0, 0, b.data());
+        mpz_mul(e.v, ma.v, mb.v);
+        mpz_import(got.v, r.size(), 1, 8, 0, 0, r.data());
+        CHECK(mpz_cmp(e.v, got.v) == 0, "Multiply (NTT) " + std::to_string(a.size()) + "x" + std::to_string(b.size()));
+    }
+}
+
 // the low half of a product (MulLoAdx.asm and Mulders' recursion), against GMP mod β^n
 void MultiplyLowCheck()
 {
@@ -401,7 +446,8 @@ void MultiplyModCheck()
         for (auto& x : b) x = rng();
         if (rng() % 5 == 0) std::fill(a.begin(), a.end(), ~0ull);
         if (rng() % 5 == 0) std::fill(b.begin(), b.end(), ~0ull);
-        fullint::Karatsuba::MultiplyMod(a, b, r, cyclicFrom);
+        if (rng() % 4 == 0) b = a;   // a square (the same words: one transform)
+        fullint::Karatsuba::MultiplyMod(a, b == a ? fullint::CSpan(a) : fullint::CSpan(b), r, cyclicFrom);
         Mpz ma, mb, mod, e, got;
         mpz_import(ma.v, a.size(), 1, 8, 0, 0, a.data());
         mpz_import(mb.v, b.size(), 1, 8, 0, 0, b.data());
@@ -638,6 +684,7 @@ int main()
     MultiplyModCheck();
     SquaresCheck();
     MultiplyLowCheck();
+    NttCheck();
     InPlaceApi();
     DecimalByHalves();
 

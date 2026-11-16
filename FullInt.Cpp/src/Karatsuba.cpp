@@ -7,6 +7,7 @@
 #include <fullint/Karatsuba.h>
 
 #include <algorithm>
+#include <climits>
 #include <cstring>
 #include <memory>
 #include <stdexcept>
@@ -60,7 +61,11 @@ void Karatsuba::Multiply(CSpan a, CSpan b, Span r, int threshold, int toom3Thres
     if (toom6Threshold < 6) throw std::out_of_range("toom6Threshold");
     if (r.size() != a.size() + b.size()) throw std::invalid_argument("r.size() must be a.size() + b.size()");
 
-    Limits lim{ threshold, toom3Threshold, toom4Threshold, toom6Threshold, fftThreshold, threshold == Threshold ? SqrThreshold : threshold };
+    // the NTT only with the default thresholds: explicit ones (tests, tuning) keep the levels they name
+    bool defaults = threshold == Threshold && toom3Threshold == Toom3Threshold && toom4Threshold == Toom4Threshold
+        && toom6Threshold == Toom6Threshold && fftThreshold == FftThreshold;
+    Limits lim{ threshold, toom3Threshold, toom4Threshold, toom6Threshold, fftThreshold, threshold == Threshold ? SqrThreshold : threshold,
+                defaults ? NttThreshold : INT_MAX };
     Mul(a, b, r, ThreadScratch(ScratchLength(a.size(), b.size())), lim);
 }
 
@@ -85,6 +90,12 @@ void Karatsuba::Mul(CSpan a, CSpan b, Span r, Span scratch, const Limits& lim)
     if (lb <= m)
     {
         MulUnbalanced(a, b, r, scratch, lim);
+        return;
+    }
+
+    if (lb >= (size_t)lim.Ntt && NttWorth(la + lb, lb >= 4 * (size_t)lim.Ntt))
+    {
+        NttMultiply(a, b, r);
         return;
     }
 

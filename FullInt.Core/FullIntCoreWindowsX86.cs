@@ -54,6 +54,10 @@ namespace FullInt.Core
         // Mult with mulx / adcx / adox in 32-bit digits (x86/MultAdx.asm): BMI2 + ADX
         private static readonly bool MultAdx = (CpuFeatures & 3) == 3;
 
+        // the number-theoretic transforms (x86/NttAvx2.asm): AVX2
+        private static readonly bool NttKernels = (CpuFeatures & 4) == 4;
+        internal bool HasNttKernels => NttKernels;
+
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern void Fullint64SqrWIN_adx(IntPtr a, IntPtr r, int lenA, int lenR);
 

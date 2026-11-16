@@ -81,6 +81,10 @@ namespace FullInt.Core
         private static readonly bool FftKernels = (CpuFeatures & 3) == 3;
         internal bool HasFftKernels => FftKernels;
 
+        // the number-theoretic transforms (NttAvx2.asm): AVX2
+        private static readonly bool NttKernels = (CpuFeatures & 4) == 4;
+        internal bool HasNttKernels => NttKernels;
+
 
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern void Fullint64MultWIN_adx(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR);

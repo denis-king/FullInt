@@ -47,7 +47,19 @@ void Fullint64SqrWIN_adx(const uint64_t* a, uint64_t* r, int lenA, int lenR);
 // (n words, n <= lenA + lenB)
 void Fullint64MulLoWIN_adx(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int n);
 
-// CPU features for picking kernel versions (Cpu.asm): x64 bit 0 BMI2, bit 1 ADX, bit 2 AVX2
+// number-theoretic transforms on 8 lanes of 32 bits (NttAvx2.asm, AVX2; x64 and x86; Ntt.cpp has the scheme)
+void Fullint64NttDif1WIN_avx2(uint32_t* x, int64_t L, int64_t h, const uint32_t* w, const uint32_t* wq, uint32_t p);
+void Fullint64NttDif2WIN_avx2(uint32_t* x, int64_t L, int64_t h, const uint32_t* w, const uint32_t* wq, uint32_t p);
+void Fullint64NttDif3WIN_avx2(uint32_t* x, int64_t L, const uint32_t* w, const uint32_t* wq, uint32_t p);
+void Fullint64NttDit1WIN_avx2(uint32_t* x, int64_t L, int64_t h, const uint32_t* w, const uint32_t* wq, uint32_t p);
+void Fullint64NttDit2WIN_avx2(uint32_t* x, int64_t L, int64_t h, const uint32_t* w, const uint32_t* wq, uint32_t p);
+void Fullint64NttDit3WIN_avx2(uint32_t* x, int64_t L, const uint32_t* w, const uint32_t* wq, uint32_t p);
+void Fullint64NttPointWIN_avx2(uint32_t* x, const uint32_t* y, int64_t n, uint32_t p, uint32_t pinv);
+void Fullint64NttScaleWIN_avx2(uint32_t* x, int64_t n, uint32_t p, uint32_t c, uint32_t cq);
+void Fullint64NttLoadWIN_avx2(const uint64_t* a, int64_t la, uint32_t* x, int64_t L, uint32_t p);
+uint64_t Fullint64NttCrtWIN(const uint32_t* x0, const uint32_t* x1, const uint32_t* x2, int64_t nd, uint64_t* r, int64_t len, const uint64_t* k);
+
+// CPU features for picking kernel versions (Cpu.asm): bit 0 BMI2, bit 1 ADX, bit 2 AVX2
 // (OS-enabled); x86 bit 4 SSE2
 int Fullint64CpuFeatures(void);
 

@@ -83,6 +83,8 @@ namespace FullInt.Benchmarks
 
         public static int Run(string[] args)
         {
+            bool ntt = args.Length > 0 && args[0] == "ntt";
+            if (ntt) return RunNtt(args.Skip(1).ToArray());
             bool fft = args.Length > 0 && args[0] == "fft";
             bool toom4 = args.Length > 0 && args[0] == "toom4";
             bool toom6 = args.Length > 0 && args[0] == "toom6";
@@ -173,6 +175,73 @@ namespace FullInt.Benchmarks
                 }
                 Console.WriteLine();
             }
+            return 0;
+        }
+
+        // kara ntt [rounds] [thresholds] [sizes]: N×N products with the NTT from T words / without it (the Toom and FFT levels)
+        private static int RunNtt(string[] args)
+        {
+            int rounds = args.Length > 0 ? int.Parse(args[0]) : 9;
+            int[] sizes = Environment.Is64BitProcess
+                ? new[] { 768, 896, 1024, 1100, 1280, 1536, 2048, 2200, 3000, 4096, 4400, 6000, 8192, 16384, 17600, 32768, 65536, 131072 }
+                : new[] { 192, 256, 320, 384, 448, 512, 640, 768, 1024, 1100, 1536, 2048, 4096, 8192, 32768 };
+            int[] thresholds = Environment.Is64BitProcess ? new[] { 768, 1024 } : new[] { 192, 256, 384, 512 };
+            // kara ntt [rounds] [thresholds] [sizes]: comma-separated lists replace the defaults
+            if (args.Length > 1) thresholds = args[1].Split(',').Select(int.Parse).ToArray();
+            if (args.Length > 2) sizes = args[2].Split(',').Select(int.Parse).ToArray();
+            try
+            {
+                var proc = Process.GetCurrentProcess();
+                proc.PriorityClass = ProcessPriorityClass.High;
+                if (Environment.ProcessorCount > 2) proc.ProcessorAffinity = (nint)(1L << 2);
+                Thread.CurrentThread.Priority = ThreadPriority.Highest;
+            }
+            catch { /* best effort */ }
+            var core = FullIntCoreFactory.Create();
+            int saved = Karatsuba.NttThreshold;
+            Console.WriteLine($"core={core.GetType().Name}  rounds={rounds}  (time per N×N product; ratio = with the NTT from T / without it)");
+            Console.Write($"{"N",6} {"no ntt",12}");
+            foreach (var t in thresholds) Console.Write($" {"T=" + t,14}");
+            Console.WriteLine();
+            foreach (int n in sizes)
+            {
+                ulong[] a = Data.Limbs(n, 1), b = Data.Limbs(n, 2);
+                var r = new ulong[2 * n];
+                var variants = new List<Action> { () => { Karatsuba.NttThreshold = int.MaxValue; Karatsuba.Multiply(core, a, b, r); } };
+                foreach (int t in thresholds)
+                {
+                    int threshold = t;
+                    variants.Add(() => { Karatsuba.NttThreshold = threshold; Karatsuba.Multiply(core, a, b, r); });
+                }
+                int it = 1;
+                for (var sw = Stopwatch.StartNew(); ; it *= 2)
+                {
+                    sw.Restart();
+                    for (int i = 0; i < it; i++) variants[0]();
+                    if (sw.Elapsed.TotalMilliseconds > 20) break;
+                }
+                var samples = new List<double>[variants.Count];
+                for (int v = 0; v < variants.Count; v++) samples[v] = new List<double>();
+                for (int round = 0; round < rounds; round++)
+                {
+                    for (int k = 0; k < variants.Count; k++)
+                    {
+                        int v = (k + round) % variants.Count;
+                        var sw = Stopwatch.StartNew();
+                        for (int i = 0; i < it; i++) variants[v]();
+                        samples[v].Add(sw.Elapsed.TotalMilliseconds * 1e6 / it);
+                    }
+                }
+                double baseline = Median(samples[0]);
+                Console.Write($"{n,6} {Format(baseline),12}");
+                for (int v = 1; v < variants.Count; v++)
+                {
+                    double m = Median(samples[v]);
+                    Console.Write($" {Format(m),8} {m / baseline,5:0.00}");
+                }
+                Console.WriteLine();
+            }
+            Karatsuba.NttThreshold = saved;
             return 0;
         }
 

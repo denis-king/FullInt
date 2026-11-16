@@ -62,7 +62,19 @@ namespace FullInt.Core
         {
             if (r.Length != a.Length + b.Length) throw new ArgumentException("r.Length must be a.Length + b.Length", nameof(r));
             if (k < 1 || k > 20) throw new ArgumentOutOfRangeException(nameof(k));
-            FftMul(core, a, b, r, new Limits(Threshold, Toom3Threshold, Toom4Threshold, Toom6Threshold, FftThreshold, SqrThreshold), k);
+            FftMul(core, a, b, r, new Limits(Threshold, Toom3Threshold, Toom4Threshold, Toom6Threshold, FftThreshold, SqrThreshold, int.MaxValue), k);
+        }
+
+        /// <summary>
+        /// The NTT product alone (tests: the transforms on any size). False, with r untouched, when
+        /// the core has no NTT kernels (AVX2) or the product is too long for them.
+        /// </summary>
+        public static bool NttMultiply(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> r)
+        {
+            if (r.Length != a.Length + b.Length) throw new ArgumentException("r.Length must be a.Length + b.Length", nameof(r));
+            if (a.Length == 0 || b.Length == 0 || !NativeNtt(core) || !NttOps.Fits(r.Length)) return false;
+            NttOps.Multiply(a, b, r);
+            return true;
         }
 
         /// <summary>Same, with an explicit FFT threshold too (at least 8).</summary>
@@ -79,8 +91,12 @@ namespace FullInt.Core
             if (toom6Threshold < 6) throw new ArgumentOutOfRangeException(nameof(toom6Threshold));
             if (r.Length != a.Length + b.Length) throw new ArgumentException("r.Length must be a.Length + b.Length", nameof(r));
 
+            // the NTT only with the default thresholds: explicit ones (tests, tuning) keep the
+            // levels they name
+            bool defaults = threshold == Threshold && toom3Threshold == Toom3Threshold && toom4Threshold == Toom4Threshold
+                && toom6Threshold == Toom6Threshold && fftThreshold == FftThreshold;
             var lim = new Limits(threshold, toom3Threshold, toom4Threshold, toom6Threshold, fftThreshold,
-                threshold == Threshold ? SqrThreshold : threshold);
+                threshold == Threshold ? SqrThreshold : threshold, defaults ? NttThreshold : int.MaxValue);
             ulong[] scratch = ArrayPool<ulong>.Shared.Rent(ScratchLength(a.Length, b.Length));
             try
             {
@@ -95,10 +111,10 @@ namespace FullInt.Core
         // the thresholds of one Multiply call, passed down the recursion
         private readonly struct Limits
         {
-            public readonly int Kara, Toom3, Toom4, Toom6, Fft, SqrKara;
-            public Limits(int kara, int toom3, int toom4, int toom6, int fft, int sqrKara)
+            public readonly int Kara, Toom3, Toom4, Toom6, Fft, SqrKara, Ntt;
+            public Limits(int kara, int toom3, int toom4, int toom6, int fft, int sqrKara, int ntt)
             {
-                Kara = kara; Toom3 = toom3; Toom4 = toom4; Toom6 = toom6; Fft = fft; SqrKara = sqrKara;
+                Kara = kara; Toom3 = toom3; Toom4 = toom4; Toom6 = toom6; Fft = fft; SqrKara = sqrKara; Ntt = ntt;
             }
         }
 
@@ -139,6 +155,12 @@ namespace FullInt.Core
             if (lb <= m)
             {
                 MulUnbalanced(core, a, b, r, scratch, lim);
+                return;
+            }
+
+            if (lb >= lim.Ntt && NttOps.Worth(la + lb, lb >= 4 * lim.Ntt) && NativeNtt(core))
+            {
+                NttOps.Multiply(a, b, r);
                 return;
             }
 

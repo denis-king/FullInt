@@ -17,6 +17,7 @@
 #include <fullint/Karatsuba.h>
 
 #include <algorithm>
+#include <climits>
 #include <cmath>
 #include <cstring>
 #include <memory>
@@ -280,7 +281,7 @@ void Karatsuba::FftMultiply(CSpan a, CSpan b, Span r, int k)
 {
     if (r.size() != a.size() + b.size()) throw std::invalid_argument("r.size() must be a.size() + b.size()");
     if (k < 1 || k > 20) throw std::out_of_range("k");
-    FftMul(a, b, r, Limits{ Threshold, Toom3Threshold, Toom4Threshold, Toom6Threshold, FftThreshold, SqrThreshold }, k);
+    FftMul(a, b, r, Limits{ Threshold, Toom3Threshold, Toom4Threshold, Toom6Threshold, FftThreshold, SqrThreshold, INT_MAX }, k);
 }
 
 void Karatsuba::FftMul(CSpan a, CSpan b, Span r, const Limits& lim, int forceK)
@@ -294,6 +295,7 @@ void Karatsuba::FftMul(CSpan a, CSpan b, Span r, const Limits& lim, int forceK)
 size_t Karatsuba::MulModLength(size_t minWords, size_t cyclicFrom)
 {
     if (minWords < cyclicFrom) return minWords;
+    if (size_t mn = NttCyclicLength(minWords)) return mn;   // the cyclic NTT: a power of two
     int k, nBits;
     size_t m;
     ChooseFftCyclic(minWords, false, k, m, nBits);
@@ -303,6 +305,11 @@ size_t Karatsuba::MulModLength(size_t minWords, size_t cyclicFrom)
 void Karatsuba::MultiplyMod(CSpan a, CSpan b, Span r, size_t cyclicFrom)
 {
     size_t m = r.size();
+    if (m >= cyclicFrom && NttCyclicLength(m) == m)
+    {
+        NttMultiplyCyclic(a, b, r);   // the cyclic NTT (MulModLength's powers of two)
+        return;
+    }
     if (m >= cyclicFrom)
     {
         int k, nBits;
@@ -313,7 +320,7 @@ void Karatsuba::MultiplyMod(CSpan a, CSpan b, Span r, size_t cyclicFrom)
             // K = 2^k pieces of M words, K·M = m: sum c_i·β^(M·i) = a·b mod β^(KM) - 1
             size_t n1 = (size_t)nBits / 64 + 1;
             std::vector<uint64_t> acc(m + n1 + 1);
-            Convolve(a, b, acc, k, pm, nBits, Limits{ Threshold, Toom3Threshold, Toom4Threshold, Toom6Threshold, FftThreshold, SqrThreshold });
+            Convolve(a, b, acc, k, pm, nBits, Limits{ Threshold, Toom3Threshold, Toom4Threshold, Toom6Threshold, FftThreshold, SqrThreshold, NttThreshold });
             FoldMod(acc, r);
             return;
         }

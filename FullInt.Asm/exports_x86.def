@@ -23,3 +23,13 @@ Fullint64MultWIN_adx
 Fullint64DivExactWIN
 Fullint64SqrWIN_adx
 Fullint64MulLoWIN_adx
+Fullint64NttDif1WIN_avx2
+Fullint64NttDif2WIN_avx2
+Fullint64NttDif3WIN_avx2
+Fullint64NttDit1WIN_avx2
+Fullint64NttDit2WIN_avx2
+Fullint64NttDit3WIN_avx2
+Fullint64NttPointWIN_avx2
+Fullint64NttScaleWIN_avx2
+Fullint64NttLoadWIN_avx2
+Fullint64NttCrtWIN
