@@ -8,7 +8,7 @@ namespace FullInt.Core
     /// kernels to 32-bit registers), cdecl. Every operation has an x86 kernel; small sizes and
     /// Compare go to the managed core, where the native call would cost more than the work.
     /// </summary>
-    public class FullIntCoreWindowsX86 : FullIntCoreBase, IFullIntCore   // re-implements a few members, see below
+    public sealed class FullIntCoreWindowsX86 : FullIntCoreBase, IFullIntCore   // re-implements a few members, see below
     {
         const string dll = "FullIntOperations_win_x86.dll";
 

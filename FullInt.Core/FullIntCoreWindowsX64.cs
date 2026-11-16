@@ -5,7 +5,7 @@ using System.Text;
 
 namespace FullInt.Core
 {
-    public class FullIntCoreWindowsX64 : FullIntCoreBase
+    public sealed class FullIntCoreWindowsX64 : FullIntCoreBase
     {
 		const string dll = "FullIntOperations_win_x64.dll";
 		
@@ -217,7 +217,7 @@ namespace FullInt.Core
 #if NET5_0_OR_GREATER
             if (Short(lenA, lenB, lenR)) return Fullint64AddWIN_Fast(a, b, r, lenA, lenB, lenR);
 #endif
-            return Fullint64AddWIN(a, b, r, lenA, lenB, lenR);
+            return Slow.Fullint64AddWIN(a, b, r, lenA, lenB, lenR);
         }
 
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
@@ -236,7 +236,7 @@ namespace FullInt.Core
 #if NET5_0_OR_GREATER
             if (n <= FastWords) return Fullint64AddNWIN_Fast(a, b, r, n);
 #endif
-            return Fullint64AddNWIN(a, b, r, n);
+            return Slow.Fullint64AddNWIN(a, b, r, n);
         }
 
         private static unsafe ulong SubN(ulong* a, ulong* b, ulong* r, int n)
@@ -244,7 +244,7 @@ namespace FullInt.Core
 #if NET5_0_OR_GREATER
             if (n <= FastWords) return Fullint64SubNWIN_Fast(a, b, r, n);
 #endif
-            return Fullint64SubNWIN(a, b, r, n);
+            return Slow.Fullint64SubNWIN(a, b, r, n);
         }
 
         // equal lengths (AddSubN.asm): no length resolution in the kernel; r at least as long as
@@ -298,7 +298,7 @@ namespace FullInt.Core
 #if NET5_0_OR_GREATER
             if (Short(lenA, lenB, lenR)) return Fullint64SubWIN_Fast(a, b, r, lenA, lenB, lenR);
 #endif
-            return Fullint64SubWIN(a, b, r, lenA, lenB, lenR);
+            return Slow.Fullint64SubWIN(a, b, r, lenA, lenB, lenR);
         }
         
         protected override void Mult(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR)
@@ -311,8 +311,8 @@ namespace FullInt.Core
                 return;
             }
 #endif
-            if (MultAdx) Fullint64MultWIN_adx(a, b, r, lenA, lenB, lenR);
-            else Fullint64MultWIN(a, b, r, lenA, lenB, lenR);
+            if (MultAdx) Slow.Fullint64MultWIN_adx(a, b, r, lenA, lenB, lenR);
+            else Slow.Fullint64MultWIN(a, b, r, lenA, lenB, lenR);
         }
 
         protected override void Div(IntPtr a, IntPtr b, IntPtr q, IntPtr r, int lenA, int lenB)
@@ -356,7 +356,7 @@ namespace FullInt.Core
 			if (Short(lenA, lenB, 0))
 				return LogicAvx2 ? Fullint64CompareWIN_avx2_Fast(a, b, lenA, lenB) : Fullint64CompareWIN_Fast(a, b, lenA, lenB);
 #endif
-			return LogicAvx2 ? Fullint64CompareWIN_avx2(a, b, lenA, lenB) : Fullint64CompareWIN(a, b, lenA, lenB);
+			return LogicAvx2 ? Slow.Fullint64CompareWIN_avx2(a, b, lenA, lenB) : Slow.Fullint64CompareWIN(a, b, lenA, lenB);
 		}
         
         protected override void ToDecString(IntPtr value, IntPtr valueBuf, IntPtr resultBuf, int lenValue, ref int lenResult)
@@ -391,7 +391,7 @@ namespace FullInt.Core
             if (Short(lenA, lenB, lenR))
                 return LogicAvx2 ? Fullint64AndWIN_avx2_Fast(a, b, r, lenA, lenB, lenR, signs) : Fullint64AndWIN_Fast(a, b, r, lenA, lenB, lenR, signs);
 #endif
-            return LogicAvx2 ? Fullint64AndWIN_avx2(a, b, r, lenA, lenB, lenR, signs) : Fullint64AndWIN(a, b, r, lenA, lenB, lenR, signs);
+            return LogicAvx2 ? Slow.Fullint64AndWIN_avx2(a, b, r, lenA, lenB, lenR, signs) : Slow.Fullint64AndWIN(a, b, r, lenA, lenB, lenR, signs);
         }
 
         protected override int Or(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs)
@@ -400,7 +400,7 @@ namespace FullInt.Core
             if (Short(lenA, lenB, lenR))
                 return LogicAvx2 ? Fullint64OrWIN_avx2_Fast(a, b, r, lenA, lenB, lenR, signs) : Fullint64OrWIN_Fast(a, b, r, lenA, lenB, lenR, signs);
 #endif
-            return LogicAvx2 ? Fullint64OrWIN_avx2(a, b, r, lenA, lenB, lenR, signs) : Fullint64OrWIN(a, b, r, lenA, lenB, lenR, signs);
+            return LogicAvx2 ? Slow.Fullint64OrWIN_avx2(a, b, r, lenA, lenB, lenR, signs) : Slow.Fullint64OrWIN(a, b, r, lenA, lenB, lenR, signs);
         }
 
         protected override int Xor(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs)
@@ -409,7 +409,7 @@ namespace FullInt.Core
             if (Short(lenA, lenB, lenR))
                 return LogicAvx2 ? Fullint64XorWIN_avx2_Fast(a, b, r, lenA, lenB, lenR, signs) : Fullint64XorWIN_Fast(a, b, r, lenA, lenB, lenR, signs);
 #endif
-            return LogicAvx2 ? Fullint64XorWIN_avx2(a, b, r, lenA, lenB, lenR, signs) : Fullint64XorWIN(a, b, r, lenA, lenB, lenR, signs);
+            return LogicAvx2 ? Slow.Fullint64XorWIN_avx2(a, b, r, lenA, lenB, lenR, signs) : Slow.Fullint64XorWIN(a, b, r, lenA, lenB, lenR, signs);
         }
 
         protected override void ShiftLeft(IntPtr a, IntPtr r, int lenA, int lenR, int shift)
@@ -421,7 +421,7 @@ namespace FullInt.Core
                 return;
             }
 #endif
-            if (LogicAvx2) Fullint64ShlWIN_avx2(a, r, lenA, lenR, shift); else Fullint64ShlWIN(a, r, lenA, lenR, shift);
+            if (LogicAvx2) Slow.Fullint64ShlWIN_avx2(a, r, lenA, lenR, shift); else Slow.Fullint64ShlWIN(a, r, lenA, lenR, shift);
         }
 
         protected override void ShiftRight(IntPtr a, IntPtr r, int lenA, int lenR, int shift)
@@ -433,7 +433,51 @@ namespace FullInt.Core
                 return;
             }
 #endif
-            if (LogicAvx2) Fullint64ShrWIN_avx2(a, r, lenA, lenR, shift); else Fullint64ShrWIN(a, r, lenA, lenR, shift);
+            if (LogicAvx2) Slow.Fullint64ShrWIN_avx2(a, r, lenA, lenR, shift); else Slow.Fullint64ShrWIN(a, r, lenA, lenR, shift);
+        }
+
+        // The full P/Invokes (above FastWords) out of line: inlined into the methods that also hold a
+        // _Fast call, they made the JIT set up a P/Invoke frame (CORINFO_HELP_INIT_PINVOKE_FRAME, all
+        // callee-saved registers) on every call - the short path's whole cost doubled (a + b into r on
+        // 2 words: ~5 ns of 11 in core.Add)
+        private static class Slow
+        {
+            [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+            public static ulong Fullint64AddWIN(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR) => FullIntCoreWindowsX64.Fullint64AddWIN(a, b, r, lenA, lenB, lenR);
+            [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+            public static int Fullint64SubWIN(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR) => FullIntCoreWindowsX64.Fullint64SubWIN(a, b, r, lenA, lenB, lenR);
+            [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+            public static unsafe ulong Fullint64AddNWIN(ulong* a, ulong* b, ulong* r, long n) => FullIntCoreWindowsX64.Fullint64AddNWIN(a, b, r, n);
+            [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+            public static unsafe ulong Fullint64SubNWIN(ulong* a, ulong* b, ulong* r, long n) => FullIntCoreWindowsX64.Fullint64SubNWIN(a, b, r, n);
+            [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+            public static ulong Fullint64MultWIN(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR) => FullIntCoreWindowsX64.Fullint64MultWIN(a, b, r, lenA, lenB, lenR);
+            [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+            public static void Fullint64MultWIN_adx(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR) => FullIntCoreWindowsX64.Fullint64MultWIN_adx(a, b, r, lenA, lenB, lenR);
+            [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+            public static int Fullint64CompareWIN(IntPtr a, IntPtr b, int lenA, int lenB) => FullIntCoreWindowsX64.Fullint64CompareWIN(a, b, lenA, lenB);
+            [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+            public static int Fullint64CompareWIN_avx2(IntPtr a, IntPtr b, int lenA, int lenB) => FullIntCoreWindowsX64.Fullint64CompareWIN_avx2(a, b, lenA, lenB);
+            [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+            public static int Fullint64AndWIN(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => FullIntCoreWindowsX64.Fullint64AndWIN(a, b, r, lenA, lenB, lenR, signs);
+            [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+            public static int Fullint64AndWIN_avx2(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => FullIntCoreWindowsX64.Fullint64AndWIN_avx2(a, b, r, lenA, lenB, lenR, signs);
+            [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+            public static int Fullint64OrWIN(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => FullIntCoreWindowsX64.Fullint64OrWIN(a, b, r, lenA, lenB, lenR, signs);
+            [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+            public static int Fullint64OrWIN_avx2(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => FullIntCoreWindowsX64.Fullint64OrWIN_avx2(a, b, r, lenA, lenB, lenR, signs);
+            [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+            public static int Fullint64XorWIN(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => FullIntCoreWindowsX64.Fullint64XorWIN(a, b, r, lenA, lenB, lenR, signs);
+            [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+            public static int Fullint64XorWIN_avx2(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => FullIntCoreWindowsX64.Fullint64XorWIN_avx2(a, b, r, lenA, lenB, lenR, signs);
+            [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+            public static void Fullint64ShlWIN(IntPtr a, IntPtr r, int lenA, int lenR, int shift) => FullIntCoreWindowsX64.Fullint64ShlWIN(a, r, lenA, lenR, shift);
+            [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+            public static void Fullint64ShlWIN_avx2(IntPtr a, IntPtr r, int lenA, int lenR, int shift) => FullIntCoreWindowsX64.Fullint64ShlWIN_avx2(a, r, lenA, lenR, shift);
+            [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+            public static void Fullint64ShrWIN(IntPtr a, IntPtr r, int lenA, int lenR, int shift) => FullIntCoreWindowsX64.Fullint64ShrWIN(a, r, lenA, lenR, shift);
+            [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+            public static void Fullint64ShrWIN_avx2(IntPtr a, IntPtr r, int lenA, int lenR, int shift) => FullIntCoreWindowsX64.Fullint64ShrWIN_avx2(a, r, lenA, lenR, shift);
         }
     }
 }
