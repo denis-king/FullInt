@@ -499,7 +499,48 @@ static constexpr size_t SHIFT_INLINE = 8;
 static constexpr size_t SHIFT_INLINE = 0;
 #endif
 
+// The thin entries of the shifts (x64), as addInto: the common case alone in a small function - a
+// shift by 1-63 bits of a value up to SHIFT_INLINE words, room in result, result not the value:
+// the words here, written straight into result's buffer (no Prepare / Grow, no kernel call, no
+// zero runs: the function stays small). Everything else: the general functions (a jump).
 void FullInt64Engine::shiftLeftInto(FullInt64& result, const FullInt64& value, int shift)
+{
+#if defined(_M_X64) || defined(__x86_64__)
+    uint32_t la = value.size_;
+    if ((unsigned)(shift - 1) < 63u && la < result.cap_ && &result != &value)
+    {
+        const uint64_t* a = value.Data();
+        uint64_t* p = result.Base();
+        if (la > SHIFT_INLINE)   // longer: the kernel, straight into the buffer
+        {
+            FullIntCore::ShiftLeft(CSpan(a, la), shift, Span(p, la + 1));
+            uint32_t zk = p[0] == 0 ? 1 : 0;
+            result.off_ = zk;
+            result.size_ = la + 1 - zk;
+            result.neg_ = value.neg_;
+            return;
+        }
+        int bits = shift, back = 64 - shift;
+        uint64_t prev = 0;   // the word above: its bits shifted out come down into p[i]
+        for (uint32_t i = 0; i < la; i++)
+        {
+            uint64_t cur = a[i];
+            p[i] = prev << bits | cur >> back;
+            prev = cur;
+        }
+        p[la] = prev << bits;
+        // normalized a: only the top word can be zero; a zero value (one zero word) stays one zero word
+        uint32_t z = p[0] == 0 ? 1 : 0;
+        result.off_ = z;
+        result.size_ = la + 1 - z;
+        result.neg_ = value.neg_;
+        return;
+    }
+#endif
+    shiftLeftIntoGeneral(result, value, shift);
+}
+
+void FullInt64Engine::shiftLeftIntoGeneral(FullInt64& result, const FullInt64& value, int shift)
 {
     CSpan a = value.Words();
     if (&result == &value || shift < 0 || a[0] == 0)   // (a[0] == 0: the value is zero)
@@ -544,6 +585,44 @@ void FullInt64Engine::shiftLeftInto(FullInt64& result, const FullInt64& value, i
 
 void FullInt64Engine::shiftRightInto(FullInt64& result, const FullInt64& value, int shift)
 {
+#if defined(_M_X64) || defined(__x86_64__)
+    uint32_t la = value.size_;
+    if ((unsigned)(shift - 1) < 63u && la <= result.cap_ && &result != &value && !value.neg_)
+    {
+        const uint64_t* a = value.Data();
+        uint64_t* p = result.Base();
+        if (la > SHIFT_INLINE)   // longer: the kernel, straight into the buffer
+        {
+            FullIntCore::ShiftRight(CSpan(a, la), shift, Span(p, la));
+            uint32_t zk = p[0] == 0 ? 1 : 0;   // la > 1 here
+            result.off_ = zk;
+            result.size_ = la - zk;
+            result.neg_ = false;
+            return;
+        }
+        int bits = shift, back = 64 - shift;
+        uint64_t prev = 0;   // the word above: its low bits come down into p[i]
+        for (uint32_t i = 0; i < la; i++)
+        {
+            uint64_t cur = a[i];
+            p[i] = cur >> bits | prev << back;
+            prev = cur;
+        }
+        // only the top word can become zero (and with one word the result stays one word)
+        uint32_t z = p[0] == 0 && la > 1 ? 1 : 0;
+        result.off_ = z;
+        result.size_ = la - z;
+        result.neg_ = false;
+        return;
+    }
+#endif
+    shiftRightIntoGeneral(result, value, shift);
+}
+
+// the general right shift into result (inline into the operator; the thin entry jumps to the
+// out-of-line copy below)
+FULLINT_FORCEINLINE void FullInt64Engine::ShiftRightIntoBody(FullInt64& result, const FullInt64& value, int shift)
+{
     if (&result == &value || shift < 0 || value.neg_)   // negative: floor rounding, the ordinary path
     {
         shiftIntoAliased(result, value, shift, false);
@@ -553,6 +632,11 @@ void FullInt64Engine::shiftRightInto(FullInt64& result, const FullInt64& value, 
     uint32_t n = (uint32_t)std::max<int64_t>((int64_t)a.size() - shift / 64, 1);
     FullIntCore::ShiftRight(a, shift, Span(result.Prepare(n), n));
     result.Normalize(false);
+}
+
+void FullInt64Engine::shiftRightIntoGeneral(FullInt64& result, const FullInt64& value, int shift)
+{
+    ShiftRightIntoBody(result, value, shift);
 }
 
 #pragma endregion
@@ -831,7 +915,10 @@ FullInt64 FullInt64Engine::shiftRightGeneral(const FullInt64& value, int shift)
         FullInt64 r;
         if constexpr (SHIFT_INLINE > 0)   // x64 16-64 words: 0.6-0.75 of the kernel path below; x86: only a layer more
         {
-            shiftRightInto(r, value, shift);
+            // short: the thin entry (its inline words); longer: a fresh number has no room for them
+            // there (InlineWords), so straight to the general function
+            if (value.size_ <= 4) shiftRightInto(r, value, shift);   // (8 words: the kernel below is 6% ahead of the loop)
+            else ShiftRightIntoBody(r, value, shift);
             return r;
         }
         CSpan a = value.Words();

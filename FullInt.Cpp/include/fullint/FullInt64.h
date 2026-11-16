@@ -369,6 +369,10 @@ private:
     FULLINT_NOINLINE static void addIntoAliased(FullInt64& result, CSpan a, CSpan b, bool neg1, bool neg2);
     FULLINT_NOINLINE static void multIntoAliased(FullInt64& result, const FullInt64& value1, const FullInt64& value2);
     FULLINT_NOINLINE static void shiftIntoAliased(FullInt64& result, const FullInt64& value, int shift, bool left);
+    // the shifts' cases other than their short common one (FullInt64Engine.cpp)
+    FULLINT_NOINLINE static void shiftLeftIntoGeneral(FullInt64& result, const FullInt64& value, int shift);
+    FULLINT_NOINLINE static void shiftRightIntoGeneral(FullInt64& result, const FullInt64& value, int shift);
+    static void ShiftRightIntoBody(FullInt64& result, const FullInt64& value, int shift);
     FULLINT_NOINLINE static void bitwiseIntoAliased(FullInt64& result, int op, const FullInt64& value1, const FullInt64& value2);
     FULLINT_NOINLINE static void divRemAliased(const FullInt64& value1, const FullInt64& value2, FullInt64* quotient, FullInt64* remainder);
 public:
