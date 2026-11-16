@@ -105,7 +105,8 @@ struct Karatsuba
     // from it a Karatsuba square level (C#: Karatsuba.SqrThreshold). A Multiply with an explicit
     // Karatsuba threshold other than Threshold (tests, tuning) uses that one for squares too.
 #if defined(_M_X64) || defined(__x86_64__)
-    static inline int SqrThreshold = 64;
+    // 96 with the 8-way SqrAdx.asm (64..832 words of GMP's squares: mean 1.075, with 64 1.12)
+    static inline int SqrThreshold = 96;
 #else
     static inline int SqrThreshold = 32;   // x86/SqrAdx.asm: 32..48 equal, a square 0.64-0.75 of a product
 #endif

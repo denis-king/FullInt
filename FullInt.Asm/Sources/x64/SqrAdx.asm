@@ -2,27 +2,27 @@ default rel
 section .text
 
 ; =============================================================================
-;  R = A² with mulx / adcx / adox (BMI2 + ADX: Broadwell, Zen and later). A new kernel next to
+;  R = AÂ² with mulx / adcx / adox (BMI2 + ADX: Broadwell, Zen and later). A new kernel next to
 ;  MultAdx.asm; picked at start-up when Fullint64CpuFeatures reports BMI2 and ADX (without
 ;  them the callers square through the multiplication).
 ;
 ;  Limb order: index 0 = most significant word (as every kernel here).
-;  Windows: void Fullint64SqrWIN_adx(A, R, int lenA, int lenR)     lenR >= 2·lenA, R != A;
-;  the words of R above 2·lenA are zero.
+;  Windows: void Fullint64SqrWIN_adx(A, R, int lenA, int lenR)     lenR >= 2Â·lenA, R != A;
+;  the words of R above 2Â·lenA are zero.
 ;
-;  Method (indices from the low end): A² = 2·T + D,
-;    T = sum over i < j of a_i·a_j·β^(i+j)   (n(n-1)/2 products instead of n²)
-;    D = sum a_i²·β^(2i)
-;  T by rows as MultAdx: row i adds a_i·(a_(i+1) .. a_(n-1)) at r_(2i+1), the row's carry word
+;  Method (indices from the low end): AÂ² = 2Â·T + D,
+;    T = sum over i < j of a_iÂ·a_jÂ·Î²^(i+j)   (n(n-1)/2 products instead of nÂ²)
+;    D = sum a_iÂ²Â·Î²^(2i)
+;  T by rows as MultAdx: row i adds a_iÂ·(a_(i+1) .. a_(n-1)) at r_(2i+1), the row's carry word
 ;  r_(i+n) is new (R cleared first):
 ;    mulx  hi, lo, a_j        ; rdx = a_i
 ;    adcx  lo, prev_hi        ; chain 1 (CF)
 ;    adox  lo, r_(i+j)        ; chain 2 (OF)
-;  then one pass over the pairs r_(2k), r_(2k+1): doubled on the CF chain (adcx x, x), a_k²
+;  then one pass over the pairs r_(2k), r_(2k+1): doubled on the CF chain (adcx x, x), a_kÂ²
 ;  added on the OF chain. Loop control by lea / jrcxz only (no flags).
 ;
 ;  Registers: r10 a_0, r11 r_0, r15 n; rows: rbx a_i, r13 r_(2i+1), r12 the row's length
-;  n - 1 - i, rcx single words then groups of four, r14 the groups, rsi a_j, rdi r_(i+j),
+;  n - 1 - i, rcx single words then groups of eight, r14 the groups, rsi a_j, rdi r_(i+j),
 ;  rdx a_i, r8 prev_hi, r9 hi, rax lo.
 ; =============================================================================
 
@@ -57,9 +57,9 @@ Fullint64SqrWIN_adx:
 	lea rsi, [rbx - 8]          ; a_(i+1)
 	mov rdi, r13
 	mov rcx, r12
-	and rcx, 3                  ; single words first
+	and rcx, 7                  ; single words first
 	mov r14, r12
-	shr r14, 2                  ; then groups of four
+	shr r14, 3                  ; then groups of eight (0.88-0.95 of four at 64-256 words, Zen 3)
 	xor r8d, r8d                ; prev_hi = 0; clears CF and OF
 .word:
 	jrcxz .quads
@@ -74,8 +74,12 @@ Fullint64SqrWIN_adx:
 	jmp .word
 .quads:
 	mov rcx, r14
-.quad:                          ; four words; the high words alternate r9 / r8
-	jrcxz .rowEnd
+.quad:
+	jrcxz .qout
+	jmp .qbody
+.qout:
+	jmp .rowEnd
+.qbody:
 	mulx r9, rax, [rsi]
 	adcx rax, r8
 	adox rax, [rdi]
@@ -92,8 +96,24 @@ Fullint64SqrWIN_adx:
 	adcx rax, r9
 	adox rax, [rdi - 24]
 	mov [rdi - 24], rax
-	lea rsi, [rsi - 32]
-	lea rdi, [rdi - 32]
+	mulx r9, rax, [rsi - 32]
+	adcx rax, r8
+	adox rax, [rdi - 32]
+	mov [rdi - 32], rax
+	mulx r8, rax, [rsi - 40]
+	adcx rax, r9
+	adox rax, [rdi - 40]
+	mov [rdi - 40], rax
+	mulx r9, rax, [rsi - 48]
+	adcx rax, r8
+	adox rax, [rdi - 48]
+	mov [rdi - 48], rax
+	mulx r8, rax, [rsi - 56]
+	adcx rax, r9
+	adox rax, [rdi - 56]
+	mov [rdi - 56], rax
+	lea rsi, [rsi - 64]
+	lea rdi, [rdi - 64]
 	lea rcx, [rcx - 1]
 	jmp .quad
 .rowEnd:
@@ -106,7 +126,7 @@ Fullint64SqrWIN_adx:
 	dec r12
 	jmp .row
 
-.diagonal:                      ; R = 2·T + D, the pairs r_(2k), r_(2k+1)
+.diagonal:                      ; R = 2Â·T + D, the pairs r_(2k), r_(2k+1)
 	mov rcx, r15
 	mov rsi, r10
 	mov rdi, r11
@@ -114,12 +134,12 @@ Fullint64SqrWIN_adx:
 .pair:
 	jrcxz .done
 	mov rdx, [rsi]
-	mulx r9, rax, rdx           ; a_k²
+	mulx r9, rax, rdx           ; a_kÂ²
 	mov r8, [rdi]
 	mov r12, [rdi - 8]
 	adcx r8, r8                 ; doubled: chain 1
 	adcx r12, r12
-	adox r8, rax                ; + a_k²: chain 2
+	adox r8, rax                ; + a_kÂ²: chain 2
 	adox r12, r9
 	mov [rdi], r8
 	mov [rdi - 8], r12
