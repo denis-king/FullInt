@@ -353,12 +353,31 @@ private:
     FULLINT_NOINLINE static void divRemAliased(const FullInt64& value1, const FullInt64& value2, FullInt64* quotient, FullInt64* remainder);
 public:
 
+    // equal lengths up to this many words: a plain loop instead of the kernel call (x86 2-16 words:
+    // 0.66-0.78 of the call; x64 from 8 words the AVX2 kernel is ahead, 2 words still 0.6 for % )
+#if defined(_M_X64) || defined(__x86_64__)
+    static constexpr size_t ShortLoopCompareWords = 2;
+#else
+    static constexpr size_t ShortLoopCompareWords = 16;
+#endif
+
     // |a| vs |b| on normalized magnitudes: the length or the top word almost always decides
     static int CompareAbsQuick(CSpan value1, CSpan value2) noexcept
     {
-        if (value1.size() != value2.size()) return value1.size() > value2.size() ? 1 : -1;
+        size_t n = value1.size();
+        if (n != value2.size()) return n > value2.size() ? 1 : -1;
         if (value1[0] != value2[0]) return value1[0] > value2[0] ? 1 : -1;
-        if (value1.size() == 1) return 0;
+        if (n == 1) return 0;
+        if constexpr (ShortLoopCompareWords == 2)   // x64: the second word only (a loop here grew the inline body)
+        {
+            if (n == 2) return value1[1] == value2[1] ? 0 : value1[1] > value2[1] ? 1 : -1;
+        }
+        else if (n <= ShortLoopCompareWords)   // the first differing word decides: a plain loop (C# the same)
+        {
+            for (size_t i = 1; i < n; i++)
+                if (value1[i] != value2[i]) return value1[i] > value2[i] ? 1 : -1;
+            return 0;
+        }
         return FullIntCore::Compare(value1, value2);
     }
 

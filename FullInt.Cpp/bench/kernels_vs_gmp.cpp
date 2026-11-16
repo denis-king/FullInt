@@ -161,7 +161,7 @@ int main(int argc, char** argv)
         }
         else if (a == "--max" && i + 1 < argc) maxN = std::atoi(argv[++i]);
         else if (a == "--csv" && i + 1 < argc) csv = std::fopen(argv[++i], "w");
-        else { std::printf("usage: %s [--ops add,sub,mul,muladx,div,div1,shl,shr,cmp,todec,fromdec] [--max N] [--csv file]\n", argv[0]); return 2; }
+        else { std::printf("usage: %s [--ops add,sub,addn,subn,mul,muladx,div,div1,shl,shr,cmp,todec,fromdec] [--max N] [--csv file]\n", argv[0]); return 2; }
     }
     if (csv) std::fprintf(csv, "op,n,fullint_ns,gmp_ns\n");
 
@@ -203,6 +203,28 @@ int main(int argc, char** argv)
             run("sub", n,
                 [&] { Fullint64SubWIN(oa2.data(), ob2.data(), orr.data(), n, n, n); },
                 [&] { mpn_sub_n(grr.data(), ga2.data(), gb2.data(), n); });
+        }
+
+        if (want(ops, "addn"))   // the equal-length kernel the engine's add calls (AddSubN.asm)
+        {
+            Vec orr(n), grr(n);
+            u64 oc = Fullint64AddNWIN(oa.data(), ob.data(), orr.data(), n);
+            u64 gc = mpn_add_n(grr.data(), ga.data(), gb.data(), n);
+            if (oc != gc || reversed(orr) != grr) fail("addn", n, "sum");
+            run("addn", n,
+                [&] { Fullint64AddNWIN(oa.data(), ob.data(), orr.data(), n); },
+                [&] { mpn_add_n(grr.data(), ga.data(), gb.data(), n); });
+        }
+
+        if (want(ops, "subn"))
+        {
+            Vec orr(n), grr(n);
+            u64 ob_ = Fullint64SubNWIN(oa.data(), ob.data(), orr.data(), n);
+            u64 gb_ = mpn_sub_n(grr.data(), ga.data(), gb.data(), n);
+            if (ob_ != gb_ || reversed(orr) != grr) fail("subn", n, "difference");
+            run("subn", n,
+                [&] { Fullint64SubNWIN(oa.data(), ob.data(), orr.data(), n); },
+                [&] { mpn_sub_n(grr.data(), ga.data(), gb.data(), n); });
         }
 
         if (want(ops, "mul"))
