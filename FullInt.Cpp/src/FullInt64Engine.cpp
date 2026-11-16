@@ -302,13 +302,10 @@ void FullInt64Engine::addIntoFresh(FullInt64& result, CSpan a, CSpan b, bool neg
 }
 
 // 2 x 1 and 2 x 2 words inline (FullHelper::Mul2x1 / Mul2x2 / Sqr2), no kernel call; false: longer.
-// x64 only: x86 has no 64 x 64 multiply (the 32-bit split: 2 x 2 43 ns, the kernel 15)
+// x86 (no 64 x 64 multiply: four 32 x 32 each) 2 x 1 only: 6.3 ns against the kernel's 9.3, while
+// 2 x 2 18 / 15 and a² 14.6 / 12.7 lose to it
 static FULLINT_FORCEINLINE bool MultShort(CSpan a, CSpan b, uint64_t* r) noexcept
 {
-#if !(defined(_M_X64) || defined(__x86_64__))
-    (void)a; (void)b; (void)r;
-    return false;
-#else
     size_t la = a.size(), lb = b.size();
     if (la + lb == 3)
     {
@@ -316,14 +313,15 @@ static FULLINT_FORCEINLINE bool MultShort(CSpan a, CSpan b, uint64_t* r) noexcep
         else FullHelper::Mul2x1(b.data(), a[0], r);
         return true;
     }
+#if defined(_M_X64) || defined(__x86_64__)
     if (la == 2 && lb == 2)
     {
         if (Karatsuba::Same(a, b)) FullHelper::Sqr2(a.data(), r);
         else FullHelper::Mul2x2(a.data(), b.data(), r);
         return true;
     }
-    return false;
 #endif
+    return false;
 }
 
 void FullInt64Engine::multIntoAliased(FullInt64& result, const FullInt64& value1, const FullInt64& value2)
@@ -528,8 +526,9 @@ void FullInt64Engine::divRem(const FullInt64& value1, const FullInt64& value2, F
     }
 
     // two words by one word: the high word by 64/64, then (r:low) / d by Div128, no kernel call.
-    // In a 32-bit build 64-bit division is a helper call: there "%" goes to the kernel (as C#).
-    if (divisor.size() == 1 && dividend.size() == 2 && (quotient || sizeof(void*) == 8))
+    // In a 32-bit build 64-bit division is a helper call (Div128 four of them): there the kernel
+    // (x86 a / b of 2 by 1 words: 58 ns, GMP 30)
+    if (divisor.size() == 1 && dividend.size() == 2 && sizeof(void*) == 8)
     {
         uint64_t d = divisor[0], hi = dividend[0], lo = dividend[1];
         uint64_t qh = hi / d, r1;

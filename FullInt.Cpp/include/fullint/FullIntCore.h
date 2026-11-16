@@ -167,9 +167,14 @@ struct FullIntCore
     // floor(A*beta / B) within 1, so the words above are exact unless the guard is 0 or beta - 1
     // (an exact multiple: 0): then the true quotient is they or one less / one more, decided by
     // q*B against A (one product, as GMP's mpn_div_q). Saturated (or without the kernel): Div.
-    // below: the guard word's extra step costs more than the shorter passes save (x64, Zen 3,
-    // 2N / N against Div: 3-6 words 1.15-1.38, 8-12 0.9-1.1, 16 0.84, 32 0.74, 64 0.63)
-    static constexpr size_t QuotientWordsMin = 16;
+    // below: the guard word's extra step costs more than the shorter passes save. Kernel, 2N / N
+    // against Div (the kernel keeping min(lenB, steps left + 2) words of B): x64 (Zen 3) 6 words
+    // 1.0, 8 0.95, 12 0.8, 16 0.77, 32 0.67; x86 6 1.03, 8 0.93, 12 0.88, 16 0.77
+#if defined(_M_X64) || defined(__x86_64__)
+    static constexpr size_t QuotientWordsMin = 10;
+#else
+    static constexpr size_t QuotientWordsMin = 8;
+#endif
 
     static void Quotient(CSpan dividend, CSpan divisor, Span quotient) noexcept
     {

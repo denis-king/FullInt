@@ -33,11 +33,12 @@ struct Karatsuba
     // words (the transform lengths 2^k and 3·2^k: at most 1.5 times the product).
     // x64 (Zen 3), of the Toom / FFT levels: 896 words 0.82, 1024 0.73, 1536 0.76-0.81, 2048
     // 0.59, 4096-8192 0.46-0.50, 16384-131072 0.40-0.50; of GMP 0.42-0.63 from 4096. x86: from
-    // 96 words (C#, x86: 112 words 0.64, 128 0.57, 512 0.28, 2048 0.17, 32768 0.08).
+    // 256 words, from 128 when filled (128, 192: of GMP 0.47-0.87; 96 of GMP: products from 48
+    // words through the NTT 1.0-3.6, the Toom levels 0.87-1.03 there).
 #if defined(_M_X64) || defined(__x86_64__)
     static inline int NttThreshold = 896;   // (and from 448 when filled: 512, 768 words)
 #else
-    static inline int NttThreshold = 96;
+    static inline int NttThreshold = 256;
 #endif
     // the NTT product alone (tests): false, r untouched, without the kernels or too long
     static bool NttMultiply(CSpan a, CSpan b, Span r);

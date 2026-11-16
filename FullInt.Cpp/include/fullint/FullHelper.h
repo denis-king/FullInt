@@ -3,6 +3,8 @@
 // are written straight into the result objects.)
 #pragma once
 
+#include <fullint/Cpu.h>
+
 #include <bit>
 #include <cstdint>
 
@@ -17,12 +19,20 @@ struct FullHelper
     static int LeadingZeroCount(uint64_t x) noexcept { return std::countl_zero(x); }
 
     // Full 64 x 64 -> 128 product, returns the high word.
-    static uint64_t BigMul(uint64_t x, uint64_t y, uint64_t* lo) noexcept
+    FULLINT_FORCEINLINE static uint64_t BigMul(uint64_t x, uint64_t y, uint64_t* lo) noexcept
     {
 #if defined(_MSC_VER) && defined(_M_X64)
         uint64_t hi;
         *lo = _umul128(x, y, &hi);   // returns the low word, the high one through the pointer
         return hi;
+#elif defined(_MSC_VER) && defined(_M_IX86)
+        // the 32-bit split with __emulu (one mul each): the plain 64-bit products were __allmul calls
+        uint32_t x0 = (uint32_t)x, x1 = (uint32_t)(x >> 32), y0 = (uint32_t)y, y1 = (uint32_t)(y >> 32);
+        uint64_t z0 = __emulu(x0, y0);
+        uint64_t mid1 = __emulu(x0, y1) + (z0 >> 32);
+        uint64_t mid2 = __emulu(x1, y0) + (uint32_t)mid1;
+        *lo = (mid2 << 32) | (uint32_t)z0;
+        return __emulu(x1, y1) + (mid1 >> 32) + (mid2 >> 32);
 #elif defined(__SIZEOF_INT128__)
         unsigned __int128 p = (unsigned __int128)x * y;
         *lo = (uint64_t)p;

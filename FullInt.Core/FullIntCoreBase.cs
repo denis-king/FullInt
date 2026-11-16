@@ -194,9 +194,10 @@ namespace FullInt.Core
 			FullHelper.Return(rRented);
 		}
 
-		// below: the guard word's extra step costs more than the shorter passes save (x64, Zen 3,
-		// 2N / N against Div: 3-6 words 1.15-1.38, 8-12 0.9-1.1, 16 0.84, 32 0.74, 64 0.63)
-		protected const int QuotientWordsMin = 16;
+		// below: the guard word's extra step costs more than the shorter passes save. Kernel, 2N / N
+		// against Div (the kernel keeping min(lenB, steps left + 2) words of B): x64 (Zen 3) 6 words
+		// 1.0, 8 0.95, 12 0.8, 16 0.77, 32 0.67; x86 6 1.03, 8 0.93, 12 0.88, 16 0.77
+		protected static readonly int QuotientWordsMin = IntPtr.Size == 8 ? 10 : 8;
 
 		// the approximate quotient: Q' = lenA - lenB + 2 words into qa (floor(A·β / B) within 1),
 		// work: lenA + 3 words; false: no such kernel here, or it saturated (divide exactly)

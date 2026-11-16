@@ -54,9 +54,11 @@ namespace FullInt.Core
         /// 4096 0.35, 8192-131072 0.24-0.29 (C++ x64, whose Toom levels are faster: 0.73 at 1024,
         /// 0.40-0.50 from 4096, 0.42-0.63 of GMP); x86 (32-bit multiplies in the Toom levels,
         /// none in the transforms) 96 words 0.85, 112 0.64, 128 0.57, 512 0.28, 2048 0.17, 8192
-        /// 0.11, 32768 0.08.
+        /// 0.11, 32768 0.08. x86 from 256 (from 128 when filled): with 96 the NTT took products
+        /// from 48 words (the half), there 1.1-4.4 times the Toom levels (48: a·b 2.9, a² 4.3;
+        /// C++ against GMP 2.4 / 3.6).
         /// </summary>
-        public static int NttThreshold { get; set; } = Environment.Is64BitProcess ? 896 : 96;
+        public static int NttThreshold { get; set; } = Environment.Is64BitProcess ? 896 : 256;
 
         // the transforms of a fixed factor (NttOps.Image) when the core has the NTT kernels and the
         // products of words words would take them (the rule of the dispatcher); otherwise null

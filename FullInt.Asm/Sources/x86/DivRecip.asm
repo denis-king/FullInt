@@ -740,7 +740,7 @@ global %1
 	mov esi, [V_LB]
 %if %2
 	mov eax, [V_STEPS]
-	add eax, 4                  ; the words of B kept: min(lenB, steps left + 4)
+	add eax, 2                  ; the words of B kept: min(lenB, steps left + 2)
 	cmp esi, eax
 	jbe .submulCount
 	mov esi, eax
@@ -869,7 +869,7 @@ global %1
 	mov esi, [V_LB]
 %if %2
 	mov eax, [V_STEPS]
-	add eax, 4                  ; the same words of B as the pass
+	add eax, 2                  ; the same words of B as the pass
 	cmp esi, eax
 	jbe .addBackCount
 	mov esi, eax

@@ -130,11 +130,12 @@ Fullint64Div2longWIN_recip:
 ;  The quotient alone, approximately (GMP's sbpi1_divappr_q): Q' ~ floor(A*beta / B), lenA -
 ;  lenB + 2 words (the quotient and one guard word below it), R unused, work: lenA + 2
 ;  words. U = [0, A, 0]; the window moves down as above, but the multiply-subtract pass
-;  leaves out every word of U below index L = steps + 4 (counted from U's top; a step uses
-;  only the top min(lenB, steps left + 4) words of B): the last lenB - 5 steps get shorter
-;  and shorter (2N / N: about half the passes' work). The words left out change the window
-;  by less than steps·beta^-(steps + 3) of U's scale - two words below anything the estimate
-;  reads - so each q^ stays the exact quotient of what is kept, and
+;  leaves out every word of U below index L = steps + 2 (counted from U's top; a step uses
+;  only the top min(lenB, steps left + 2) words of B): the last lenB - 3 steps get shorter
+;  and shorter (2N / N: about half the passes' work). A left-out product q^ * (B's low words)
+;  is below 2 beta^(1 - kept) of B at its step, 2 / beta of B at the last window's scale; all of
+;  them below 2 lenB / beta of B: a q^ can be off only by a window that close to a boundary,
+;  and the add-back corrects it as for any estimate, so
 ;    Q' = floor(A*beta / B) + {-1, 0, 1}
 ;  (the final window is in [0, B + that error)), returns 0. The caller takes Q'[0 .. steps - 2]
 ;  when the guard word is not 0 or beta - 1, otherwise checks that against A by one product.
@@ -291,7 +292,7 @@ global %1
 	mov rdx, rbx
 	mov rcx, r9                 ; index (rcx free here: sh reloaded per step)
 %if %3
-	lea rax, [r10 + 4]          ; the words of B kept: min(lenB, steps left + 4)
+	lea rax, [r10 + 2]          ; the words of B kept: min(lenB, steps left + 2)
 	cmp rcx, rax
 	cmova rcx, rax
 %endif
@@ -341,7 +342,7 @@ global %1
 %else
 	mov rbp, r9
 %if %3
-	lea rax, [r10 + 4]          ; the words of B kept: min(lenB, steps left + 4)
+	lea rax, [r10 + 2]          ; the words of B kept: min(lenB, steps left + 2)
 	cmp rbp, rax
 	cmova rbp, rax
 %endif
@@ -442,7 +443,7 @@ global %1
 	dec rbx
 	mov rbp, r9
 %if %3
-	lea rax, [r10 + 4]          ; the same words of B as the pass
+	lea rax, [r10 + 2]          ; the same words of B as the pass
 	cmp rbp, rax
 	cmova rbp, rax
 %endif
