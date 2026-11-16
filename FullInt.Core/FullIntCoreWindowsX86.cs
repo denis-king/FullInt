@@ -58,6 +58,13 @@ namespace FullInt.Core
         private static readonly bool NttKernels = (CpuFeatures & 4) == 4;
         internal bool HasNttKernels => NttKernels;
 
+        // the same, without a core at hand (the Newton thresholds); false when the x86 DLL is not there
+        internal static bool NttAvailable()
+        {
+            try { return NttKernels; }
+            catch (Exception) { return false; }
+        }
+
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern void Fullint64SqrWIN_adx(IntPtr a, IntPtr r, int lenA, int lenR);
 

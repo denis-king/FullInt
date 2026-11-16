@@ -553,6 +553,49 @@ void NewtonDivide()
     check(shaped(20000), shaped(9000), 0, fullint::NewtonDivision::InverseBase);
     check(shaped(30000), shaped(8200), 0, fullint::NewtonDivision::InverseBase);
 
+    // the quotient alone (a guard word, the last block's remainder skipped): random operands,
+    // exact multiples A = B·Q (guard word 0: the fallback) and B·Q - 1 (the top boundary)
+    {
+        int savedSplit = fullint::NewtonDivision::Split, savedBase = fullint::NewtonDivision::InverseBase;
+        int savedCyclic = fullint::NewtonDivision::CyclicFrom;
+        for (int round = 0; round < 1500; round++)
+        {
+            fullint::NewtonDivision::Split = (int)(rng() % 4);
+            fullint::NewtonDivision::InverseBase = bases[rng() % 7];
+            fullint::NewtonDivision::CyclicFrom = rng() % 2 ? 1 << 30 : 8 + (int)(rng() % 56);
+            size_t lb = 1 + rng() % 120, la = lb + rng() % 300;
+            auto a = shaped(la), b = shaped(lb);
+            int kind = (int)(rng() % 4);
+            Mpz ma, mb, eq, gq;
+            mpz_import(mb.v, b.size(), 1, 8, 0, 0, b.data());
+            if (kind >= 2)
+            {
+                auto qv = shaped(1 + rng() % 200);
+                Mpz mq;
+                mpz_import(mq.v, qv.size(), 1, 8, 0, 0, qv.data());
+                mpz_mul(ma.v, mq.v, mb.v);
+                if (kind == 3 && mpz_sgn(ma.v) > 0) mpz_sub_ui(ma.v, ma.v, 1);
+                size_t words = (mpz_sizeinbase(ma.v, 2) + 63) / 64;
+                a.assign(std::max(words, b.size()), 0);
+                size_t count = 0;
+                mpz_export(a.data() + (a.size() - words), &count, 1, 8, 0, 0, ma.v);
+            }
+            else
+            {
+                mpz_import(ma.v, a.size(), 1, 8, 0, 0, a.data());
+            }
+            if (a.size() < b.size()) continue;
+            std::vector<uint64_t> q(a.size() - b.size() + 1, 0xDEADBEEFDEADBEEFull);
+            fullint::NewtonDivision::Quotient(a, b, q);
+            mpz_tdiv_q(eq.v, ma.v, mb.v);
+            mpz_import(gq.v, q.size(), 1, 8, 0, 0, q.data());
+            CHECK(mpz_cmp(eq.v, gq.v) == 0, "Newton quotient kind " + std::to_string(kind) + " " + std::to_string(a.size()) + "/" + std::to_string(b.size()));
+        }
+        fullint::NewtonDivision::Split = savedSplit;
+        fullint::NewtonDivision::InverseBase = savedBase;
+        fullint::NewtonDivision::CyclicFrom = savedCyclic;
+    }
+
     for (int round = 0; round < 300; round++)
     {
         size_t s = 1 + rng() % 200;

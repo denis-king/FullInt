@@ -485,6 +485,35 @@ namespace FullInt.Tests
                 Check(Shaped(la), Shaped(lb), NewtonDivision.Split, NewtonDivision.InverseBase, $"[{coreName}] {la}/{lb} engine sizes");
             }
 
+            // the quotient alone (a guard word, the last block's remainder skipped): random
+            // operands, exact multiples A = B·Q (guard word 0: the fallback) and B·Q - 1
+            int savedSplit = NewtonDivision.Split, savedBase = NewtonDivision.InverseBase, savedCyclic = NewtonDivision.CyclicFrom;
+            try
+            {
+                for (int it = 0; it < 1_500; it++)
+                {
+                    NewtonDivision.Split = rnd.Next(4);
+                    NewtonDivision.InverseBase = bases[rnd.Next(bases.Length)];
+                    NewtonDivision.CyclicFrom = rnd.Next(2) == 0 ? int.MaxValue : rnd.Next(8, 64);
+                    int lb = rnd.Next(1, 120);
+                    var b = Shaped(lb);
+                    int kind = rnd.Next(4);
+                    BigInteger av = kind >= 2 ? ToBig(Shaped(rnd.Next(1, 200))) * ToBig(b) - (kind == 3 ? 1 : 0) : ToBig(Shaped(lb + rnd.Next(0, 300)));
+                    var a = FromBig(av);
+                    if (a.Length < lb) continue;
+                    var q = new ulong[a.Length - lb + 1];
+                    q.AsSpan().Fill(0xDEAD_BEEF_DEAD_BEEFUL);
+                    NewtonDivision.Quotient(core, a, b, q);
+                    Assert.AreEqual(av / ToBig(b), ToBig(q), $"[{coreName}] quotient alone kind {kind} {a.Length}/{lb} (iteration {it})");
+                }
+            }
+            finally
+            {
+                NewtonDivision.Split = savedSplit;
+                NewtonDivision.InverseBase = savedBase;
+                NewtonDivision.CyclicFrom = savedCyclic;
+            }
+
             // the reciprocal: within a few units of floor(β^(2s) / D)
             for (int it = 0; it < 500; it++)
             {

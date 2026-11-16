@@ -21,31 +21,38 @@ namespace FullInt.Core
     /// </summary>
     public static class NewtonDivision
     {
+        // x86 with the NTT kernels (AVX2): the products are 5-10 times faster there, and Newton
+        // pays off as early as on x64 (read before the thresholds below are initialized)
+        private static readonly bool X86Ntt = !Environment.Is64BitProcess && FullIntCoreWindowsX86.NttAvailable();
+
         /// <summary>
         /// The engine divides through the Newton reciprocal from this many words of divisor and
-        /// of quotient. Tuned with `FullInt.Benchmarks newton` (Zen 3), Newton / Burnikel–Ziegler at
-        /// 2N / N with the cyclic products (<see cref="CyclicFrom"/>): x64 0.87 at 4096 words, 0.81 at
-        /// 8192, 0.67 at 16384, 0.51 at 32768; x86 0.91 at 16384, 0.82 at 32768, 0.68 at 65536.
+        /// of quotient. Before the NTT (`FullInt.Benchmarks newton`, Zen 3, Newton /
+        /// Burnikel–Ziegler at 2N / N): x64 0.87 at 4096 words, 0.81 at 8192, 0.67 at 16384;
+        /// x86 0.91 at 16384, 0.82 at 32768. With the NTT (C++ x64, 2N / N of GMP, Newton /
+        /// Burnikel–Ziegler): a % b 2048 0.94 / 1.03, 4096 0.87 / 1.08, 8192 0.81 / 0.97; a / b
+        /// (<see cref="Quotient"/>) 2048 1.05 / 1.20, 4096 0.90 / 1.23, 8192 0.82 / 1.27. C#
+        /// (`newton`, Newton / Burnikel–Ziegler): x64 % 2048 0.94, 4096 0.84, 16384 0.55; / (the
+        /// quotients alone) 1024 0.95, 2048 0.88, 4096 0.70, 16384 0.60; x86 with the NTT % 1024
+        /// 0.78, 4096 0.59, 32768 0.47; / 1024 0.70, 4096 0.51, 32768 0.43.
         /// </summary>
-        public static int Threshold { get; set; } = Environment.Is64BitProcess ? 4096 : 16384;
+        public static int Threshold { get; set; } = Environment.Is64BitProcess ? 2048 : X86Ntt ? 1024 : 16384;
 
         /// <summary>
         /// Same, when the quotient is at least twice the divisor (the reciprocal serves several
         /// blocks): 4N / N x64 0.70 at 4096 words (2048: 0.93), 0.60 at 8192, 0.41 at 65536;
         /// x86 0.83 at 8192, 0.76 at 16384, 0.61 at 65536.
         /// </summary>
-        public static int LongQuotientThreshold { get; set; } = Environment.Is64BitProcess ? 4096 : 8192;
+        public static int LongQuotientThreshold { get; set; } = Environment.Is64BitProcess ? 2048 : X86Ntt ? 1024 : 8192;
 
         /// <summary>
-        /// Whether the engine should divide a by b (lengths in words) through the Newton reciprocal;
-        /// quotientOnly (a / b): below 2·Threshold words of divisor and a quotient shorter than two
-        /// divisors, BurnikelZiegler.Quotient is as fast (2N / N x64: 0.80-0.82 of the full division
-        /// at 4096-8192 words, Newton 0.75-0.87) and stays.
+        /// Whether the engine should divide a by b (lengths in words) through the Newton reciprocal
+        /// (quotientOnly, a / b, through <see cref="Quotient"/>: the same sizes, no remainder in its
+        /// last block).
         /// </summary>
         public static bool Use(int dividendLength, int divisorLength, bool quotientOnly = false)
         {
             int qn = dividendLength - divisorLength;
-            if (quotientOnly && divisorLength < 2 * Threshold && qn < 2 * divisorLength) return false;
             return divisorLength >= Threshold && qn >= Threshold
                 || divisorLength >= LongQuotientThreshold && qn >= 2 * divisorLength;
         }
@@ -57,7 +64,7 @@ namespace FullInt.Core
         /// 0.67 at 16384, 0.51 at 32768; 4N / N 0.70 at 4096 (0.97), 0.60 at 8192, 0.41 at 65536.
         /// x86 (managed butterflies): from 4096 (2N / N at 65536: 0.69, with the FFT threshold 0.93).
         /// </summary>
-        public static int CyclicFrom { get; set; } = Environment.Is64BitProcess ? 2048 : 4096;
+        public static int CyclicFrom { get; set; } = Environment.Is64BitProcess ? 2048 : X86Ntt ? 1024 : 4096;
 
         /// <summary>Reciprocals of at most this many words are one division (at least 2).</summary>
         public static int InverseBase { get; set; } = 64;
@@ -65,7 +72,8 @@ namespace FullInt.Core
         /// <summary>
         /// Quotient blocks per divisor length (1: blocks of n words; 2: n/2, a reciprocal of half
         /// the size); 0: 1 for a quotient of at least two divisor lengths or a divisor below
-        /// <see cref="SplitFrom"/> words, otherwise 2 (measured best).
+        /// <see cref="SplitFrom"/> words, otherwise 2 (measured best; <see cref="Quotient"/> too:
+        /// a reciprocal of half the length outweighs the remainder of the first block).
         /// </summary>
         public static int Split { get; set; } = 0;
 
@@ -106,6 +114,24 @@ namespace FullInt.Core
         }
 
         /// <summary>
+        /// The quotient alone (a / b; the <see cref="DivRem(IFullIntCore, Span{ulong}, Span{ulong}, Span{ulong}, Span{ulong})"/>
+        /// contract without r): A·β / B with one guard word below the quotient, and the last
+        /// block's remainder not computed - the guard word away from 0 and β - 1 (the block's
+        /// error is a few units) says the truncation is exact; otherwise (about 2^-59 of the
+        /// time) the whole division.
+        /// </summary>
+        public static void Quotient(IFullIntCore core, Span<ulong> a, Span<ulong> b, Span<ulong> q)
+        {
+            int n = b.Length;
+            int sigma = FullHelper.LeadingZeroCount(b[0]);
+            var bShifted = new ulong[n + 1];
+            core.ShiftLeft(b, sigma, bShifted);
+            var r = new ulong[n + 2];
+            if (Run(core, a, bShifted.AsSpan(1), sigma, null, Split, InverseBase, CyclicFrom, q, r, true)) return;
+            Run(core, a, bShifted.AsSpan(1), sigma, null, Split, InverseBase, CyclicFrom, q, r);
+        }
+
+        /// <summary>
         /// A divisor used many times (the powers of ToString): B &lt;&lt; sigma and its whole
         /// reciprocal computed once; <see cref="DivRem(IFullIntCore, Span{ulong}, Prepared, Span{ulong}, Span{ulong})"/>
         /// then divides in blocks of n words with it, nothing recomputed.
@@ -138,13 +164,15 @@ namespace FullInt.Core
 
         // the division by B' = B << sigma (n words, top bit set); inverseN: B''s whole reciprocal
         // (n + 1 words, the blocks then take n words, shorter ones truncate it), or null: one of
-        // the length the split asks for, computed here
-        private static void Run(IFullIntCore core, Span<ulong> a, Span<ulong> bn, int sigma, ulong[]? inverseN, int split,
-            int inverseBase, int cyclicFrom, Span<ulong> q, Span<ulong> r)
+        // the length the split asks for, computed here. quotientOnly: the guard word scheme of
+        // Quotient; false when the guard word is too close to a boundary (q then not written)
+        private static bool Run(IFullIntCore core, Span<ulong> a, Span<ulong> bn, int sigma, ulong[]? inverseN, int split,
+            int inverseBase, int cyclicFrom, Span<ulong> q, Span<ulong> r, bool quotientOnly = false)
         {
             int la = a.Length, n = bn.Length;
-            var aShifted = new ulong[la + 1];
-            core.ShiftLeft(a, sigma, aShifted);
+            // quotientOnly: A'·β, the quotient one guard word longer
+            var aShifted = new ulong[la + 1 + (quotientOnly ? 1 : 0)];
+            core.ShiftLeft(a, sigma, aShifted.AsSpan(0, la + 1));
             Span<ulong> at = FullHelper.DeleteZeros(aShifted);
 
             q.Clear();
@@ -152,8 +180,8 @@ namespace FullInt.Core
             if (at.Length < n || at.Length == n && CompareEqualLength(at, bn) < 0)
             {
                 at.CopyTo(rem.AsSpan(n - at.Length));                    // A' < B': q = 0
-                Finish(core, rem, sigma, n, r);
-                return;
+                if (!quotientOnly) Finish(core, rem, sigma, n, r);
+                return true;
             }
 
             int qn = at.Length - n;                                       // quotient words below the top one
@@ -177,8 +205,11 @@ namespace FullInt.Core
                 else
                 {
                     if (split == 0) split = qn >= 2 * n || n < SplitFrom ? 1 : 2;
-                    int blocks = Math.Max(1, (qn + n - 1) / n) * split;
-                    s = Math.Min(n, (qn + blocks - 1) / blocks);
+                    // blocks of n / split words (k divisor lengths of quotient: of qn / (k·split)
+                    // if shorter): a quotient a word or two over (the shift of A, the guard word)
+                    // goes into a short first block, the others keep the even length
+                    int k = Math.Max(1, qn / n);
+                    s = Math.Max(1, Math.Min(n / split, qn / (k * split)));
                     inv = Inverse(core, bn.Slice(0, s), inverseBase, cyclicFrom);   // s + 1 words
                 }
 
@@ -199,14 +230,30 @@ namespace FullInt.Core
                     rem.CopyTo(xs);
                     at.Slice(pos, t).CopyTo(xs.Slice(n));
                     Span<ulong> qb = quotient.AsSpan(1 + pos - n, t);
+                    bool last = pos + t == at.Length;
 
-                    // q̂ = top t words of X · top t + 1 words of I, over β^t (t + 1 words, kept below β^t)
+                    // q̂ = top t words of X · top t + 1 words of I, over β^t (kept below β^t). I's top
+                    // word v is 1 (2 for a power of two): X·I = X·v·β^t + X·I', I' its next t words -
+                    // a t by t product, whose length stays on the transform sizes (t + 1 would not)
                     Span<ulong> p = prod.AsSpan(0, 2 * t + 1);
-                    Karatsuba.Multiply(core, xs.Slice(0, t), inv.AsSpan(0, t + 1), p);
+                    Karatsuba.Multiply(core, xs.Slice(0, t), inv.AsSpan(1, t), p.Slice(1));
+                    p[0] = 0;
+                    for (ulong v = inv[0]; v > 0; v--)
+                        p[0] += core.Add(p.Slice(1, t), xs.Slice(0, t), p.Slice(1, t));
                     if (p[0] != 0) qb.Fill(ulong.MaxValue);
                     else p.Slice(1, t).CopyTo(qb);
+                    if (quotientOnly && last)
+                    {
+                        // q̂ is within a few units of the block's quotient: with the guard word (its
+                        // lowest) away from the boundaries, dropping it leaves the exact quotient
+                        ulong g = qb[t - 1];
+                        if (g < 16 || g > ulong.MaxValue - 16) return false;
+                        break;
+                    }
 
-                    if (wrap)
+                    // (a short block - the first one, a word or two - takes the direct n by t product:
+                    // the cyclic one would cost the whole transform)
+                    if (wrap && 8 * t >= n)
                     {
                         Karatsuba.FoldMod(core, xs, xm);
                         Karatsuba.MultiplyMod(core, bn, qb, tm, cyclicFrom);
@@ -267,10 +314,13 @@ namespace FullInt.Core
                 }
             }
 
-            // q: the low q.Length words (the quotient fits; any words above are zero)
-            if (q.Length >= quotient.Length) quotient.CopyTo(q.Slice(q.Length - quotient.Length));
-            else quotient.AsSpan(quotient.Length - q.Length).CopyTo(q);
-            Finish(core, rem, sigma, n, r);
+            // q: the low q.Length words (the quotient fits; any words above are zero); quotientOnly:
+            // without the guard word
+            Span<ulong> qv = quotient.AsSpan(0, quotient.Length - (quotientOnly ? 1 : 0));
+            if (q.Length >= qv.Length) qv.CopyTo(q.Slice(q.Length - qv.Length));
+            else qv.Slice(qv.Length - q.Length).CopyTo(q);
+            if (!quotientOnly) Finish(core, rem, sigma, n, r);
+            return true;
         }
 
         /// <summary>
@@ -328,8 +378,12 @@ namespace FullInt.Core
             var inv = new ulong[s + 1];
             ih.CopyTo(inv, 0);
             if (et.Length == 1 && et[0] == 0) return inv;
-            var c = new ulong[ih.Length + et.Length];
-            Karatsuba.Multiply(core, ih, et, c);
+            // Ih·e with Ih's top word v (1, or 2 for a power of two) apart: e·v·β^h + Ih'·e
+            int le = et.Length;
+            var c = new ulong[ih.Length + le];
+            Karatsuba.Multiply(core, ih.AsSpan(1), et, c.AsSpan(1));
+            for (ulong v = ih[0]; v > 0; v--)
+                c[0] += core.Add(c.AsSpan(1, le), et, c.AsSpan(1, le));
             Span<ulong> cs = FullHelper.DeleteZeros(c.AsSpan(0, c.Length - (h + 1)));   // / β^(h+1)
             if (cs.Length == 1 && cs[0] == 0) return inv;
             if (eNegative) core.Sub(inv, cs, inv);

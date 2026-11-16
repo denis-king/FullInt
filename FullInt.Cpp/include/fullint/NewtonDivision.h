@@ -12,36 +12,40 @@ struct NewtonDivision
     // The engine divides through the Newton reciprocal from this many words of divisor and of
     // quotient, or from LongQuotientThreshold words of divisor when the quotient is at least
     // twice the divisor (the reciprocal then serves several blocks). The products whose low
-    // part alone is needed (q̂·B', D·Ih) go modulo β^m - 1 through the cyclic FFT from
-    // CyclicFrom words.
+    // part alone is needed (q̂·B', D·Ih) go modulo β^m - 1 (the cyclic NTT / FFT) from
+    // CyclicFrom words. x64 with the NTT (Zen 3), 2N / N of GMP, Newton from 2048 against
+    // Burnikel–Ziegler: a % b (2 blocks) 2048 0.94 / 1.03, 4096 0.87 / 1.08, 8192 0.81 / 0.97;
+    // a / b (Quotient: 1 block, no remainder) 2048 1.05 / 1.20, 4096 0.90 / 1.23, 8192 0.82 /
+    // 1.27 (at 1024 Burnikel–Ziegler stays ahead: % 1.09 / 1.35, / 1.16 / 1.22).
 #if defined(_M_X64) || defined(__x86_64__)
-    static inline int Threshold = 4096;
-    static inline int LongQuotientThreshold = 4096;
+    static inline int Threshold = 2048;
+    static inline int LongQuotientThreshold = 2048;
     static inline int CyclicFrom = 2048;
 #else
-    static inline int Threshold = 16384;
-    static inline int LongQuotientThreshold = 8192;
-    static inline int CyclicFrom = 4096;
+    // x86: with the NTT (AVX2) Newton pays off from 1024 words (C#, x86: a % b 0.78 of
+    // Burnikel–Ziegler, a / b 0.70); without it from 16384
+    static inline int Threshold = (Cpu::Detect() & Cpu::Avx2) ? 1024 : 16384;
+    static inline int LongQuotientThreshold = (Cpu::Detect() & Cpu::Avx2) ? 1024 : 8192;
+    static inline int CyclicFrom = (Cpu::Detect() & Cpu::Avx2) ? 1024 : 4096;
 #endif
 
     // Reciprocals of at most this many words are one division (at least 2).
     static inline int InverseBase = 64;
 
     // Quotient blocks per divisor length; 0: 1 for a quotient of at least two divisor lengths
-    // or a divisor below SplitFrom words, otherwise 2.
+    // or a divisor below SplitFrom words, otherwise 2 (Quotient too: a reciprocal of half the
+    // length outweighs the remainder of the first block).
     static inline int Split = 0;
 
-    // The automatic split halves the blocks from this many divisor words. Here (unlike C#, 0)
-    // halving loses below 65536 (2N / N, x64, of Burnikel–Ziegler: split 1 0.95 / 0.82 / 0.85-0.89
-    // at 16384 / 32768 / 65536, split 2 1.06 / 1.11 / 0.75).
-    static inline int SplitFrom = 65536;
+    // The automatic split halves the blocks from this many divisor words: with the NTT a
+    // reciprocal of half the length and two blocks win from the first Newton sizes (a % b,
+    // 2N / N of GMP at 4096 / 8192: split 2 0.87 / 0.81, split 1 1.07 / 0.93).
+    static inline int SplitFrom = 0;
 
-    // quotientOnly (a / b): below 2·Threshold words of divisor and a quotient shorter than two
-    // divisors BurnikelZiegler::Quotient is as fast and stays
     static bool Use(size_t dividendLength, size_t divisorLength, bool quotientOnly = false)
     {
+        (void)quotientOnly;   // the same sizes: Quotient pays off where DivRem does
         size_t qn = dividendLength - divisorLength;
-        if (quotientOnly && divisorLength < 2 * (size_t)Threshold && qn < 2 * divisorLength) return false;
         return (divisorLength >= (size_t)Threshold && qn >= (size_t)Threshold)
             || (divisorLength >= (size_t)LongQuotientThreshold && qn >= 2 * divisorLength);
     }
@@ -69,9 +73,17 @@ struct NewtonDivision
     static void DivRem(CSpan a, const Prepared& p, Span q, Span r);
     static std::vector<uint64_t> Inverse(CSpan d, int inverseBase, size_t cyclicFrom);
 
+    // The quotient alone (a / b; the DivRem contract without r): A·β / B with one guard word
+    // below the quotient, and the last block's remainder not computed - the guard word away
+    // from 0 and β - 1 (the block's error is a few units) says the truncation is exact;
+    // otherwise (about 2^-59 of the time) the whole DivRem.
+    static void Quotient(CSpan a, CSpan b, Span q);
+
 private:
-    static void Run(CSpan a, CSpan bn, int sigma, const std::vector<uint64_t>* inverseN, int split, int inverseBase,
-                    size_t cyclicFrom, Span q, Span r);
+    // quotientOnly: the guard word scheme of Quotient; false when the guard word is too close
+    // to a boundary (q then not written)
+    static bool Run(CSpan a, CSpan bn, int sigma, const std::vector<uint64_t>* inverseN, int split, int inverseBase,
+                    size_t cyclicFrom, Span q, Span r, bool quotientOnly = false);
 };
 
 }  // namespace fullint

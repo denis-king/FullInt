@@ -352,7 +352,10 @@ void FullInt64Engine::divRem(const FullInt64& value1, const FullInt64& value2, F
     // long divisor and long quotient: Burnikel–Ziegler (C#: in div_internal), the same contract
     // longer still: the Newton reciprocal
     if (NewtonDivision::Use(la, lb, !remainder))
-        NewtonDivision::DivRem(dividend, divisor, Span(pq, lq), Span(pr, lb + 2));
+    {
+        if (remainder) NewtonDivision::DivRem(dividend, divisor, Span(pq, lq), Span(pr, lb + 2));
+        else NewtonDivision::Quotient(dividend, divisor, Span(pq, lq));   // the last block's remainder not computed
+    }
     // the quotient alone (a / b): an approximate quotient with a guard word, no remainder;
     // a long divisor with a short quotient is cut down to the quotient's length there
     else if (!remainder && lb >= (uint32_t)BurnikelZiegler::QuotientFrom)

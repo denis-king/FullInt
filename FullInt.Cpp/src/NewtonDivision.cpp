@@ -143,12 +143,24 @@ void NewtonDivision::DivRem(CSpan a, const Prepared& p, Span q, Span r)
 // the division by B' = B << sigma (n words, top bit set); inverseN: B''s whole reciprocal (n + 1
 // words, the blocks then take n words, any shorter ones truncate it), or none: one of the
 // length the split asks for, computed here
-void NewtonDivision::Run(CSpan a, CSpan bn, int sigma, const std::vector<uint64_t>* inverseN, int split, int inverseBase,
-                         size_t cyclicFrom, Span q, Span r)
+void NewtonDivision::Quotient(CSpan a, CSpan b, Span q)
+{
+    size_t n = b.size();
+    int sigma = FullHelper::LeadingZeroCount(b[0]);
+    Words bShifted(n + 1);
+    FullIntCore::ShiftLeft(b, sigma, bShifted);
+    Words r(n + 2);
+    if (Run(a, CSpan(bShifted).subspan(1), sigma, nullptr, Split, InverseBase, (size_t)CyclicFrom, q, r, true)) return;
+    Run(a, CSpan(bShifted).subspan(1), sigma, nullptr, Split, InverseBase, (size_t)CyclicFrom, q, r);
+}
+
+bool NewtonDivision::Run(CSpan a, CSpan bn, int sigma, const std::vector<uint64_t>* inverseN, int split, int inverseBase,
+                         size_t cyclicFrom, Span q, Span r, bool quotientOnly)
 {
     size_t la = a.size(), n = bn.size();
-    Words aShifted(la + 1);
-    FullIntCore::ShiftLeft(a, sigma, aShifted);
+    // quotientOnly: A'·β, the quotient one guard word longer
+    Words aShifted(la + 1 + (quotientOnly ? 1 : 0));
+    FullIntCore::ShiftLeft(a, sigma, Span(aShifted).subspan(0, la + 1));
     CSpan at = DeleteZeros(aShifted);
 
     std::memset(q.data(), 0, q.size_bytes());
@@ -156,8 +168,8 @@ void NewtonDivision::Run(CSpan a, CSpan bn, int sigma, const std::vector<uint64_
     if (at.size() < n || (at.size() == n && CompareEqualLength(at, bn) < 0))
     {
         std::copy(at.begin(), at.end(), rem.end() - at.size());     // A' < B': q = 0
-        Finish(rem, sigma, r);
-        return;
+        if (!quotientOnly) Finish(rem, sigma, r);
+        return true;
     }
 
     size_t qn = at.size() - n;                                       // quotient words below the top one
@@ -182,8 +194,11 @@ void NewtonDivision::Run(CSpan a, CSpan bn, int sigma, const std::vector<uint64_
         else
         {
             if (split == 0) split = qn >= 2 * n || n < (size_t)SplitFrom ? 1 : 2;
-            size_t blocks = std::max<size_t>(1, (qn + n - 1) / n) * (size_t)split;
-            s = std::min(n, (qn + blocks - 1) / blocks);
+            // blocks of n / split words (k divisor lengths of quotient: of qn / (k·split) if
+            // shorter): a quotient a word or two over (the shift of A, the guard word) goes into a
+            // short first block, the others keep the even length
+            size_t k = std::max<size_t>(1, qn / n);
+            s = std::max<size_t>(1, std::min(n / (size_t)split, qn / (k * (size_t)split)));
             own = Inverse(bn.subspan(0, s), inverseBase, cyclicFrom);   // s + 1 words
             inv = &own;
         }
@@ -202,14 +217,30 @@ void NewtonDivision::Run(CSpan a, CSpan bn, int sigma, const std::vector<uint64_
             std::copy(rem.begin(), rem.end(), xs.begin());
             std::copy(at.begin() + pos, at.begin() + pos + t, xs.begin() + n);
             Span qb = Span(quotient).subspan(1 + pos - n, t);
+            bool last = pos + t == at.size();
 
-            // q̂ = top t words of X · top t + 1 words of I, over β^t (kept below β^t)
+            // q̂ = top t words of X · top t + 1 words of I, over β^t (kept below β^t). I's top word
+            // v is 1 (2 for a power of two): X·I = X·v·β^t + X·I', I' its next t words - a t by t
+            // product, whose length stays on the transform sizes (t + 1 words would not)
             Span p = Span(prod).subspan(0, 2 * t + 1);
-            Karatsuba::Multiply(xs.subspan(0, t), CSpan(*inv).subspan(0, t + 1), p);
+            Karatsuba::Multiply(xs.subspan(0, t), CSpan(*inv).subspan(1, t), p.subspan(1));
+            p[0] = 0;
+            for (uint64_t v = (*inv)[0]; v > 0; v--)
+                p[0] += FullIntCore::Add(p.subspan(1, t), xs.subspan(0, t), p.subspan(1, t));
             if (p[0] != 0) std::fill(qb.begin(), qb.end(), ~0ull);
             else std::copy(p.begin() + 1, p.begin() + 1 + t, qb.begin());
+            if (quotientOnly && last)
+            {
+                // q̂ is within a few units of the block's quotient: with the guard word (its
+                // lowest) away from the boundaries, dropping it leaves the exact quotient
+                uint64_t g = qb[t - 1];
+                if (g < 16 || g > ~0ull - 16) return false;
+                break;
+            }
 
-            if (wrap)
+            // (a short block - the first one, a word or two - takes the direct n by t product: the
+            // cyclic one would cost the whole transform)
+            if (wrap && 8 * t >= n)
             {
                 Karatsuba::FoldMod(xs, xm);
                 Karatsuba::MultiplyMod(bn, qb, tm, cyclicFrom);
@@ -270,10 +301,13 @@ void NewtonDivision::Run(CSpan a, CSpan bn, int sigma, const std::vector<uint64_
         }
     }
 
-    // q: the low q.size() words (the quotient fits; any words above are zero)
-    if (q.size() >= quotient.size()) std::copy(quotient.begin(), quotient.end(), q.end() - quotient.size());
-    else std::copy(quotient.end() - q.size(), quotient.end(), q.begin());
-    Finish(rem, sigma, r);
+    // q: the low q.size() words (the quotient fits; any words above are zero); quotientOnly: without
+    // the guard word
+    CSpan qv = CSpan(quotient).subspan(0, quotient.size() - (quotientOnly ? 1 : 0));
+    if (q.size() >= qv.size()) std::copy(qv.begin(), qv.end(), q.end() - qv.size());
+    else std::copy(qv.end() - q.size(), qv.end(), q.begin());
+    if (!quotientOnly) Finish(rem, sigma, r);
+    return true;
 }
 
 std::vector<uint64_t> NewtonDivision::Inverse(CSpan d, int inverseBase)
@@ -327,8 +361,12 @@ std::vector<uint64_t> NewtonDivision::Inverse(CSpan d, int inverseBase, size_t c
     Words inv(s + 1);
     std::copy(ih.begin(), ih.end(), inv.begin());
     if (et.size() == 1 && et[0] == 0) return inv;
-    Words c(ih.size() + et.size());
-    Karatsuba::Multiply(ih, et, c);
+    // Ih·e with Ih's top word v (1, or 2 for a power of two) apart: e·v·β^h + Ih'·e
+    size_t le = et.size();
+    Words c(ih.size() + le);
+    Karatsuba::Multiply(CSpan(ih).subspan(1), et, Span(c).subspan(1));
+    for (uint64_t v = ih[0]; v > 0; v--)
+        c[0] += FullIntCore::Add(Span(c).subspan(1, le), et, Span(c).subspan(1, le));
     CSpan cs = DeleteZeros(CSpan(c).subspan(0, c.size() - (h + 1)));   // / β^(h+1)
     if (cs.size() == 1 && cs[0] == 0) return inv;
     if (eNegative) FullIntCore::Sub(inv, cs, inv);

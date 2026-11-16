@@ -63,7 +63,8 @@ namespace FullInt.Benchmarks
 
         /// <summary>
         /// "newton [rounds] [ratio]": ratio·N / N word divisions (ratio 2 by default), Burnikel–Ziegler
-        /// against the Newton reciprocal with several block splits and reciprocal bases.
+        /// against the Newton reciprocal (split 1 and 2, the default cyclic products); the
+        /// quotient alone: BurnikelZiegler.Quotient against NewtonDivision.Quotient.
         /// </summary>
         public static int RunNewton(string[] args)
         {
@@ -79,12 +80,8 @@ namespace FullInt.Benchmarks
 
             var core = FullIntCoreFactory.Create();
             var rnd = new Random(1);
-            int fft = Karatsuba.FftThreshold;
-            var configs = new (int split, int inverseBase, int cyclic)[] { (1, 64, fft), (2, 64, fft), (1, 64, 4096), (2, 64, 4096), (1, 64, 2048), (2, 64, 2048), (1, 64, 1024), (2, 64, 1024) };
-            Console.WriteLine($"core={core.GetType().Name} rounds={rounds}; {ratio}N / N; ratio = Newton (split/cyclic from) / Burnikel–Ziegler");
-            Console.Write($"{"N",6} {"BZ",12}");
-            foreach (var c in configs) Console.Write($" {c.split + "/" + (c.cyclic == fft ? "fft" : c.cyclic.ToString()),7}");
-            Console.WriteLine();
+            Console.WriteLine($"core={core.GetType().Name} rounds={rounds}; {ratio}N / N; ratio = Newton / Burnikel–Ziegler (a % b: split 1, 2; a / b: the quotients alone)");
+            Console.WriteLine($"{"N",6} {"BZ",12} {"split 1",14} {"split 2",14} {"BZ quot",12} {"Newton quot",14}");
 
             foreach (int n in new[] { 1024, 2048, 4096, 8192, 16384, 32768, 65536 })
             {
@@ -96,8 +93,14 @@ namespace FullInt.Benchmarks
                 var q = new ulong[a.Length - n + 1];
                 var r = new ulong[n + 2];
 
-                var variants = new List<Action> { () => BurnikelZiegler.DivRem(core, a, b, q, r) };
-                foreach (var c in configs) variants.Add(() => NewtonDivision.DivRem(core, a, b, q, r, c.split, c.inverseBase, c.cyclic));
+                var variants = new List<Action>
+                {
+                    () => BurnikelZiegler.DivRem(core, a, b, q, r),
+                    () => NewtonDivision.DivRem(core, a, b, q, r, 1, NewtonDivision.InverseBase, 0),
+                    () => NewtonDivision.DivRem(core, a, b, q, r, 2, NewtonDivision.InverseBase, 0),
+                    () => BurnikelZiegler.Quotient(core, a, b, q),
+                    () => NewtonDivision.Quotient(core, a, b, q),
+                };
 
                 var best = new double[variants.Count];
                 Array.Fill(best, double.MaxValue);

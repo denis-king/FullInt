@@ -664,7 +664,8 @@ namespace FullInt.Core
             // longer still: the Newton reciprocal
             if (Base == toBase.hex && NewtonDivision.Use(dividend.Length, divisor.Length, quotientOnly))
             {
-                NewtonDivision.DivRem(_core, dividend, divisor, result, remainder);
+                if (quotientOnly) NewtonDivision.Quotient(_core, dividend, divisor, result);   // the last block's remainder not computed
+                else NewtonDivision.DivRem(_core, dividend, divisor, result, remainder);
                 return;
             }
             // the quotient alone (a / b): an approximate quotient with a guard word, no remainder;
