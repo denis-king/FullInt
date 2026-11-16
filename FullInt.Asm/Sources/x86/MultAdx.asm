@@ -70,12 +70,24 @@ Fullint64MultWIN_adx:
 	push edi
 	sub esp, FRM
 
-	; R = 0 (lenR words)
+	; R = 0 (lenR words): short R by a store loop (rep stosd's start-up, ~30 cycles, was two fifths of a
+	; product of one word by one), longer by rep stosd
 	mov edi, [AR_R]
 	mov ecx, [AR_LR]
-	add ecx, ecx
 	xor eax, eax
+	cmp ecx, 32
+	ja .clearLong
+.clear:
+	mov [edi], eax
+	mov [edi + 4], eax
+	lea edi, [edi + 8]
+	dec ecx
+	jnz .clear
+	jmp .cleared
+.clearLong:
+	add ecx, ecx
 	rep stosd
+.cleared:
 
 	; the outer operand is the shorter one: fewer rows, longer inner loops
 	mov eax, [AR_A]
