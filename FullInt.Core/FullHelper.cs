@@ -134,7 +134,7 @@ namespace FullInt.Core
 
         // 2 x 1 and 2 x 2 words here (words big-endian), no core call: its entry cost more than the three /
         // four multiplies (C++ FullHelper::Mul2x1 / Mul2x2 / Sqr2). r: a.Length + b.Length words, written
-        // whole. false: longer operands, r untouched. .NET 5+ only (one mul a BigMul; x64 .NET 8, 2 x 2:
+        // whole. false: longer operands, r untouched. x64 .NET 5+ only (one mul a BigMul; x64 .NET 8, 2 x 2:
         // 9.3 ns, the core 15); the 32-bit split of netstandard2.0 lost to the core (.NET Framework 43 / 40).
 #if NETCOREAPP3_0_OR_GREATER
         [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
@@ -144,6 +144,7 @@ namespace FullInt.Core
 #if !NET5_0_OR_GREATER
             return false;
 #else
+            if (IntPtr.Size != 8) return false;   // x86: Math.BigMul is a 32-bit split too
             if (a.Length + b.Length == 3)
             {
                 if (a.Length == 1) { var t = a; a = b; b = t; }

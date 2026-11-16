@@ -397,7 +397,7 @@ struct FullIntCore
         return Fullint64XorWIN(a.data(), b.data(), r.data(), (int)a.size(), (int)b.size(), (int)r.size(), Signs(negA, negB));
     }
 
-    static void ShiftLeft(CSpan a, int shift, Span r) noexcept
+    FULLINT_FORCEINLINE static void ShiftLeft(CSpan a, int shift, Span r) noexcept
     {
 #if defined(_M_X64) || defined(__x86_64__)
         if (Cpu::Has(Cpu::Avx2))   // ShiftAvx2.asm
@@ -409,7 +409,7 @@ struct FullIntCore
         Fullint64ShlWIN(a.data(), r.data(), (int)a.size(), (int)r.size(), shift);
     }
 
-    static void ShiftRight(CSpan a, int shift, Span r) noexcept
+    FULLINT_FORCEINLINE static void ShiftRight(CSpan a, int shift, Span r) noexcept
     {
 #if defined(_M_X64) || defined(__x86_64__)
         if (Cpu::Has(Cpu::Avx2))   // ShiftAvx2.asm

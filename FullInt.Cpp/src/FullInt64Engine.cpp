@@ -6,11 +6,37 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cstring>
 #include <memory>
 #include <ostream>
 #include <stdexcept>
 
 namespace fullint {
+
+// a few words zeroed / copied in place: MSVC turns the plain loops into memset / memcpy calls, whose
+// entry outweighs a few words; long runs still use them
+static FULLINT_FORCEINLINE void ZeroWords(uint64_t* p, size_t n) noexcept
+{
+    if (n > 16)
+    {
+        std::memset(p, 0, n * sizeof(uint64_t));
+        return;
+    }
+    volatile uint64_t* v = p;
+    for (size_t i = 0; i < n; i++) v[i] = 0;
+}
+
+static FULLINT_FORCEINLINE void CopyWords(uint64_t* dst, const uint64_t* src, size_t n) noexcept
+{
+    if (n > 16)
+    {
+        std::memcpy(dst, src, n * sizeof(uint64_t));
+        return;
+    }
+    volatile uint64_t* v = dst;
+    for (size_t i = 0; i < n; i++) v[i] = src[i];
+}
+
 
 namespace {
 
@@ -167,24 +193,96 @@ void FullInt64Engine::addInto(FullInt64& result, const FullInt64& value1, const 
         return;
     }
 
-    uint32_t n = (uint32_t)std::max(a.size(), b.size()) + (same ? 1 : 0);
-    uint64_t* p;
     if (&result == &value1 || &result == &value2)
     {
-        uint32_t end = result.off_ + result.size_;   // the aliased operand's words end here
-        if (end < n)
-        {
-            addIntoFresh(result, a, b, neg1, neg2);
-            return;
-        }
-        p = result.Base() + (end - n);
-        result.off_ = end - n;
-        result.size_ = n;
+        addIntoAliased(result, a, b, neg1, neg2);
+        return;
     }
-    else
+    if (same)
     {
-        p = result.Prepare(n);
+        // both at least one word long with a nonzero top: the sum's length is the longer one's, one more
+        // with a carry out - set from the carry, no scan for leading zeros
+        if (a.size() < b.size()) std::swap(a, b);
+        size_t la = a.size(), lb = b.size();
+        uint64_t* p = result.Prepare((uint32_t)la + 1);
+        uint64_t c = Fullint64AddNWIN(a.data() + (la - lb), b.data(), p + 1 + (la - lb), (int64_t)lb);
+        for (size_t i = la - lb; i-- > 0;)
+        {
+            uint64_t v = a[i] + c;
+            c = v < c ? 1 : 0;
+            p[1 + i] = v;
+        }
+        p[0] = c;
+        result.off_ = c == 0 ? 1 : 0;
+        result.size_ = (uint32_t)(la + c);
+        result.neg_ = neg1;
+        return;
     }
+    {
+        // |a| - |b| or |b| - |a|: the longer is the larger; on equal lengths the equal top words cancel
+        // first (zero: done). The leading zeros of the difference counted here, the fields set once.
+        const uint64_t* x = a.data();
+        const uint64_t* y = b.data();
+        size_t lx = a.size(), ly = b.size();
+        bool negative = neg1;
+        if (lx < ly)
+        {
+            std::swap(x, y);
+            std::swap(lx, ly);
+            negative = neg2;
+        }
+        else if (lx == ly)
+        {
+            size_t i = 0;
+            while (i < lx && x[i] == y[i]) i++;
+            if (i == lx)
+            {
+                result.SetWords(false, 0, 0);
+                return;
+            }
+            if (x[i] < y[i])
+            {
+                std::swap(x, y);
+                negative = neg2;
+            }
+            x += i;
+            y += i;
+            lx -= i;
+            ly -= i;
+        }
+        uint64_t* p = result.Prepare((uint32_t)lx);
+        uint64_t borrow = Fullint64SubNWIN(x + (lx - ly), y, p + (lx - ly), (int64_t)ly);
+        for (size_t i = lx - ly; i-- > 0;)
+        {
+            uint64_t v = x[i];
+            p[i] = v - borrow;
+            borrow = v < borrow ? 1 : 0;
+        }
+        size_t z = 0;
+        while (p[z] == 0) z++;   // x > y: a nonzero word below
+        result.off_ = (uint32_t)z;
+        result.size_ = (uint32_t)(lx - z);
+        result.neg_ = negative;
+        return;
+    }
+
+}
+
+// the result is one of the operands: in its own buffer when the sum fits there (the operand's words are
+// read before their places are written), otherwise a new number
+void FullInt64Engine::addIntoAliased(FullInt64& result, CSpan a, CSpan b, bool neg1, bool neg2)
+{
+    bool same = neg1 == neg2;
+    uint32_t n = (uint32_t)std::max(a.size(), b.size()) + (same ? 1 : 0);
+    uint32_t end = result.off_ + result.size_;   // the aliased operand's words end here
+    if (end < n)
+    {
+        addIntoFresh(result, a, b, neg1, neg2);
+        return;
+    }
+    uint64_t* p = result.Base() + (end - n);
+    result.off_ = end - n;
+    result.size_ = n;
 
     if (same)
     {
@@ -203,9 +301,14 @@ void FullInt64Engine::addIntoFresh(FullInt64& result, CSpan a, CSpan b, bool neg
     result = neg1 == neg2 ? addMagnitudes(a, b, neg1) : subMagnitudes(a, b, neg1, neg2);
 }
 
-// 2 x 1 and 2 x 2 words inline (FullHelper::Mul2x1 / Mul2x2 / Sqr2), no kernel call; false: longer
+// 2 x 1 and 2 x 2 words inline (FullHelper::Mul2x1 / Mul2x2 / Sqr2), no kernel call; false: longer.
+// x64 only: x86 has no 64 x 64 multiply (the 32-bit split: 2 x 2 43 ns, the kernel 15)
 static FULLINT_FORCEINLINE bool MultShort(CSpan a, CSpan b, uint64_t* r) noexcept
 {
+#if !(defined(_M_X64) || defined(__x86_64__))
+    (void)a; (void)b; (void)r;
+    return false;
+#else
     size_t la = a.size(), lb = b.size();
     if (la + lb == 3)
     {
@@ -220,6 +323,7 @@ static FULLINT_FORCEINLINE bool MultShort(CSpan a, CSpan b, uint64_t* r) noexcep
         return true;
     }
     return false;
+#endif
 }
 
 void FullInt64Engine::multIntoAliased(FullInt64& result, const FullInt64& value1, const FullInt64& value2)
@@ -255,42 +359,55 @@ void FullInt64Engine::multInto(FullInt64& result, const FullInt64& value1, const
     result.Normalize(value1.neg_ != value2.neg_);
 }
 
+// a left shift by bits != 0 inline up to this many words, then the kernel (x64 1-8 words: 4.3-7.8 ns, the
+// kernel 6.2-9.9; x86: a variable 64-bit shift is a helper call per word, the kernel from two words)
+#if defined(_M_X64) || defined(__x86_64__)
+static constexpr size_t SHIFT_INLINE = 8;
+#else
+static constexpr size_t SHIFT_INLINE = 0;
+#endif
+
 void FullInt64Engine::shiftLeftInto(FullInt64& result, const FullInt64& value, int shift)
 {
-    if (&result == &value || shift < 0)
+    CSpan a = value.Words();
+    if (&result == &value || shift < 0 || a[0] == 0)   // (a[0] == 0: the value is zero)
     {
         shiftIntoAliased(result, value, shift, true);
         return;
     }
-    CSpan a = value.Words();
-    uint32_t n = (uint32_t)a.size() + (uint32_t)shift / 64 + 1;
+    size_t la = a.size();
+    uint32_t n = (uint32_t)la + (uint32_t)shift / 64 + 1;
     bool negative = value.neg_;
-    if (a.size() <= 4)   // a few words: here, no kernel call (its entry cost more than the words)
+    int bits = shift % 64;
+    if (bits != 0 && la > SHIFT_INLINE)   // the kernel
     {
-        size_t la = a.size();
-        int bits = shift % 64;
-        uint64_t* p = result.Prepare(n);
-        if (bits == 0)
-        {
-            p[0] = 0;
-            for (size_t i = 0; i < la; i++) p[1 + i] = a[i];
-        }
-        else
-        {
-            uint64_t prev = 0;   // the word above: its bits shifted out come down into p[i]
-            for (size_t i = 0; i < la; i++)
-            {
-                p[i] = prev << bits | a[i] >> (64 - bits);
-                prev = a[i];
-            }
-            p[la] = prev << bits;
-        }
-        for (size_t i = la + 1; i < n; i++) p[i] = 0;
+        FullIntCore::ShiftLeft(a, shift, Span(result.Prepare(n), n));
         result.Normalize(negative);
         return;
     }
-    FullIntCore::ShiftLeft(a, shift, Span(result.Prepare(n), n));
-    result.Normalize(negative);
+    uint64_t* p = result.Prepare(n);
+    if (bits == 0)   // whole words: a copy at any length
+    {
+        p[0] = 0;
+        CopyWords(p + 1, a.data(), la);
+        ZeroWords(p + la + 1, n - la - 1);
+    }
+    else   // a few words: here, no kernel call (its entry cost more than the words)
+    {
+        uint64_t prev = 0;   // the word above: its bits shifted out come down into p[i]
+        for (size_t i = 0; i < la; i++)
+        {
+            p[i] = prev << bits | a[i] >> (64 - bits);
+            prev = a[i];
+        }
+        p[la] = prev << bits;
+        ZeroWords(p + la + 1, n - la - 1);
+    }
+    // a[0] != 0: only the top word can be zero (p[0] = a[0] >> (64 - bits) == 0 keeps all of a[0] in p[1])
+    uint32_t z = p[0] == 0 ? 1 : 0;
+    result.off_ = z;
+    result.size_ = n - z;
+    result.neg_ = negative;
 }
 
 void FullInt64Engine::shiftRightInto(FullInt64& result, const FullInt64& value, int shift)
@@ -466,8 +583,8 @@ void FullInt64Engine::divRem(const FullInt64& value1, const FullInt64& value2, F
     uint64_t* scratch = dropped <= std::size(local) ? local : Scratch(dropped);
     uint64_t* pr = remainder ? remainder->Prepare(lb + 2) : scratch;
     uint64_t* pq = quotient ? quotient->Prepare(lq) : scratch;
-    std::memset(pr, 0, (lb + 2) * sizeof(uint64_t));
-    std::memset(pq, 0, lq * sizeof(uint64_t));
+    ZeroWords(pr, lb + 2);
+    ZeroWords(pq, lq);
 
     // long divisor and long quotient: Burnikel–Ziegler (C#: in div_internal), the same contract
     // longer still: the Newton reciprocal
@@ -535,7 +652,7 @@ void FullInt64Engine::bitwiseInto(FullInt64& result, int op, const FullInt64& va
         else
         {
             uint64_t* p = result.Prepare((uint32_t)la);
-            for (size_t i = 0; i < d; i++) p[i] = a[i];
+            CopyWords(p, a.data(), d);
             if (op == 1) for (size_t i = 0; i < lb; i++) p[d + i] = a[d + i] | b[i];
             else for (size_t i = 0; i < lb; i++) p[d + i] = a[d + i] ^ b[i];
         }

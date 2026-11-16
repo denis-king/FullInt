@@ -333,6 +333,7 @@ private:
     // the into-functions' rare cases that build a new number (kept out of them: the temporary
     // gave each a large frame and an unwind state, several ns on every short call)
     FULLINT_NOINLINE static void addIntoFresh(FullInt64& result, CSpan a, CSpan b, bool neg1, bool neg2);
+    FULLINT_NOINLINE static void addIntoAliased(FullInt64& result, CSpan a, CSpan b, bool neg1, bool neg2);
     FULLINT_NOINLINE static void multIntoAliased(FullInt64& result, const FullInt64& value1, const FullInt64& value2);
     FULLINT_NOINLINE static void shiftIntoAliased(FullInt64& result, const FullInt64& value, int shift, bool left);
     FULLINT_NOINLINE static void bitwiseIntoAliased(FullInt64& result, int op, const FullInt64& value1, const FullInt64& value2);
