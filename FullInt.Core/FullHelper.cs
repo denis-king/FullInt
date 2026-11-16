@@ -364,6 +364,63 @@ namespace FullInt.Core
 #endif
         }
 
+        /// <summary>
+        /// A word array the caller writes in full: from 2048 words not zeroed on .NET 5+
+        /// (GC.AllocateUninitializedArray) - a + b on 4096 words: 0.88-0.90; below it the call is the
+        /// slower allocation path (256 words: 1.15, 1024: 1.04), so plain new there.
+        /// </summary>
+        public static ulong[] NewWords(int n)
+        {
+#if NET5_0_OR_GREATER
+            return n >= 2048 ? GC.AllocateUninitializedArray<ulong>(n) : new ulong[n];
+#else
+            return new ulong[n];
+#endif
+        }
+
+        /// <summary>
+        /// r = a op b word by word over r.Length words (op: 0 and, 1 or, 2 xor); a and b at least
+        /// that long. .NET 7+: 256-bit vectors (4 words a step) - the scalar loop ran at 2-2.5x
+        /// GMP's mpz_and from 64 words, the C++ build's auto-vectorized loop at 0.5x.
+        /// </summary>
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+        public static void BitwiseWords(int op, ReadOnlySpan<ulong> a, ReadOnlySpan<ulong> b, Span<ulong> r)
+        {
+            // short: the loop inline here (a call cost the 1-4 word cases 11%)
+            int n = r.Length;
+            if (n >= 8)
+            {
+                BitwiseWordsLong(op, a, b, r);
+                return;
+            }
+            if (op == 0) for (int i = 0; i < n; i++) r[i] = a[i] & b[i];
+            else if (op == 1) for (int i = 0; i < n; i++) r[i] = a[i] | b[i];
+            else for (int i = 0; i < n; i++) r[i] = a[i] ^ b[i];
+        }
+
+        private static void BitwiseWordsLong(int op, ReadOnlySpan<ulong> a, ReadOnlySpan<ulong> b, Span<ulong> r)
+        {
+            int n = r.Length, i = 0;
+#if NET7_0_OR_GREATER
+            if (n >= 8 && System.Runtime.Intrinsics.Vector256.IsHardwareAccelerated)
+            {
+                ref ulong pa = ref System.Runtime.InteropServices.MemoryMarshal.GetReference(a.Slice(0, n));
+                ref ulong pb = ref System.Runtime.InteropServices.MemoryMarshal.GetReference(b.Slice(0, n));
+                ref ulong pr = ref System.Runtime.InteropServices.MemoryMarshal.GetReference(r);
+                for (; i + 4 <= n; i += 4)
+                {
+                    var x = System.Runtime.Intrinsics.Vector256.LoadUnsafe(ref pa, (nuint)i);
+                    var y = System.Runtime.Intrinsics.Vector256.LoadUnsafe(ref pb, (nuint)i);
+                    var z = op == 0 ? x & y : op == 1 ? x | y : x ^ y;
+                    System.Runtime.Intrinsics.Vector256.StoreUnsafe(z, ref pr, (nuint)i);
+                }
+            }
+#endif
+            if (op == 0) for (; i < n; i++) r[i] = a[i] & b[i];
+            else if (op == 1) for (; i < n; i++) r[i] = a[i] | b[i];
+            else for (; i < n; i++) r[i] = a[i] ^ b[i];
+        }
+
         public static bool IsZeroSpan(Span<ulong> value)
         {
             for (int i = 0; i < value.Length; i++)

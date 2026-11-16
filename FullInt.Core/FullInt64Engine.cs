@@ -57,7 +57,7 @@ namespace FullInt.Core
             // its extra top word). Otherwise a carry out (rare) widens the result by one word.
             int n = Math.Max(a.Length, b.Length);
             bool carryCertain = Base == toBase.hex && a.Length == b.Length && a[0] + b[0] < a[0];
-            var r = new ulong[carryCertain ? n + 1 : n];
+            var r = FullHelper.NewWords(carryCertain ? n + 1 : n);   // the core writes every word
             ulong carry = addInternal(a, b, r, Base);
             if (carry != 0)
             {
@@ -76,7 +76,7 @@ namespace FullInt.Core
         [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
         private FullInt64 subMagnitudes(ulong[] a, ulong[] b, bool neg1, bool neg2, toBase Base)
         {
-            var r = new ulong[Math.Max(a.Length, b.Length)];   // |a - b| always fits
+            var r = FullHelper.NewWords(Math.Max(a.Length, b.Length));   // |a - b| always fits; the core writes every word
             int compareResult = subInternal(a, b, r, Base);
             bool sign = compareResult > 0 ? neg1 : compareResult < 0 ? neg2 : false;
             return new FullInt64(sign, FullHelper.Trimmed(r), Base);
@@ -266,12 +266,14 @@ namespace FullInt.Core
             if (top > 0) r.AsSpan(0, top).Clear();
             if (op == 0)
             {
-                for (int i = 0; i < lb; i++) r[top + i] = a[d + i] & b[i];
+                if (lb < 8) for (int i = 0; i < lb; i++) r[top + i] = a[d + i] & b[i];   // short: in place (a call cost 10%)
+                else FullHelper.BitwiseWords(0, a.Slice(d), b, r.AsSpan(top, lb));
             }
             else
             {
                 for (int i = 0; i < d; i++) r[top + i] = a[i];
-                if (op == 1) for (int i = 0; i < lb; i++) r[top + d + i] = a[d + i] | b[i];
+                if (lb >= 8) FullHelper.BitwiseWords(op, a.Slice(d), b, r.AsSpan(top + d, lb));
+                else if (op == 1) for (int i = 0; i < lb; i++) r[top + d + i] = a[d + i] | b[i];
                 else for (int i = 0; i < lb; i++) r[top + d + i] = a[d + i] ^ b[i];
             }
             result.SetResult(false);
@@ -783,13 +785,15 @@ namespace FullInt.Core
                 if (op == 0)
                 {
                     w = new ulong[lb];
-                    for (int i = 0; i < lb; i++) w[i] = a[d + i] & b[i];
+                    if (lb < 8) for (int i = 0; i < lb; i++) w[i] = a[d + i] & b[i];
+                    else FullHelper.BitwiseWords(0, a.Slice(d), b, w);
                 }
                 else
                 {
                     w = new ulong[la];
                     a.Slice(0, d).CopyTo(w);
-                    if (op == 1) for (int i = 0; i < lb; i++) w[d + i] = a[d + i] | b[i];
+                    if (lb >= 8) FullHelper.BitwiseWords(op, a.Slice(d), b, w.AsSpan(d));
+                    else if (op == 1) for (int i = 0; i < lb; i++) w[d + i] = a[d + i] | b[i];
                     else for (int i = 0; i < lb; i++) w[d + i] = a[d + i] ^ b[i];
                 }
                 return Normalized(false, w);

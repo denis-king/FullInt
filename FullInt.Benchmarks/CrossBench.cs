@@ -11,14 +11,16 @@ namespace FullInt.Benchmarks
     /// come from the same splitmix64 sequence, so both sides work on identical values.
     /// Each cell: a batch of >= 3 ms, the minimum over rounds, the two sides interleaved.
     ///
-    ///   dotnet run -c Release --project FullInt.Benchmarks -- cross [--ops add,mul,...] [--max N] [--quick] [--csv file]
+    ///   dotnet run -c Release --project FullInt.Benchmarks -- cross [--ops add,mul,...] [--max N] [--bigmax N] [--quick] [--csv file]
+    ///   --bigmax: BigInteger only up to this many words (default 16384: its division and decimal
+    ///   conversion are quadratic - seconds a call there); above it the column is -1 ("-" in the table)
     ///   --quick: 1 ms batches and 3 rounds - a fast "did it help" check, noisier than the full run
     ///
     /// Then: fullint_bench_api --net file  prints the four columns side by side.
     /// </summary>
     internal static class CrossBench
     {
-        internal static readonly int[] Sizes = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 1024, 4096, 16384 };
+        internal static readonly int[] Sizes = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 1024, 4096, 16384, 65536 };
 
         private static ulong _state;
         private static ulong Next()   // splitmix64 (the C++ side has the same)
@@ -80,30 +82,31 @@ namespace FullInt.Benchmarks
             }
         }
 
-        private static (double ours, double big) Run(Action ours, Action big)
+        private static (double ours, double big) Run(Action ours, Action? big)
         {
             Warm(ours);   // past tier-0 code
-            Warm(big);
-            long io = Calibrate(ours), ib = Calibrate(big);
+            if (big != null) Warm(big);
+            long io = Calibrate(ours), ib = big != null ? Calibrate(big) : 0;
             double perCall = Batch(ours, 1);
             int rounds = _quickRounds > 0 ? _quickRounds : perCall > 20e6 ? 3 : perCall > 2e6 ? 5 : 11;
             double bo = double.MaxValue, bb = double.MaxValue;
             for (int r = 0; r < rounds; r++)
             {
                 bo = Math.Min(bo, Batch(ours, io));
-                bb = Math.Min(bb, Batch(big, ib));
+                if (big != null) bb = Math.Min(bb, Batch(big, ib));
             }
-            return (bo, bb);
+            return (bo, big != null ? bb : -1);
         }
 
         public static int Run(string[] args)
         {
-            int maxN = 4096;
+            int maxN = 4096, bigMax = 16384;
             string? csvPath = null;
             string? ops = null;   // ",add,mul," or null for all
             for (int i = 0; i < args.Length; i++)
             {
                 if (args[i] == "--max" && i + 1 < args.Length) maxN = int.Parse(args[++i]);
+                else if (args[i] == "--bigmax" && i + 1 < args.Length) bigMax = int.Parse(args[++i]);
                 else if (args[i] == "--csv" && i + 1 < args.Length) csvPath = args[++i];
                 else if (args[i] == "--ops" && i + 1 < args.Length) ops = "," + args[++i] + ",";
                 else if (args[i] == "--quick") { _batchTargetNs = 1e6; _quickRounds = 3; }
@@ -123,7 +126,7 @@ namespace FullInt.Benchmarks
             // all cells first; every op at every size warmed (both sides) before any is measured:
             // with Dynamic PGO a method compiled while only the 1-word cells ran keeps its other
             // paths cold, so a cell's time depended on the order of the cells
-            var cells = new List<(string op, int n, Action ours, Action big)>();
+            var cells = new List<(string op, int n, Action ours, Action? big)>();
             var keep = new List<object>();
             _state = 42;
             foreach (int n in Sizes)
@@ -145,7 +148,7 @@ namespace FullInt.Benchmarks
                 void Row(string op, Action ours, Action big)
                 {
                     if (ops != null && !ops.Contains("," + op + ",")) return;
-                    cells.Add((op, n, ours, big));
+                    cells.Add((op, n, ours, n <= bigMax ? big : null));
                 }
 
                 // op: a new value each time (both sides); opto: FullInt64 into an existing result
@@ -177,7 +180,7 @@ namespace FullInt.Benchmarks
                 foreach (var cell in cells)
                 {
                     var sw = Stopwatch.StartNew();
-                    for (int i = 0; i < 200 && sw.ElapsedMilliseconds < 10; i++) { cell.ours(); cell.big(); }
+                    for (int i = 0; i < 200 && sw.ElapsedMilliseconds < 10; i++) { cell.ours(); cell.big?.Invoke(); }
                 }
                 Thread.Sleep(pass == 0 ? 200 : 50);
             }

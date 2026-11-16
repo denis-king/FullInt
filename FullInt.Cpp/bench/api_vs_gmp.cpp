@@ -146,7 +146,7 @@ int main(int argc, char** argv)
     SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
     SetThreadAffinityMask(GetCurrentThread(), 1ull << 2);
 
-    const int sizes[] = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 1024, 4096, 16384 };
+    const int sizes[] = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 1024, 4096, 16384, 65536 };
 
     std::printf("GMP %s; time per operation (min over rounds); x = time / GMP time (< 1: faster than GMP)\n", gmp_version);
     if (withNet)
@@ -187,7 +187,8 @@ int main(int argc, char** argv)
                 if (it != netRows.end())
                 {
                     std::snprintf(cn, sizeof cn, "%s %5.2fx", Fmt(it->second.net).c_str(), it->second.net / g);
-                    std::snprintf(cb, sizeof cb, "%s %5.2fx", Fmt(it->second.big).c_str(), it->second.big / g);
+                    if (it->second.big >= 0)   // -1: not measured (the .NET side's --bigmax)
+                        std::snprintf(cb, sizeof cb, "%s %5.2fx", Fmt(it->second.big).c_str(), it->second.big / g);
                 }
                 std::printf("%-6s %6d  %10s  %18s  %18s  %18s\n", op, n, Fmt(g).c_str(), co, cn, cb);
             }

@@ -28,12 +28,11 @@ namespace FullInt.Core
         /// Inside the recursion, blocks below this many words (or odd) go to the core's Div.
         /// The engine uses Burnikel–Ziegler from 2·Threshold words of divisor and of quotient:
         /// below that the shifts and work buffers cost more than the recursion saves.
-        /// Tuned with `FullInt.Benchmarks bz` on win-x64 (Zen 3), 2N / N words: thresholds
-        /// 80..192 are equal within noise at 512..4096 words (4096: 0.35 of the core Div alone,
-        /// 2048: 0.45, 1024: 0.65); a 128-word division is 10-20% slower through it, 192 words
-        /// gains ~10%.
+        /// 48 as in C++ (x64, Zen 3, 2N / N, warmed: 128 words 9.7 us against the core's Div 12.9,
+        /// 256 words 27.7 against 29.0 at 96, equal above). It was 96 while every core call paid
+        /// the full P/Invoke transition (128-word divisions were then 10-20% slower through it).
         /// </summary>
-        public static int Threshold { get; set; } = 96;
+        public static int Threshold { get; set; } = 48;
 
         /// <summary>
         /// The core.Div contract: a and b without leading zero words, a.Length &gt;= b.Length;
