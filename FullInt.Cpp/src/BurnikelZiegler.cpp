@@ -20,7 +20,72 @@ namespace fullint {
 
 namespace {
 
-using Words = std::vector<uint64_t>;   // zeroed work buffers (C#: new ulong[])
+// Work words from a per-thread stack: taken and given back in LIFO order (the scopes nest), the
+// stack grown to the deepest use seen, when it is empty. A new std::vector per buffer (several per
+// division, tens of KB each) cost far more than the copies in them on Windows: the heap gives the
+// pages of large freed blocks back, so each allocation faulted them in again, zero-filled -
+// 2N / N at 1024 words ran at 1.4x GMP until the heap happened to settle after ~0.1 s, 1.0x after.
+struct WorkStack
+{
+    uint64_t* buf = nullptr;
+    size_t cap = 0, top = 0;    // top: the words taken from buf
+    size_t used = 0, peak = 0;  // all words in use (from buf or not) and their maximum
+    ~WorkStack() { delete[] buf; }
+};
+thread_local WorkStack workStack;
+
+class Words   // n work words; zeroed (as the std::vector before) unless told otherwise
+{
+public:
+    explicit Words(size_t n, bool zeroed = true) : n_(n)
+    {
+        WorkStack& w = workStack;
+        if (w.used == 0 && w.cap < w.peak)   // nothing in use: grow to the deepest use seen
+        {
+            delete[] w.buf;
+            w.buf = new uint64_t[w.peak];
+            w.cap = w.peak;
+        }
+        if (w.top + n <= w.cap)
+        {
+            p_ = w.buf + w.top;
+            w.top += n;
+            stacked_ = true;
+        }
+        else
+        {
+            own_ = std::make_unique_for_overwrite<uint64_t[]>(n);
+            p_ = own_.get();
+        }
+        w.used += n;
+        if (w.used > w.peak) w.peak = w.used;
+        if (zeroed && n) std::memset(p_, 0, n * sizeof(uint64_t));
+    }
+    ~Words()
+    {
+        workStack.used -= n_;
+        if (stacked_) workStack.top -= n_;
+    }
+    Words(const Words&) = delete;
+    Words& operator=(const Words&) = delete;
+
+    uint64_t* data() { return p_; }
+    const uint64_t* data() const { return p_; }
+    size_t size() const { return n_; }
+    uint64_t* begin() { return p_; }
+    uint64_t* end() { return p_ + n_; }
+    const uint64_t* begin() const { return p_; }
+    const uint64_t* end() const { return p_ + n_; }
+    uint64_t& operator[](size_t i) { return p_[i]; }
+    operator Span() { return Span(p_, n_); }
+    operator CSpan() const { return CSpan(p_, n_); }
+
+private:
+    uint64_t* p_;
+    size_t n_;
+    bool stacked_ = false;
+    std::unique_ptr<uint64_t[]> own_;
+};
 
 CSpan DeleteZeros(CSpan v)
 {
@@ -39,20 +104,17 @@ int CompareEqualLength(CSpan x, CSpan y)
 void Clear(Span s) { std::memset(s.data(), 0, s.size_bytes()); }
 
 // work words of the quotient path: on the stack up to 160 words (the small divisions, where an
-// allocation per buffer cost more than the split saved), the heap above; not cleared
+// allocation per buffer cost more than the split saved), the work stack above; not cleared
 struct LocalWords
 {
-    explicit LocalWords(size_t n) : n_(n)
-    {
-        if (n > std::size(inline_)) heap_ = std::make_unique_for_overwrite<uint64_t[]>(n);
-    }
-    Span span() { return Span(heap_ ? heap_.get() : inline_, n_); }
-    uint64_t* data() { return heap_ ? heap_.get() : inline_; }
+    explicit LocalWords(size_t n) : n_(n), big_(n > std::size(inline_) ? n : 0, false) {}
+    Span span() { return Span(data(), n_); }
+    uint64_t* data() { return n_ > std::size(inline_) ? big_.data() : inline_; }
 
 private:
     uint64_t inline_[160];
-    std::unique_ptr<uint64_t[]> heap_;
     size_t n_;
+    Words big_;
 };
 
 }  // namespace
@@ -90,7 +152,8 @@ void BurnikelZiegler::DivRem(CSpan a, CSpan b, Span q, Span r, int threshold)
     // words by one unbalanced step (Div3n2n with a k = h split of B'). The textbook pads
     // A' to whole blocks with its top bit clear instead: an extra, nearly empty block that
     // costs a whole Div2n1n (half of all numbers; 4096 / 2048 words ~2x, 8192 / 4096 more).
-    Words ri(n), tt(at.begin(), at.begin() + n + h);
+    Words ri(n), tt(n + h, false);
+    std::copy(at.begin(), at.begin() + n + h, tt.begin());
     // one work buffer for the whole recursion (was a few vectors per node): ScratchWords(n)
     Words scratch(ScratchWords(n, threshold));
     Span topN = Span(tt).subspan(0, n);
