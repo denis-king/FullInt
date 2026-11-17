@@ -22,10 +22,10 @@
 ;    r8  last B item     -> [esp+40]      rdi / rsi / rcx   -> arguments A / B / R on the stack
 ; =============================================================================
 
+%include "abi86.inc"
 section .text
 
-global Fullint64MultWIN
-Fullint64MultWIN:
+ENTRY Fullint64MultWIN
 	push ebp
 	push ebx
 	push esi

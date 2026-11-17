@@ -15,12 +15,12 @@
 ;  128-bit window on the stack (wide path).
 ; =============================================================================
 
+%include "abi86.inc"
 section .text
 
-extern fi_div128
+EXTERNK fi_div128
 
-global Fullint64Div2longWin
-Fullint64Div2longWin:
+ENTRY Fullint64Div2longWin
 	push ebp
 	push ebx
 	push esi
@@ -65,7 +65,7 @@ Fullint64Div2longWin:
 	push ebx                      ; d low
 	lea eax, [esp+8]
 	push eax                      ; -> window
-	call fi_div128
+	call KREF(fi_div128)
 	add esp, 12
 	mov [edi], eax                ; quotient word
 	mov [edi + 4], edx

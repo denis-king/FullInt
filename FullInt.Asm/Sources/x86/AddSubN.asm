@@ -7,6 +7,7 @@
 ;  the carry in CF (lea / dec keep it).
 ; =============================================================================
 
+%include "abi86.inc"
 section .text
 
 %macro ADDSUBN 1
@@ -42,10 +43,8 @@ section .text
 	ret
 %endmacro
 
-global Fullint64AddNWIN
-Fullint64AddNWIN:
+ENTRY Fullint64AddNWIN
 	ADDSUBN adc
 
-global Fullint64SubNWIN
-Fullint64SubNWIN:
+ENTRY Fullint64SubNWIN
 	ADDSUBN sbb

@@ -12,10 +12,10 @@
 ;  internal (not exported), cdecl; saves ebx, esi, edi, ebp
 ; =============================================================================
 
+%include "abi86.inc"
 section .text
 
-global fi_div128
-fi_div128:
+ENTRY fi_div128
 	push ebp
 	push ebx
 	push esi

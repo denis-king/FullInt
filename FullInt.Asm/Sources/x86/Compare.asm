@@ -8,10 +8,10 @@
 ;  rdx lenB -> edx, rbx index -> ebx, rax -> eax. A limb is compared high dword first.
 ; =============================================================================
 
+%include "abi86.inc"
 section .text
 
-global Fullint64CompareWIN
-Fullint64CompareWIN:
+ENTRY Fullint64CompareWIN
 	push ebx
 	push esi
 	push edi

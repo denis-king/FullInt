@@ -19,10 +19,10 @@
 ;    r13        temp       -> eax
 ; =============================================================================
 
+%include "abi86.inc"
 section .text
 
-global Fullint64AddWIN
-Fullint64AddWIN:
+ENTRY Fullint64AddWIN
 	push ebp
 	push ebx
 	push esi

@@ -32,6 +32,9 @@
 %ifidn __OUTPUT_FORMAT__, win64
     %define FULLINT_WIN64 1
 %endif
+%ifidn __OUTPUT_FORMAT__, macho64
+    %define FULLINT_MACHO 1             ; macOS: System V, C names with a leading underscore
+%endif
 
 ; "align n" in code fills with long NOPs (one or two instructions, not a run of 1-byte nops): hot
 ; loops are aligned explicitly, so their place in the 32 / 64-byte lines does not depend on the
@@ -40,10 +43,43 @@
 alignmode p6
 
 ; ---- exported entries -------------------------------------------------------
+; ENTRY name     an exported entry. ELF (Linux): also name_int, a hidden alias at the same address
+;                (not exported) - the kernels jump to each other through it: a jump to a global,
+;                preemptible symbol is not allowed in a shared library (R_X86_64_PC32 "recompile
+;                with -fPIC"). Mach-O: the C name has a leading underscore.
+; EXTERNK name   a kernel of another file this one jumps to; KREF(name) the symbol to jump to
 %macro ENTRY 1
-    global %1
+    %ifdef FULLINT_WIN64
+        global %1
 %1:
+    %elifdef FULLINT_MACHO
+        global _%1
+_%1:
+    %else
+        global %1:function
+        global %1 %+ _int:function hidden
+%1:
+%1 %+ _int:
+    %endif
 %endmacro
+
+%macro EXTERNK 1
+    %ifdef FULLINT_WIN64
+        extern %1
+    %elifdef FULLINT_MACHO
+        extern _%1
+    %else
+        extern %1 %+ _int
+    %endif
+%endmacro
+
+%ifdef FULLINT_WIN64
+    %define KREF(n) n
+%elifdef FULLINT_MACHO
+    %define KREF(n) _ %+ n
+%else
+    %define KREF(n) n %+ _int
+%endif
 
 ; ---- saving callee-saved registers (System V bodies) ----------------------------------
 ; SAVE r1, r2, ...: pushes them in order - rdi / rsi only on Win64 (volatile in System V);

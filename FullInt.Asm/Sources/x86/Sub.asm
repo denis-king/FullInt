@@ -15,10 +15,10 @@
 ;  A limb is compared high dword first, then low dword.
 ; =============================================================================
 
+%include "abi86.inc"
 section .text
 
-global Fullint64SubWIN
-Fullint64SubWIN:
+ENTRY Fullint64SubWIN
 	push ebp
 	push ebx
 	push esi

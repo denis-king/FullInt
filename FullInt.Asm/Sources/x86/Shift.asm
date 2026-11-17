@@ -27,10 +27,10 @@
 ;  ebp prevLo, edx curHi, eax curLo; the limb counter and ws are on the stack.
 ; =============================================================================
 
+%include "abi86.inc"
 section .text
 
-global Fullint64ShlWIN
-Fullint64ShlWIN:
+ENTRY Fullint64ShlWIN
 	push ebp
 	push ebx
 	push esi
@@ -185,8 +185,7 @@ Fullint64ShlWIN:
 ;    s >= 32:  outLo = shrd(curHi, prevLo)    outHi = shrd(prevLo, prevHi)
 ;  Each limb is read before it is written, so R may alias A.
 ;------------------------------------------------------------------------------
-global Fullint64ShrWIN
-Fullint64ShrWIN:
+ENTRY Fullint64ShrWIN
 	push ebp
 	push ebx
 	push esi

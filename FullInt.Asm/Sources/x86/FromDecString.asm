@@ -23,6 +23,7 @@
 ;  (x64 had `test rdi, 1` there until 898c2aa).
 ; =============================================================================
 
+%include "abi86.inc"
 section .text
 
 %define CNT    esp
@@ -39,8 +40,7 @@ section .text
 %define TEN19_LO 89E80000h        ; 10^19 = 8AC72304_89E80000h
 %define TEN19_HI 8AC72304h
 
-global Fullint64FromDecStringWin
-Fullint64FromDecStringWin:
+ENTRY Fullint64FromDecStringWin
 	push ebp
 	push ebx
 	push esi

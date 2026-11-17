@@ -19,11 +19,12 @@
 ;  ebx the longer operand's other words, edx the zero words above, eax = 1: B is longer.
 ; =============================================================================
 
+%include "abi86.inc"
 section .text
 
-extern Fullint64AndWIN
-extern Fullint64OrWIN
-extern Fullint64XorWIN
+EXTERNK Fullint64AndWIN
+EXTERNK Fullint64OrWIN
+EXTERNK Fullint64XorWIN
 
 ; %1 words at [src1 - ..] (op [src2 - ..]) -> [dst - ..], walking down; %2 vector op or
 ; movdqu-only when %3 is empty. Used for the overlap (two sources) and the copy (one).
@@ -82,10 +83,9 @@ extern Fullint64XorWIN
 
 %macro BITWISE_SSE2 3 ; %1 name, %2 vector op, %3 1: the longer operand's other words are copied (OR, XOR), 0: zero (AND)
 
-global Fullint64%1WIN_sse2
-Fullint64%1WIN_sse2:
+ENTRY Fullint64%1WIN_sse2
 	cmp dword [esp+28], 0       ; signs
-	jne Fullint64%1WIN          ; a negative operand: the baseline kernel
+	jne KREF(Fullint64%1WIN)          ; a negative operand: the baseline kernel
 	push ebx
 	push esi
 	push edi

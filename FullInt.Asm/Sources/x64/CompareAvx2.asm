@@ -19,15 +19,15 @@ section .text
 ;  scratch; ymm0 / ymm1. vzeroupper on return.
 ; =============================================================================
 
-extern Fullint64CompareWIN
+EXTERNK Fullint64CompareWIN
 ENTRY Fullint64CompareWIN_avx2
 %ifndef FULLINT_WIN64
 	cmp edx, ecx                ; System V: the lengths (arguments 3, 4) before the frame
-	jne Fullint64CompareWIN     ; different lengths: the baseline kernel (its own entry)
+	jne KREF(Fullint64CompareWIN)     ; different lengths: the baseline kernel (its own entry)
 %endif
 	WIN64_ARGS
 	cmp r8d, r9d
-	jne Fullint64CompareWIN     ; different lengths: the baseline kernel
+	jne KREF(Fullint64CompareWIN)     ; different lengths: the baseline kernel
 
 	movsxd r8, r8d
 	xor r9d, r9d                ; index from the top

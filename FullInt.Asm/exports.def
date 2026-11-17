@@ -6,7 +6,6 @@ Sub64
 Adc64
 Sbb64
 
-Normalize3Words
 Fullint64AddWIN
 Fullint64SubWIN
 Fullint64MultWIN

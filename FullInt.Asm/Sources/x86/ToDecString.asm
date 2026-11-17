@@ -22,6 +22,7 @@
 ;    rdx remainder / rax chunk -> ebp:ecx (high:low)     r12 -> TEN (div r32 operand)
 ; =============================================================================
 
+%include "abi86.inc"
 section .text
 
 %define RIDX   esp
@@ -71,8 +72,7 @@ section .text
 	sbb ebp, edx
 %endmacro
 
-global Fullint64ToDecStringWin
-Fullint64ToDecStringWin:
+ENTRY Fullint64ToDecStringWin
 	push ebp
 	push ebx
 	push esi

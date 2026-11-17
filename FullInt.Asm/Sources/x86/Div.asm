@@ -26,9 +26,10 @@
 ;    rbx Dhi / vhi, r14 vlo -> VHI*, VLO*      u2, u1 (normalized window top) -> U2*, U1*
 ; =============================================================================
 
+%include "abi86.inc"
 section .text
 
-extern fi_div128
+EXTERNK fi_div128
 
 %define WIN     esp           ; 4 dwords: the 128-bit dividend for fi_div128
 %define QPTR    esp+16
@@ -67,12 +68,11 @@ extern fi_div128
 	push ecx
 	lea eax, [esp+8]
 	push eax
-	call fi_div128
+	call KREF(fi_div128)
 	add esp, 12
 %endmacro
 
-global Fullint64DivWin
-Fullint64DivWin:
+ENTRY Fullint64DivWin
 	push ebp
 	push ebx
 	push esi

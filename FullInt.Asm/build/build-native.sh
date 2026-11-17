@@ -39,7 +39,7 @@ case "$OS-$ARCH" in
         #   - C#: FullIntCoreLinuxX64 bound to the SysV entry points
         not_implemented "see TODO(linux-x64) in FullInt.Asm/build/build-native.sh" ;;
     osx-x64)
-        # TODO(osx-x64): same as linux-x64, plus `nasm -f macho64 --prefix _`
+        # TODO(osx-x64): same as linux-x64 with `nasm -f macho64` (the sources add the underscore, abi.inc)
         #   and `cc -dynamiclib -o libFullIntOperations_osx_x64.dylib`
         not_implemented "see TODO(osx-x64) in FullInt.Asm/build/build-native.sh" ;;
     linux-arm64|osx-arm64)

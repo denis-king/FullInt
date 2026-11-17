@@ -25,19 +25,19 @@ section .text
 ;  A, 1: from B; ymm0 only (xmm6-15 are non-volatile in Win64).
 ; =============================================================================
 
-extern Fullint64AndWIN
-extern Fullint64OrWIN
-extern Fullint64XorWIN
+EXTERNK Fullint64AndWIN
+EXTERNK Fullint64OrWIN
+EXTERNK Fullint64XorWIN
 
 %macro BITWISE_AVX2 4 ; %1 name, %2 vector op, %3 scalar op, %4 1: the longer operand's other words are copied (OR, XOR), 0: zero (AND)
 ENTRY Fullint64%1WIN_avx2
 %ifndef FULLINT_WIN64
 	cmp dword [rsp+8], 0        ; System V: signs (argument 7) before the frame
-	jne Fullint64%1WIN          ; a negative operand: the baseline kernel (its own entry)
+	jne KREF(Fullint64%1WIN)          ; a negative operand: the baseline kernel (its own entry)
 %endif
 	WIN64_ARGS
 	cmp dword [rsp+38h], 0      ; signs
-	jne Fullint64%1WIN          ; a negative operand: the baseline kernel
+	jne KREF(Fullint64%1WIN)          ; a negative operand: the baseline kernel
 
 	movsxd r9, r9d              ; lenA
 	movsxd r10, dword [rsp+28h] ; lenB

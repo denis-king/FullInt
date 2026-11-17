@@ -18,6 +18,7 @@
 ;  edi next digit, ebx quotient digit.
 ; =============================================================================
 
+%include "abi86.inc"
 section .text
 
 %define RIDX   esp
@@ -73,8 +74,7 @@ section .text
 	mov ecx, edi
 %endmacro
 
-global Fullint64ToDecStringWIN_recip
-Fullint64ToDecStringWIN_recip:
+ENTRY Fullint64ToDecStringWIN_recip
 	push ebp
 	push ebx
 	push esi

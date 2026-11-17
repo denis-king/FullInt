@@ -9,6 +9,7 @@
 ;    the CRT works in 32-bit multiplies with a 96-bit running sum on the stack.
 ; =============================================================================
 
+%include "abi86.inc"
 section .text
 
 ; dst = a·w·2^-32 mod p in [0, 2p) (x64/NttAvx2.asm): %1 dst, %2 a (reg), %3 w, %4 w odd lanes
@@ -36,8 +37,7 @@ section .text
 ; -----------------------------------------------------------------------------
 ; void Fullint64NttDif1WIN_avx2(uint32* x, int64 L, int64 h, const uint32* W, const uint32* Wq, uint32 p)
 ;   args after 4 pushes: x +20, L +24, h +32, W +40, Wq +44, p +48
-global Fullint64NttDif1WIN_avx2
-Fullint64NttDif1WIN_avx2:
+ENTRY Fullint64NttDif1WIN_avx2
 	push ebp
 	push ebx
 	push esi
@@ -81,8 +81,7 @@ Fullint64NttDif1WIN_avx2:
 
 ; -----------------------------------------------------------------------------
 ; one DIT level: (x, y) -> (x + y·w^j, x - y·w^j); the same arguments
-global Fullint64NttDit1WIN_avx2
-Fullint64NttDit1WIN_avx2:
+ENTRY Fullint64NttDit1WIN_avx2
 	push ebp
 	push ebx
 	push esi
@@ -140,27 +139,25 @@ Fullint64NttDit1WIN_avx2:
 	push dword [ebp + 8]
 %endmacro
 
-global Fullint64NttDif2WIN_avx2
-Fullint64NttDif2WIN_avx2:
+ENTRY Fullint64NttDif2WIN_avx2
 	push ebp
 	mov ebp, esp
 	PASS_ARGS
-	call Fullint64NttDif1WIN_avx2
+	call KREF(Fullint64NttDif1WIN_avx2)
 	shr dword [esp + 12], 1     ; h / 2
-	call Fullint64NttDif1WIN_avx2
+	call KREF(Fullint64NttDif1WIN_avx2)
 	add esp, 32
 	pop ebp
 	ret
 
-global Fullint64NttDit2WIN_avx2
-Fullint64NttDit2WIN_avx2:
+ENTRY Fullint64NttDit2WIN_avx2
 	push ebp
 	mov ebp, esp
 	PASS_ARGS
 	shr dword [esp + 12], 1     ; h / 2 first
-	call Fullint64NttDit1WIN_avx2
+	call KREF(Fullint64NttDit1WIN_avx2)
 	shl dword [esp + 12], 1
-	call Fullint64NttDit1WIN_avx2
+	call KREF(Fullint64NttDit1WIN_avx2)
 	add esp, 32
 	pop ebp
 	ret
@@ -197,8 +194,7 @@ Fullint64NttDit2WIN_avx2:
 	lea edx, [ecx + edx*4]
 %endmacro
 
-global Fullint64NttDif3WIN_avx2
-Fullint64NttDif3WIN_avx2:
+ENTRY Fullint64NttDif3WIN_avx2
 	push ebp
 	push ebx
 	push esi
@@ -244,8 +240,7 @@ Fullint64NttDif3WIN_avx2:
 	pop ebp
 	ret
 
-global Fullint64NttDit3WIN_avx2
-Fullint64NttDit3WIN_avx2:
+ENTRY Fullint64NttDit3WIN_avx2
 	push ebp
 	push ebx
 	push esi
@@ -296,8 +291,7 @@ Fullint64NttDit3WIN_avx2:
 ; -----------------------------------------------------------------------------
 ; void Fullint64NttPointWIN_avx2(uint32* x, const uint32* y, int64 n, uint32 p, uint32 pinv)
 ;   x +4, y +8, n +12, p +20, pinv +24
-global Fullint64NttPointWIN_avx2
-Fullint64NttPointWIN_avx2:
+ENTRY Fullint64NttPointWIN_avx2
 	mov ecx, [esp + 4]
 	mov edx, [esp + 8]
 	vpbroadcastd ymm7, [esp + 20]
@@ -324,8 +318,7 @@ Fullint64NttPointWIN_avx2:
 ; -----------------------------------------------------------------------------
 ; void Fullint64NttScaleWIN_avx2(uint32* x, int64 n, uint32 p, uint32 c, uint32 cq)
 ;   x +4, n +8, p +16, c +20, cq +24; x = x·c·2^-32 mod p in [0, p)
-global Fullint64NttScaleWIN_avx2
-Fullint64NttScaleWIN_avx2:
+ENTRY Fullint64NttScaleWIN_avx2
 	mov ecx, [esp + 4]
 	mov edx, [esp + 8]
 	shl edx, 2
@@ -348,8 +341,7 @@ Fullint64NttScaleWIN_avx2:
 ; -----------------------------------------------------------------------------
 ; void Fullint64NttLoadWIN_avx2(const uint64* a, int64 la, uint32* x, int64 L, uint32 p)
 ;   after 4 pushes: a +20, la +24, x +32, L +36, p +44
-global Fullint64NttLoadWIN_avx2
-Fullint64NttLoadWIN_avx2:
+ENTRY Fullint64NttLoadWIN_avx2
 	push ebp
 	push ebx
 	push esi
@@ -518,8 +510,7 @@ Fullint64NttLoadWIN_avx2:
 	inc esi
 %endmacro
 
-global Fullint64NttCrtWIN
-Fullint64NttCrtWIN:
+ENTRY Fullint64NttCrtWIN
 	push ebp
 	push ebx
 	push esi
@@ -620,8 +611,7 @@ Fullint64NttCrtWIN:
 	ret
 %endmacro
 
-global Fullint64NttR3DifWIN_avx2
-Fullint64NttR3DifWIN_avx2:
+ENTRY Fullint64NttR3DifWIN_avx2
 	R3X_SETUP
 .word:
 	vmovdqu ymm0, [ecx + eax]
@@ -661,8 +651,7 @@ Fullint64NttR3DifWIN_avx2:
 	jb .word
 	R3X_DONE
 
-global Fullint64NttR3DitWIN_avx2
-Fullint64NttR3DitWIN_avx2:
+ENTRY Fullint64NttR3DitWIN_avx2
 	R3X_SETUP
 .word:
 	R3X_TWIDDLE F_W1

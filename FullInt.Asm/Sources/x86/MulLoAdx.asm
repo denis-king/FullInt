@@ -17,6 +17,7 @@
 ;  ebx / ebp = the previous high halves (alternating), eax = the product word in work.
 ; =============================================================================
 
+%include "abi86.inc"
 section .text
 
 %define L_ROWS  esp             ; rows left
@@ -59,8 +60,7 @@ section .text
 	mov [edi + %1 - 8], eax
 %endmacro
 
-global Fullint64MulLoWIN_adx
-Fullint64MulLoWIN_adx:
+ENTRY Fullint64MulLoWIN_adx
 	push ebp
 	push ebx
 	push esi

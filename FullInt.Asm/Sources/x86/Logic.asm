@@ -25,6 +25,7 @@
 ;    rax / r11 A / B word  -> eax / edx (one dword at a time)
 ; =============================================================================
 
+%include "abi86.inc"
 section .text
 
 ; one 32-bit half (%3 = 0 low, 4 high) of the current limb, %2 = and / or / xor
@@ -63,8 +64,7 @@ section .text
 
 %macro BITWISE_OP 2 ; %1 = name suffix, %2 = instruction (and / or / xor)
 
-global Fullint64%1WIN
-Fullint64%1WIN:
+ENTRY Fullint64%1WIN
 	push ebp
 	push ebx
 	push esi

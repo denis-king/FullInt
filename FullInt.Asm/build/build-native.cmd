@@ -40,12 +40,12 @@ exit /b 1
 
 rem ===========================================================================
 :x86
-rem 32-bit kernels (Sources\x86, cdecl). The same NASM with -f win32; --prefix _ gives the
-rem C names of 32-bit COFF (_name), and the .def exports them undecorated.
+rem 32-bit kernels (Sources\x86, cdecl). The same NASM with -f win32; the sources give the
+rem C names of 32-bit COFF their underscore (abi86.inc); the .def exports them undecorated.
 set "SRC=%ASM_ROOT%\Sources\x86"
 set "DEF=%ASM_ROOT%\exports_x86.def"
 set "LIBNAME=FullIntOperations_win_x86"
-set "NASMFORMAT=-f win32 --prefix _"
+set "NASMFORMAT=-f win32"
 set "MACHINE=x86"
 set "LINKHOSTDIR=Hostx64\x86"
 set "EXTRALINKFLAGS=/safeseh:no"

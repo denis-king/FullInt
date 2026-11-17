@@ -15,9 +15,10 @@
 ;  value on 200000 divisors).
 ; =============================================================================
 
+%include "abi86.inc"
 section .text
 
-extern Fullint64Div2longWin
+EXTERNK Fullint64Div2longWin
 
 ; v = 3-by-2 reciprocal of (L_D1, L_D0) -> L_V; eax, ebx, edx clobbered (ecx kept)
 %macro INVERT_PI1 0
@@ -79,10 +80,9 @@ extern Fullint64Div2longWin
 %define A2_R   esp+FR2+36
 %define A2_LA  esp+FR2+40
 
-global Fullint64Div2longWIN_recip
-Fullint64Div2longWIN_recip:
+ENTRY Fullint64Div2longWIN_recip
 	cmp dword [esp+12], 0       ; d high
-	je Fullint64Div2longWin     ; d < 2^32: the baseline, arguments untouched
+	je KREF(Fullint64Div2longWin)     ; d < 2^32: the baseline, arguments untouched
 	push ebp
 	push ebx
 	push esi
@@ -229,13 +229,11 @@ Fullint64Div2longWIN_recip:
                                 ; quotients, 12 and more the word version 1.1-1.5x ahead)
 %endif
 
-global Fullint64DivWIN_recip
-Fullint64DivWIN_recip:
+ENTRY Fullint64DivWIN_recip
 	cmp dword [esp+24], V2MIN   ; lenB
-	jae Fullint64DivWIN_recip_v2
+	jae KREF(Fullint64DivWIN_recip_v2)
 
-global Fullint64DivWIN_recip_v1
-Fullint64DivWIN_recip_v1:
+ENTRY Fullint64DivWIN_recip_v1
 	push ebp
 	push ebx
 	push esi
@@ -572,8 +570,7 @@ Fullint64DivWIN_recip_v1:
 ; Q' = lenA - lenB + 2 words ~ floor(A·β / B) within 1, returns 0; or saturated, returns 1;
 ; R unused; work: lenA + 3 words; lenA > lenB >= 3)
 %macro DIV_RECIP_V2 2
-global %1
-%1:
+ENTRY %1
 	push ebp
 	push ebx
 	push esi

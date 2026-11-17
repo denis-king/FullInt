@@ -1,3 +1,4 @@
+%include "abi86.inc"
 section .text
 
 ; =============================================================================
@@ -25,8 +26,7 @@ section .text
 	mov ebx, edx
 %endmacro
 
-global Fullint64DivExactWIN
-Fullint64DivExactWIN:
+ENTRY Fullint64DivExactWIN
 	push ebx
 	push esi
 	push edi

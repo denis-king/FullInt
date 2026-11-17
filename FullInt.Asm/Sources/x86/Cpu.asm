@@ -12,10 +12,10 @@
 ;  cpuid itself is there on every CPU Windows runs on (Pentium and later).
 ; =============================================================================
 
+%include "abi86.inc"
 section .text
 
-global Fullint64CpuFeatures
-Fullint64CpuFeatures:
+ENTRY Fullint64CpuFeatures
 	push ebx                    ; cpuid writes ebx (callee-saved in cdecl)
 	xor eax, eax
 	cpuid                       ; eax = the highest standard leaf
