@@ -1,5 +1,6 @@
 
 default rel
+%include "abi.inc"
 section .text
 
 ; =============================================================================
@@ -19,14 +20,18 @@ section .text
 ; =============================================================================
 
 extern Fullint64CompareWIN
-
-global Fullint64CompareWIN_avx2
-Fullint64CompareWIN_avx2:
+ENTRY Fullint64CompareWIN_avx2
+%ifndef FULLINT_WIN64
+	cmp edx, ecx                ; System V: the lengths (arguments 3, 4) before the frame
+	jne Fullint64CompareWIN     ; different lengths: the baseline kernel (its own entry)
+%endif
+	WIN64_ARGS
 	cmp r8d, r9d
 	jne Fullint64CompareWIN     ; different lengths: the baseline kernel
 
 	movsxd r8, r8d
 	xor r9d, r9d                ; index from the top
+	align 32                    ; the loop on a line of its own (abi.inc)
 .blocks:
 	cmp r8, 4
 	jb .words
@@ -61,8 +66,8 @@ Fullint64CompareWIN_avx2:
 	cmp r10, r11
 	cmovb eax, r9d
 	vzeroupper
-	ret
+	WRET
 .equal:
 	xor eax, eax
 	vzeroupper
-	ret
+	WRET

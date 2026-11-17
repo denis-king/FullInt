@@ -1,26 +1,22 @@
 
 default rel
+%include "abi.inc"
 section .text
 
-global Fullint64Div2longWin
-Fullint64Div2longWin:
-	; Win64 non-volatile registers used by the body (saved once per call)
-	push rdi
-	push rsi
-	mov rdi, rcx ;dividend buf
-	mov rsi, rdx ;divisor long
-	mov rcx, r8 ;result len r8 - r9 + 1 and atleast 1
-	mov rdx, r9 ;remainder ref long
-	movsxd r8, dword [rsp+38h] ;lenDividend (int; 28h + 2 pushes)
 
-
-	call Fullint64Div2long
-	pop rsi
-	pop rdi
-	ret
-
-global Fullint64Div2long
-Fullint64Div2long:	
+ENTRY Fullint64Div2longWin
+	SAVE rdi, rsi
+%ifdef FULLINT_WIN64
+	mov rdi, rcx
+	mov rsi, rdx
+	mov rcx, r8
+	mov rdx, r9
+	movsxd r8, dword STACKARG(5, FI_NPUSH)
+%else
+	xchg rcx, rdx
+	movsxd r8, r8d
+%endif
+Fullint64Div2long_body:	
 	;mov r10, rcx ; result address
 	mov r11, rdx ; remainder address
     xor rdx, rdx
@@ -49,4 +45,4 @@ Fullint64Div2long:
 	
 .done:
     mov [r11], rdx
-	ret
+	ARET rdi, rsi

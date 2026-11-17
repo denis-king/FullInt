@@ -1,5 +1,6 @@
 
 default rel
+%include "abi.inc"
 section .text
 
 ; =============================================================================
@@ -45,9 +46,8 @@ section .text
 	jmp %%words
 %%done:
 %endmacro
-
-global Fullint64ShlWIN_avx2
-Fullint64ShlWIN_avx2:
+ENTRY Fullint64ShlWIN_avx2
+	WIN64_ARGS
 	movsxd r8, r8d              ; lenA
 	movsxd r9, r9d              ; lenR
 	mov eax, [rsp+28h]          ; shift
@@ -110,11 +110,11 @@ Fullint64ShlWIN_avx2:
 
 	ZERO_UP rdx, r10            ; ws zero words at the low end
 	vzeroupper
-	ret
+	WRET
 
 ;------------------------------------------------------------------------------
-global Fullint64ShrWIN_avx2
-Fullint64ShrWIN_avx2:
+ENTRY Fullint64ShrWIN_avx2
+	WIN64_ARGS
 	movsxd r8, r8d              ; lenA
 	movsxd r9, r9d              ; lenR
 	mov eax, [rsp+28h]          ; shift
@@ -164,9 +164,9 @@ Fullint64ShrWIN_avx2:
 
 	ZERO_UP rdx, r10            ; lead zeros, after every read of A
 	vzeroupper
-	ret
+	WRET
 
 .allZero:                       ; lenA <= ws: everything shifted out
 	ZERO_UP rdx, r9
 	vzeroupper
-	ret
+	WRET

@@ -1,4 +1,5 @@
 default rel
+%include "abi.inc"
 section .text
 
 ; =============================================================================
@@ -101,8 +102,8 @@ section .text
 
 ; -----------------------------------------------------------------------------
 ; one DIF level h: (x, y = x + h) -> (x + y, (x - y)·w^j), blocks of 2h
-global Fullint64NttDif1WIN_avx2
-Fullint64NttDif1WIN_avx2:
+ENTRY Fullint64NttDif1WIN_avx2
+	WIN64_ARGS
 	push rsi
 	push rdi
 	SAVE_XMM
@@ -135,14 +136,14 @@ Fullint64NttDif1WIN_avx2:
 	RESTORE_XMM
 	pop rdi
 	pop rsi
-	ret
+	WRET
 
 ; -----------------------------------------------------------------------------
 ; two DIF levels h, h/2 in one pass over each block of 2h: four streams x0..x3 (q = h/2 apart)
 ;   level h:   (x0, x2) with w^j, (x1, x3) with w^(j+q)      (w = W + h)
 ;   level h/2: (x0, x1), (x2, x3) with v^j                   (v = W + q)
-global Fullint64NttDif2WIN_avx2
-Fullint64NttDif2WIN_avx2:
+ENTRY Fullint64NttDif2WIN_avx2
+	WIN64_ARGS
 	push rbx
 	push rsi
 	push rdi
@@ -215,15 +216,15 @@ Fullint64NttDif2WIN_avx2:
 	pop rdi
 	pop rsi
 	pop rbx
-	ret
+	WRET
 
 ; -----------------------------------------------------------------------------
 ; the last three DIF levels (h = 4, 2, 1) on 16-value chunks A, B (two blocks of 8):
 ;   X = A.lo|B.lo, Y = A.hi|B.hi        level 4 with w8 = W[4..7] in each half
 ;   P = unpacklo64, Q = unpackhi64      level 2 with w4 = W[2..3] repeated
 ;   R = s.even|d.even, S = s.odd|d.odd  level 1 (w = 1); stored as R, S
-global Fullint64NttDif3WIN_avx2
-Fullint64NttDif3WIN_avx2:
+ENTRY Fullint64NttDif3WIN_avx2
+	WIN64_ARGS
 	SAVE_XMM
 	LOAD_P dword [rsp + 168 + 40]
 	vbroadcasti128 ymm8, [r8 + 16]      ; w8
@@ -266,12 +267,12 @@ Fullint64NttDif3WIN_avx2:
 	jb .chunk
 	vzeroupper
 	RESTORE_XMM
-	ret
+	WRET
 
 ; -----------------------------------------------------------------------------
 ; one DIT level h: (x, y) -> (x + y·w^j, x - y·w^j)
-global Fullint64NttDit1WIN_avx2
-Fullint64NttDit1WIN_avx2:
+ENTRY Fullint64NttDit1WIN_avx2
+	WIN64_ARGS
 	push rsi
 	push rdi
 	SAVE_XMM
@@ -305,14 +306,14 @@ Fullint64NttDit1WIN_avx2:
 	RESTORE_XMM
 	pop rdi
 	pop rsi
-	ret
+	WRET
 
 ; -----------------------------------------------------------------------------
 ; two DIT levels h/2, h in one pass over each block of 2h (Dif2 backwards)
 ;   level h/2: (x0, x1), (x2, x3) with v^j
 ;   level h:   (x0, x2) with w^j, (x1, x3) with w^(j+q)
-global Fullint64NttDit2WIN_avx2
-Fullint64NttDit2WIN_avx2:
+ENTRY Fullint64NttDit2WIN_avx2
+	WIN64_ARGS
 	push rbx
 	push rsi
 	push rdi
@@ -389,12 +390,12 @@ Fullint64NttDit2WIN_avx2:
 	pop rdi
 	pop rsi
 	pop rbx
-	ret
+	WRET
 
 ; -----------------------------------------------------------------------------
 ; the first three DIT levels (h = 1, 2, 4) on 16-value chunks: Dif3 backwards
-global Fullint64NttDit3WIN_avx2
-Fullint64NttDit3WIN_avx2:
+ENTRY Fullint64NttDit3WIN_avx2
+	WIN64_ARGS
 	SAVE_XMM
 	LOAD_P dword [rsp + 168 + 40]
 	vbroadcasti128 ymm8, [r8 + 16]      ; i8
@@ -439,12 +440,12 @@ Fullint64NttDit3WIN_avx2:
 	jb .chunk
 	vzeroupper
 	RESTORE_XMM
-	ret
+	WRET
 
 ; -----------------------------------------------------------------------------
 ; x = x·y·2^-32 mod p in [0, 2p)
-global Fullint64NttPointWIN_avx2
-Fullint64NttPointWIN_avx2:
+ENTRY Fullint64NttPointWIN_avx2
+	WIN64_ARGS
 	SAVE_XMM
 	vmovd xmm15, r9d
 	vpbroadcastd ymm15, xmm15
@@ -464,12 +465,12 @@ Fullint64NttPointWIN_avx2:
 	jb .word
 	vzeroupper
 	RESTORE_XMM
-	ret
+	WRET
 
 ; -----------------------------------------------------------------------------
 ; x = x·c·2^-32 mod p in [0, p)
-global Fullint64NttScaleWIN_avx2
-Fullint64NttScaleWIN_avx2:
+ENTRY Fullint64NttScaleWIN_avx2
+	WIN64_ARGS
 	SAVE_XMM
 	vmovd xmm15, r8d
 	vpbroadcastd ymm15, xmm15
@@ -490,13 +491,13 @@ Fullint64NttScaleWIN_avx2:
 	jb .word
 	vzeroupper
 	RESTORE_XMM
-	ret
+	WRET
 
 ; -----------------------------------------------------------------------------
 ; big-endian words -> little-endian digits in [0, 2p), then zeros up to L
 ;   rcx a, rdx la, r8 x, r9 L, [p]
-global Fullint64NttLoadWIN_avx2
-Fullint64NttLoadWIN_avx2:
+ENTRY Fullint64NttLoadWIN_avx2
+	WIN64_ARGS
 	push rsi
 	push rdi
 	mov eax, [rsp + 16 + 40]            ; p
@@ -542,7 +543,7 @@ Fullint64NttLoadWIN_avx2:
 	rep stosd
 	pop rdi
 	pop rsi
-	ret
+	WRET
 .digit:                                 ; ecx -> [0, 2p) at [rdi]
 	mov eax, ecx
 	sub eax, r8d
@@ -559,8 +560,8 @@ Fullint64NttLoadWIN_avx2:
 ; the digit's value v1 + p1·v2 + p1p2·v3 (< 2^90) added into the running sum, its low 32 bits
 ; out. Two digits make a word, stored from the low end of r up.
 ;   rcx x0, rdx x1, r8 x2, r9 nd, [r], [len], [k]
-global Fullint64NttCrtWIN
-Fullint64NttCrtWIN:
+ENTRY Fullint64NttCrtWIN
+	WIN64_ARGS
 	push rbx
 	push rbp
 	push rsi
@@ -656,7 +657,7 @@ Fullint64NttCrtWIN:
 	pop rsi
 	pop rbp
 	pop rbx
-	ret
+	WRET
 
 ; -----------------------------------------------------------------------------
 ; The radix-3 level on top of a transform of N = 3M values (then three of M = 2^k: the lengths
@@ -695,9 +696,8 @@ Fullint64NttCrtWIN:
 	vpsubd ymm4, ymm3, ymm15
 	vpminud ymm11, ymm3, ymm4
 %endmacro
-
-global Fullint64NttR3DifWIN_avx2
-Fullint64NttR3DifWIN_avx2:
+ENTRY Fullint64NttR3DifWIN_avx2
+	WIN64_ARGS
 	R3_SETUP
 .word:
 	vmovdqu ymm0, [rcx + rax]
@@ -734,10 +734,9 @@ Fullint64NttR3DifWIN_avx2:
 	jb .word
 	vzeroupper
 	RESTORE_XMM
-	ret
-
-global Fullint64NttR3DitWIN_avx2
-Fullint64NttR3DitWIN_avx2:
+	WRET
+ENTRY Fullint64NttR3DitWIN_avx2
+	WIN64_ARGS
 	R3_SETUP
 .word:
 	vmovdqu ymm0, [rcx + rax]
@@ -776,4 +775,4 @@ Fullint64NttR3DitWIN_avx2:
 	jb .word
 	vzeroupper
 	RESTORE_XMM
-	ret
+	WRET

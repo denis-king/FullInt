@@ -1,34 +1,24 @@
 
 default rel
+%include "abi.inc"
 section .text
 
-global Fullint64DivWin
-Fullint64DivWin:
-	; Win64 non-volatile registers used by the body (saved once per call, not in loops)
-	push rdi
-	push rsi
-	push rbx
-	push r12
-	push r13
-	push r14
-	mov rdi, rcx ;dividend
-	mov rsi, rdx ;divisor
-	mov rcx, r8 ;result len r8 - r9 + 1 and atleast 1
-	mov rdx, r9 ;remainder len r8 + 2
-	movsxd r8, dword [rsp+58h] ;lenDividend (int; 28h + 6 pushes)
-	movsxd r9, dword [rsp+60h] ;lenDivisor  (int; 30h + 6 pushes)
 
-	call Fullint64Div
-	pop r14
-	pop r13
-	pop r12
-	pop rbx
-	pop rsi
-	pop rdi
-	ret
-
-global Fullint64Div
-Fullint64Div:	
+ENTRY Fullint64DivWin
+	SAVE rdi, rsi, rbx, r12, r13, r14
+%ifdef FULLINT_WIN64
+	mov rdi, rcx
+	mov rsi, rdx
+	mov rcx, r8
+	mov rdx, r9
+	movsxd r8, dword STACKARG(5, FI_NPUSH)
+	movsxd r9, dword STACKARG(6, FI_NPUSH)
+%else
+	xchg rcx, rdx
+	movsxd r8, r8d
+	movsxd r9, r9d
+%endif
+Fullint64Div_body:	
 	mov r10, rcx ; result address
 	mov r11, rdx ; remainder address
    
@@ -351,8 +341,7 @@ Fullint64Div:
     jmp .mainLoop
 
 .done:
-	ret
-
+	ARET rdi, rsi, rbx, r12, r13, r14
 ;------------------------------------------------------------------------------
 ; cold paths: a borrow/carry ran past word [r11 + (rcx-1)*8];
 ; push it further up the window, word by word, until it is absorbed or reaches [r11]

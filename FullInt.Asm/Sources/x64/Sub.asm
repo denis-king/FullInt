@@ -1,35 +1,9 @@
 
 default rel
+%include "abi.inc"
 section .text
 
-;WINDOWS wrapper
-global Fullint64SubWIN
-Fullint64SubWIN:
-	; Win64 non-volatile registers used by the body (saved once per call)
-	push rdi
-	push rsi
-	push rbx
-	push r12
-	push r13
-	push r14
-	push r15
-	;transfor the windows ABI to the Linux/Mac ABI
-	mov rdi, rcx
-	mov rsi, rdx
-	mov rcx, r8
-	movsxd rdx, r9d             ; lenA (int)
-	movsxd r8, dword [rsp+60h]  ; lenB (int; 28h + 7 pushes)
-	movsxd r9, dword [rsp+68h]  ; lenR (int; 30h + 7 pushes)
-
-	call Fullint64Sub
-	pop r15
-	pop r14
-	pop r13
-	pop r12
-	pop rbx
-	pop rsi
-	pop rdi
-	ret
+; the entry (abi.inc): one for Windows and System V, the arguments to the body's registers
 
 ; void Fullint64Add(
 ;   const uint64_t* A, size_t lenA,
@@ -38,8 +12,22 @@ Fullint64SubWIN:
 ; rdi=A, rsi=B, rcx=R, 
 ; rdx=LenA, r8=lenB, r9=lenR
 ; порядок: index 0 = MSW, index len-1 = LSW
-global Fullint64Sub
-Fullint64Sub:
+ENTRY Fullint64SubWIN
+	SAVE rdi, rsi, rbx, r12, r13, r14, r15
+%ifdef FULLINT_WIN64
+	mov rdi, rcx
+	mov rsi, rdx
+	mov rcx, r8
+	movsxd rdx, r9d
+	movsxd r8, dword STACKARG(5, FI_NPUSH)
+	movsxd r9, dword STACKARG(6, FI_NPUSH)
+%else
+	xchg rcx, rdx
+	movsxd rdx, edx
+	movsxd r8, r8d
+	movsxd r9, r9d
+%endif
+Fullint64Sub_body:
 
 .skipZerosA:
 	mov rax, [rdi]
@@ -179,4 +167,4 @@ Fullint64Sub:
 
 .done:
 	mov rax, r15
-    ret
+    ARET rdi, rsi, rbx, r12, r13, r14, r15

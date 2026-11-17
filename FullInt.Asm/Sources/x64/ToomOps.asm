@@ -1,4 +1,5 @@
 default rel
+%include "abi.inc"
 section .text
 
 ; =============================================================================
@@ -16,9 +17,8 @@ section .text
 ;    word); a fused shift-and-add for the same callers lost to the separate kernels (the
 ;    AVX2 shift + the add) and was dropped.
 ; =============================================================================
-
-global Fullint64DivExactWIN
-Fullint64DivExactWIN:
+ENTRY Fullint64DivExactWIN
+	WIN64_ARGS
 	push rbx
 	push rsi
 	push rdi
@@ -69,4 +69,4 @@ Fullint64DivExactWIN:
 	pop rdi
 	pop rsi
 	pop rbx
-	ret
+	WRET

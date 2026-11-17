@@ -1,5 +1,6 @@
 
 default rel
+%include "abi.inc"
 section .text
 
 ; =============================================================================
@@ -18,9 +19,8 @@ section .text
 ;  r8 lenResult address; r10 char position; r11 = 10^19; r12 = 1/10 reciprocal;
 ;  r13 = v (1/10^19 reciprocal); r15 remainder (u1) in the word loop; r14 u0; rbx quotient word.
 ; =============================================================================
-
-global Fullint64ToDecStringWIN_recip
-Fullint64ToDecStringWIN_recip:
+ENTRY Fullint64ToDecStringWIN_recip
+	WIN64_ARGS
 	push rdi
 	push rsi
 	push rbx
@@ -214,4 +214,4 @@ Fullint64ToDecStringWIN_recip:
 	pop rbx
 	pop rsi
 	pop rdi
-	ret
+	WRET

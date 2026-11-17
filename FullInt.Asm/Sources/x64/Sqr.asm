@@ -1,4 +1,5 @@
 default rel
+%include "abi.inc"
 section .text
 
 ; =============================================================================
@@ -18,9 +19,8 @@ section .text
 ;  Registers: r10 a_0, r11 r_0, r12 n; rows: r14 a_i, r9 r_(2i+1), r13 the row's length,
 ;  rbx a_i, rsi a_j, rdi r_(i+j), rcx words left, r8 the carry word, rdx:rax the product.
 ; =============================================================================
-
-global Fullint64SqrWIN
-Fullint64SqrWIN:
+ENTRY Fullint64SqrWIN
+	WIN64_ARGS
 	push rbx                    ; Win64 non-volatile, used by the body
 	push rsi
 	push rdi
@@ -109,4 +109,4 @@ Fullint64SqrWIN:
 	pop rdi
 	pop rsi
 	pop rbx
-	ret
+	WRET

@@ -1,4 +1,5 @@
 default rel
+%include "abi.inc"
 section .text
 
 ; =============================================================================
@@ -31,9 +32,8 @@ section .text
 ;  n - 1 - i, rcx single words then groups of eight, r14 the groups, rsi a_j, rdi r_(i+j),
 ;  rdx a_i, r8 prev_hi, r9 hi, rax lo.
 ; =============================================================================
-
-global Fullint64SqrWIN_adx
-Fullint64SqrWIN_adx:
+ENTRY Fullint64SqrWIN_adx
+	WIN64_ARGS
 	push rbx                    ; Win64 non-volatile, used by the body
 	push rsi
 	push rdi
@@ -170,7 +170,7 @@ Fullint64SqrWIN_adx:
 	pop rdi
 	pop rsi
 	pop rbx
-	ret
+	WRET
 
 	; n < 8: the triangle T in registers (rows as in .row, the words being added in a window that rotates
 	; through W[p mod n]; positions 2i+1, 2i+2 are final after row i: stored, then zeroed - mov keeps the

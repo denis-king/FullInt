@@ -1,5 +1,6 @@
 
 default rel
+%include "abi.inc"
 section .text
 
 ; =============================================================================
@@ -10,8 +11,8 @@ section .text
 ;  Limb order: index 0 = most significant word (as every kernel here).
 ;  Contract as Fullint64MultWIN: lenR >= lenA + lenB; words of R above lenA + lenB are zero.
 ;
-;  Windows : void Fullint64MultWIN_adx(A, B, R, int lenA, int lenB, int lenR)
-;  System V: void Fullint64Mult_adx  (A, B, R, int lenA, int lenB, int lenR)   (the same C prototype)
+;  void Fullint64MultWIN_adx(A, B, R, int lenA, int lenB, int lenR)   (Windows and System V: one
+;  entry, abi.inc)
 ;
 ;  Method: rows. Row 0 stores A * b_0; then for each further word b_j of the shorter operand (from the low
 ;  end) R[j ..] += A * b_j:
@@ -35,23 +36,22 @@ section .text
 ;    r12  rows left (lenB, the shorter)            r8   prev_hi    r9  hi    rax  lo
 ; =============================================================================
 
-global Fullint64MultWIN_adx
-Fullint64MultWIN_adx:
-	push rdi                    ; Win64 non-volatile, used by the body
-	push rsi
-	mov rdi, rcx                ; A
-	mov rsi, rdx                ; B
-	mov rdx, r8                 ; R
-	mov ecx, r9d                ; lenA
-	mov r8d, dword [rsp+38h]    ; lenB (28h + 2 pushes)
-	mov r9d, dword [rsp+40h]    ; lenR (30h + 2 pushes)
-	call Fullint64Mult_adx
-	pop rsi
-	pop rdi
-	ret
 
-global Fullint64Mult_adx
-Fullint64Mult_adx:
+ENTRY Fullint64MultWIN_adx
+	SAVE rdi, rsi
+%ifdef FULLINT_WIN64
+	mov rdi, rcx
+	mov rsi, rdx
+	mov rdx, r8
+	mov ecx, r9d
+	mov r8d, dword STACKARG(5, FI_NPUSH)
+	mov r9d, dword STACKARG(6, FI_NPUSH)
+%else
+	mov ecx, ecx
+	mov r8d, r8d
+	mov r9d, r9d
+%endif
+Fullint64Mult_adx_body:
 	push rbx                    ; non-volatile in both ABIs
 	push r12
 	push r13
@@ -232,8 +232,7 @@ Fullint64Mult_adx:
 	pop r13
 	pop r12
 	pop rbx
-	ret
-
+	ARET rdi, rsi
 	; lenA < 8 (lenB <= lenA): the lenA + 1 words of R being added to stay in registers. Row j adds A * b_j:
 	;    mulx hi, lo, a_k ; adox w_(j+k), lo (chain O) ; adcx w_(j+k+1), hi (chain C)
 	; w_j is final after its first block: stored, then zeroed (mov: the flags stay) - the zero for the row's

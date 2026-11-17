@@ -1,31 +1,25 @@
 
 default rel
+%include "abi.inc"
 section .text align=64
 
-;WINDOWS wrapper
-global Fullint64AddWIN
-Fullint64AddWIN:
-	; Win64 non-volatile registers used by the body (saved once per call)
-	push rdi
-	push rsi
-	push r12
-	push r13
-	push r14
-	;transfor the windows ABI to the Linux/Mac ABI
+; the entry (abi.inc): the arguments to the body's registers, then a jump over the padding
+ENTRY Fullint64AddWIN
+	SAVE rdi, rsi, r12, r13, r14
+%ifdef FULLINT_WIN64
 	mov rdi, rcx
 	mov rsi, rdx
 	mov rcx, r8
-	movsxd rdx, r9d             ; lenA (int)
-	movsxd r8, dword [rsp+50h]  ; lenB (int; 28h + 5 pushes)
-	movsxd r9, dword [rsp+58h]  ; lenR (int; 30h + 5 pushes)
-
-	call Fullint64Add
-	pop r14
-	pop r13
-	pop r12
-	pop rsi
-	pop rdi
-	ret
+	movsxd rdx, r9d
+	movsxd r8, dword STACKARG(5, FI_NPUSH)
+	movsxd r9, dword STACKARG(6, FI_NPUSH)
+%else
+	xchg rcx, rdx
+	movsxd rdx, edx
+	movsxd r8, r8d
+	movsxd r9, r9d
+%endif
+	jmp Fullint64Add_body
 
 ; void Fullint64Add(
 ;   const uint64_t* A, size_t lenA,
@@ -36,11 +30,10 @@ Fullint64AddWIN:
 ; порядок: index 0 = MSW, index len-1 = LSW
 
 ; Code placement: keep the body at offset 1Ch mod 64 (where it was before the
-; wrapper grew). The hot loop is placement-sensitive: other offsets measured
-; 10-30% slower on Zen 3. Padding sits after the wrapper's ret, never executed.
+; entry grew). The hot loop is placement-sensitive: other offsets measured
+; 10-30% slower on Zen 3. Padding sits after the entry's jmp, never executed.
 	times (1Ch - ($ - $$)) & 63 int3
-global Fullint64Add
-Fullint64Add:
+Fullint64Add_body:
 	; lengths are resolved once here, so the loops below have no per-word range checks.
 	; The result is walked from its lowest word up in three runs:
 	;   1) k1 = min(lenB, lenR) words of A + B + carry      (carry stays in CF: dec/lea/mov keep it)
@@ -130,8 +123,7 @@ Fullint64Add:
 	jnz .zeros
 
 .done:
-    ret
-
+    ARET rdi, rsi, r12, r13, r14
 ; Code placement: end this file at offset 30h mod 64, where it ended before the loop rewrite,
 ; so every function linked after it (Compare, Div, Mult, ...) keeps its offset in the 64-byte
 ; lines. Without this, all of them moved by 16 bytes and Div measured ~5% slower. Never executed.

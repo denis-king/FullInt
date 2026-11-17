@@ -7,40 +7,26 @@ Adc64
 Sbb64
 
 Normalize3Words
-Fullint64Add
 Fullint64AddWIN
-Fullint64Sub
 Fullint64SubWIN
-Fullint64Mult
 Fullint64MultWIN
-Fullint64Div
 Fullint64DivWin
-Fullint64Div2long
 Fullint64Div2longWin
 
-Fullint64Compare
 Fullint64CompareWIN
 
-Fullint64ToDecString
 Fullint64ToDecStringWin
 
-Fullint64FromDecString
 Fullint64FromDecStringWin
 
-Fullint64And
 Fullint64AndWIN
-Fullint64Or
 Fullint64OrWIN
-Fullint64Xor
 Fullint64XorWIN
 
-Fullint64Shl
 Fullint64ShlWIN
-Fullint64Shr
 Fullint64ShrWIN
 
 Fullint64CpuFeatures
-Fullint64Mult_adx
 Fullint64MultWIN_adx
 Fullint64AndWIN_avx2
 Fullint64OrWIN_avx2

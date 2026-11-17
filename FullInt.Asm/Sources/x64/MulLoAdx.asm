@@ -1,4 +1,5 @@
 default rel
+%include "abi.inc"
 section .text
 
 ; =============================================================================
@@ -22,9 +23,8 @@ section .text
 ;  (the room of the row), r13 1 when the row's top word fits, rsi a_i, rdi r_(i+j), rcx words
 ;  left in the row, r15 the row's groups of four, r8 prev_hi, r9 hi, rax lo, rdx b_j for mulx.
 ; =============================================================================
-
-global Fullint64MulLoWIN_adx
-Fullint64MulLoWIN_adx:
+ENTRY Fullint64MulLoWIN_adx
+	WIN64_ARGS
 	push rbx
 	push rbp
 	push rsi
@@ -125,4 +125,4 @@ Fullint64MulLoWIN_adx:
 	pop rsi
 	pop rbp
 	pop rbx
-	ret
+	WRET

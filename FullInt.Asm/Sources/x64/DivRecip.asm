@@ -1,5 +1,6 @@
 
 default rel
+%include "abi.inc"
 section .text
 
 ; =============================================================================
@@ -55,9 +56,8 @@ section .text
 	mov [r8], r13
 	add r8, 8
 %endmacro
-
-global Fullint64Div2longWIN_recip
-Fullint64Div2longWIN_recip:
+ENTRY Fullint64Div2longWIN_recip
+	WIN64_ARGS
 	push rbx
 	push rsi
 	push rdi
@@ -100,7 +100,7 @@ Fullint64Div2longWIN_recip:
 	pop rdi
 	pop rsi
 	pop rbx
-	ret
+	WRET
 
 
 ; =============================================================================
@@ -148,8 +148,8 @@ Fullint64Div2longWIN_recip:
 ; the long division; %1 the name, %2 = 1: the multiply-subtract pass with mulx / adcx / adox,
 ; %3 = 1: the approximate quotient (above)
 %macro DIV_RECIP_LONG 3
-global %1
-%1:
+ENTRY %1
+	WIN64_ARGS
 	push rbx
 	push rbp
 	push rsi
@@ -412,7 +412,7 @@ global %1
 	pop rsi
 	pop rbp
 	pop rbx
-	ret
+	WRET
 
 ;------------------------------------------------------------------------------
 ; cold paths

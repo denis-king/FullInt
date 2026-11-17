@@ -70,7 +70,7 @@
 
   <!-- ===================== build ===================== -->
   <ItemGroup>
-    <FullIntNativeInput Include="$(FullIntAsmDir)Sources\**\*.asm;$(FullIntAsmDir)Sources\**\*.S" />
+    <FullIntNativeInput Include="$(FullIntAsmDir)Sources\**\*.asm;$(FullIntAsmDir)Sources\**\*.inc;$(FullIntAsmDir)Sources\**\*.S" />
     <FullIntNativeInput Include="$(FullIntAsmDir)exports.def;$(FullIntAsmDir)build\*" />
   </ItemGroup>
 

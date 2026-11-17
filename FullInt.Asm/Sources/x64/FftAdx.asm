@@ -1,5 +1,6 @@
 
 default rel
+%include "abi.inc"
 section .text
 
 ; =============================================================================
@@ -59,9 +60,8 @@ section .text
 	mov [r10 + rsi*8 + %1], rax
 	mov [rdx + rsi*8 + %1], r9
 %endmacro
-
-global Fullint64FftAddSubWIN_adx
-Fullint64FftAddSubWIN_adx:
+ENTRY Fullint64FftAddSubWIN_adx
+	WIN64_ARGS
 	push rbx
 	push rsi
 	push rdi
@@ -172,7 +172,7 @@ Fullint64FftAddSubWIN_adx:
 	pop rdi
 	pop rsi
 	pop rbx
-	ret
+	WRET
 
 ;------------------------------------------------------------------------------
 
@@ -287,9 +287,8 @@ Fullint64FftAddSubWIN_adx:
 	LOW_PLUS_ONE rdi, r14       ; a borrow out: + p
 %%done:
 %endmacro
-
-global Fullint64FftShlModWIN_bmi2
-Fullint64FftShlModWIN_bmi2:
+ENTRY Fullint64FftShlModWIN_bmi2
+	WIN64_ARGS
 	push rbx
 	push rsi
 	push rdi
@@ -334,4 +333,4 @@ Fullint64FftShlModWIN_bmi2:
 	pop rdi
 	pop rsi
 	pop rbx
-	ret
+	WRET

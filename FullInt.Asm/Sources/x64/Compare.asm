@@ -1,30 +1,23 @@
 
 default rel
+%include "abi.inc"
 section .text
 
-;WINDOWS wrapper
-global Fullint64CompareWIN
-Fullint64CompareWIN:
-	; Win64 non-volatile registers used by the body (saved once per call)
-	push rdi
-	push rsi
-	push rbx
-	;transfor the windows ABI to the Linux/Mac ABI
+; the entry (abi.inc): one for Windows and System V, the arguments to the body's registers
+
+ENTRY Fullint64CompareWIN
+	SAVE rdi, rsi, rbx
+%ifdef FULLINT_WIN64
 	mov rdi, rcx
 	mov rsi, rdx
-	movsxd rcx, r8d             ; lenA (int)
-	movsxd rdx, r9d             ; lenB (int)
-	;mov r8, [rsp+28h]
-	;mov r9, [rsp+30h]
-
-	call Fullint64Compare
-	pop rbx
-	pop rsi
-	pop rdi
-	ret
-
-global Fullint64Compare
-Fullint64Compare:
+	movsxd rcx, r8d
+	movsxd rdx, r9d
+%else
+	xchg rcx, rdx
+	movsxd rcx, ecx
+	movsxd rdx, edx
+%endif
+Fullint64Compare_body:
 
 .skipZerosA:
 	mov rax, [rdi]
@@ -53,6 +46,7 @@ Fullint64Compare:
 	
 	xor rbx, rbx
 	
+	align 32                      ; the hot loop on a line of its own (abi.inc)
 .comparationLoop:
 	mov rax, [rdi + rbx*8]
 	cmp rax, [rsi + rbx*8]
@@ -73,4 +67,4 @@ Fullint64Compare:
     mov rax, 1
 
 .done:
-    ret
+    ARET rdi, rsi, rbx

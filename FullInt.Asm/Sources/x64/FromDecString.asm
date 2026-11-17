@@ -1,32 +1,22 @@
 
 default rel
+%include "abi.inc"
 section .text
 
-global Fullint64FromDecStringWin
-Fullint64FromDecStringWin:
-	
-	; Win64 non-volatile registers used by the body (saved once per call)
-	push rdi
-	push rsi
-	push rbx
-	push r12
-	push r13
-	mov rdi, rcx ;originar value buff
-	mov rsi, rdx ;temp value buff
-	mov rcx, r8 ;result buf
-	movsxd rdx, r9d ;value lenth (int)
-	mov r8, [rsp+50h] ;result lenth addr (28h + 5 pushes)
-
-	call Fullint64FromDecString
-	pop r13
-	pop r12
-	pop rbx
-	pop rsi
-	pop rdi
-	ret
 ;------------------------------------------------------------------------------------
-global Fullint64FromDecString
-Fullint64FromDecString:
+ENTRY Fullint64FromDecStringWin
+	SAVE rdi, rsi, rbx, r12, r13
+%ifdef FULLINT_WIN64
+	mov rdi, rcx
+	mov rsi, rdx
+	mov rcx, r8
+	movsxd rdx, r9d
+	mov r8, STACKARG(5, FI_NPUSH)
+%else
+	xchg rcx, rdx
+	movsxd rdx, edx
+%endif
+Fullint64FromDecString_body:
     mov r9, rdx ;string len
     xor r10, r10
     mov r11, 10000000000000000000 ; 10^19
@@ -136,4 +126,4 @@ Fullint64FromDecString:
 .done:
     
     mov [r8], r10d ;retur the start position of the result chars (ref int: 4 bytes)
-	ret
+	ARET rdi, rsi, rbx, r12, r13

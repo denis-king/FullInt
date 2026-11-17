@@ -1,5 +1,6 @@
 
 default rel
+%include "abi.inc"
 section .text
 
 ; =============================================================================
@@ -13,28 +14,28 @@ section .text
 ;  Shr: R = A >> shift,  lenR >= max(lenA - ws, 1);  R may alias A (with ws >= 1 low end first)
 ;       R = [lead zeros][A[0 .. lenA-ws-1] shifted right by s]
 ;
-;  Windows : void Fullint64ShlWIN(A, R, int lenA, int lenR, int shift)
-;  System V: void Fullint64Shl   (A, R, lenR, lenA, shift)   (same mapping as the other WIN wrappers)
+;  void Fullint64ShlWIN(A, R, int lenA, int lenR, int shift)   (Windows and System V: one entry each,
+;  abi.inc; the bodies take rdi = A, rsi = R, rcx = lenA, rdx = lenR, r8 = shift)
 ;
 ;  The bodies use only rax, rcx, rdx, rsi, rdi, r8-r11 (volatile in System V).
 ; =============================================================================
 
-global Fullint64ShlWIN
-Fullint64ShlWIN:
-	push rdi                    ; Win64 non-volatile
-	push rsi
-	mov rdi, rcx                ; A
-	mov rsi, rdx                ; R
-	movsxd rcx, r8d             ; lenA
-	movsxd rdx, r9d             ; lenR
-	movsxd r8, dword [rsp+38h]  ; shift (28h + 2 pushes)
-	call Fullint64Shl
-	pop rsi
-	pop rdi
-	ret
 
-global Fullint64Shl
-Fullint64Shl:
+ENTRY Fullint64ShlWIN
+	SAVE rdi, rsi
+%ifdef FULLINT_WIN64
+	mov rdi, rcx
+	mov rsi, rdx
+	movsxd rcx, r8d
+	movsxd rdx, r9d
+	movsxd r8, dword STACKARG(5, FI_NPUSH)
+%else
+	xchg rcx, rdx
+	movsxd rcx, ecx
+	movsxd rdx, edx
+	movsxd r8, r8d
+%endif
+Fullint64Shl_body:
 	mov r9, rcx                 ; lenA
 	mov r10, rdx                ; lenR
 	mov r11, r8
@@ -76,6 +77,7 @@ Fullint64Shl:
 	; two words per step with shl/shr/or (shld r, r, cl is several uops and slow on
 	; recent cores). The shift unit takes the count mod 64, so after neg ecx cl acts as
 	; 64 - s; s > 0 here. r10 (lenR) is free after the lead.
+	align 32                      ; the hot loop on a line of its own (abi.inc)
 .pairs:
 	mov rax, [rdi]              ; w0
 	mov r8, [rdi + 8]           ; w1
@@ -111,8 +113,7 @@ Fullint64Shl:
 	dec r11
 	jmp .tail
 .done:
-	ret
-
+	ARET rdi, rsi
 .copy:                          ; s = 0: out = prev
 	mov rax, [rdi]
 	mov [rsi], rdx
@@ -124,22 +125,22 @@ Fullint64Shl:
 	jmp .lowest
 
 ;------------------------------------------------------------------------------
-global Fullint64ShrWIN
-Fullint64ShrWIN:
-	push rdi                    ; Win64 non-volatile
-	push rsi
-	mov rdi, rcx                ; A
-	mov rsi, rdx                ; R
-	movsxd rcx, r8d             ; lenA
-	movsxd rdx, r9d             ; lenR
-	movsxd r8, dword [rsp+38h]  ; shift (28h + 2 pushes)
-	call Fullint64Shr
-	pop rsi
-	pop rdi
-	ret
 
-global Fullint64Shr
-Fullint64Shr:
+ENTRY Fullint64ShrWIN
+	SAVE rdi, rsi
+%ifdef FULLINT_WIN64
+	mov rdi, rcx
+	mov rsi, rdx
+	movsxd rcx, r8d
+	movsxd rdx, r9d
+	movsxd r8, dword STACKARG(5, FI_NPUSH)
+%else
+	xchg rcx, rdx
+	movsxd rcx, ecx
+	movsxd rdx, edx
+	movsxd r8, r8d
+%endif
+Fullint64Shr_body:
 	mov r9, rcx                 ; lenA
 	mov r10, rdx                ; lenR
 	mov r11, r8
@@ -189,13 +190,14 @@ Fullint64Shr:
 	add rsi, 8
 	dec r9
 	jnz .even
-	ret
+	ARET rdi, rsi
 .even:
 	test ecx, ecx
 	jz .copy                    ; s = 0: whole words only
 
 	; two words per step, as in Shl; both words are read before either is written, so
 	; R may still alias A. r10 (lenR) is free here.
+	align 32                      ; the hot loop on a line of its own (abi.inc)
 .pairs:
 	mov rax, [rdi]              ; w0
 	mov r8, [rdi + 8]           ; w1
@@ -215,8 +217,7 @@ Fullint64Shr:
 	add rsi, 16
 	sub r9, 2
 	jnz .pairs
-	ret
-
+	ARET rdi, rsi
 .copy:                          ; s = 0: out = cur (read before written: R may alias A)
 	mov rax, [rdi]
 	mov [rsi], rax
@@ -224,8 +225,7 @@ Fullint64Shr:
 	add rsi, 8
 	dec r9
 	jnz .copy
-	ret
-
+	ARET rdi, rsi
 .inPlace:                       ; from the low end: R[lead + k] = shrd(A[k], A[k-1], s), the lead
 	sub r10, r9                 ; zeros last; every store lands above all words still to be read
 	lea r11, [rsi + r10*8]      ; R[lead]
@@ -251,8 +251,7 @@ Fullint64Shr:
 	dec r10
 	jmp .inPlaceLead
 .inPlaceDone:
-	ret
-
+	ARET rdi, rsi
 .allZero:
 	xor eax, eax
 .zero:
@@ -260,4 +259,4 @@ Fullint64Shr:
 	add rsi, 8
 	dec r10
 	jnz .zero
-	ret
+	ARET rdi, rsi

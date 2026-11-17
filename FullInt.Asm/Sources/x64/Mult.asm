@@ -1,37 +1,25 @@
 
 default rel
+%include "abi.inc"
 section .text
 
-global Fullint64MultWIN
-Fullint64MultWIN:
-	; Win64 non-volatile registers used by the body (saved once per call)
-	push rdi
-	push rsi
-	push rbx
-	push r12
-	push r13
-	push r14
-	push r15
-	;transfor the windows ABI to the Linux/Mac ABI
+
+ENTRY Fullint64MultWIN
+	SAVE rdi, rsi, rbx, r12, r13, r14, r15
+%ifdef FULLINT_WIN64
 	mov rdi, rcx
 	mov rsi, rdx
 	mov rcx, r8
-	movsxd rdx, r9d             ; lenA (int)
-	movsxd r8, dword [rsp+60h]  ; lenB (int; 28h + 7 pushes)
-	movsxd r9, dword [rsp+68h]  ; lenR (int; 30h + 7 pushes)
-
-	call Fullint64Mult
-	pop r15
-	pop r14
-	pop r13
-	pop r12
-	pop rbx
-	pop rsi
-	pop rdi
-	ret
-
-global Fullint64Mult
-Fullint64Mult:
+	movsxd rdx, r9d
+	movsxd r8, dword STACKARG(5, FI_NPUSH)
+	movsxd r9, dword STACKARG(6, FI_NPUSH)
+%else
+	xchg rcx, rdx
+	movsxd rdx, edx
+	movsxd r8, r8d
+	movsxd r9, r9d
+%endif
+Fullint64Mult_body:
 	push rbp                      ; rbp = end of the column's A range (callee-saved in both ABIs)
     ; Инициализация адресных счётчиков: ставим на "выход за конец"
     lea r10, [rdi + rdx*8 - 8]    ; ptrA = baseA + lenA*8 (указатель на байт после последнего слова)
@@ -43,6 +31,7 @@ Fullint64Mult:
 	xor r14, r14
 	xor r15, r15
 
+	align 32                      ; the column loop on a line of its own (reached by jumps)
 .outerIteration:
 	; column bounds once per column, so the inner loop only walks real pairs:
 	;   A from r9 = max(r10, baseA) up to rbp = min(lastA, r9 + (r11 - baseB))
@@ -113,4 +102,4 @@ Fullint64Mult:
 	jmp .outerIteration
 .done:
 	pop rbp
-	ret
+	ARET rdi, rsi, rbx, r12, r13, r14, r15

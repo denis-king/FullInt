@@ -1,5 +1,6 @@
 
 default rel
+%include "abi.inc"
 section .text
 
 ; =============================================================================
@@ -17,9 +18,8 @@ section .text
 ;  which is two's complement on the fly (identity for non-negative operands).
 ;  The result is converted back to a magnitude the same way with maskR = op(maskA, maskB).
 ;
-;  Windows : int Fullint64AndWIN(A, B, R, int lenA, int lenB, int lenR, int signs)
-;  System V: int Fullint64And   (A, B, lenA, R, lenB, lenR, signs)
-;            (same register mapping as Fullint64Add; signs = 7th argument, on the stack)
+;  int Fullint64AndWIN(A, B, R, int lenA, int lenB, int lenR, int signs)   (Windows and System V:
+;  one entry, abi.inc; the body takes the arguments as Fullint64Add's, signs in r10d)
 ;
 ;  Body registers
 ;    rdi A        rdx A words left      rbx maskA   r12 carryA
@@ -30,27 +30,25 @@ section .text
 
 %macro BITWISE_OP 2 ; %1 = name suffix, %2 = instruction (and / or / xor)
 
-global Fullint64%1WIN
-Fullint64%1WIN:
-	push rdi                    ; Win64 non-volatile
-	push rsi
-	mov rdi, rcx                ; A
-	mov rsi, rdx                ; B
-	mov rcx, r8                 ; R
-	movsxd rdx, r9d             ; lenA
-	movsxd r8, dword [rsp+38h]  ; lenB  (28h + 2 pushes)
-	movsxd r9, dword [rsp+40h]  ; lenR  (30h + 2 pushes)
-	mov eax, [rsp+48h]          ; signs (38h + 2 pushes)
-	push rax                    ; 7th argument for the System V body
-	call Fullint64%1
-	add rsp, 8
-	pop rsi
-	pop rdi
-	ret
 
-global Fullint64%1
-Fullint64%1:
-	mov r10d, [rsp+8]           ; signs
+ENTRY Fullint64%1WIN
+	SAVE rdi, rsi
+%ifdef FULLINT_WIN64
+	mov rdi, rcx
+	mov rsi, rdx
+	mov rcx, r8
+	movsxd rdx, r9d
+	movsxd r8, dword STACKARG(5, FI_NPUSH)
+	movsxd r9, dword STACKARG(6, FI_NPUSH)
+	mov r10d, dword STACKARG(7, FI_NPUSH)      ; signs
+%else
+	xchg rcx, rdx
+	movsxd rdx, edx
+	movsxd r8, r8d
+	movsxd r9, r9d
+	mov r10d, dword STACKARG(7, FI_NPUSH)      ; signs
+%endif
+Fullint64%1_body:
 	push rbx                    ; System V non-volatile
 	push r12
 	push r13
@@ -112,7 +110,7 @@ Fullint64%1:
 	pop r13
 	pop r12
 	pop rbx
-	ret
+	ARET rdi, rsi
 %endmacro
 
 BITWISE_OP And, and

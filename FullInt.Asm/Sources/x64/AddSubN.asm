@@ -1,4 +1,5 @@
 default rel
+%include "abi.inc"
 section .text
 
 ; =============================================================================
@@ -60,13 +61,11 @@ section .text
 %%done:
 	setc al
 	movzx eax, al
-	ret
+	WRET
 %endmacro
-
-global Fullint64AddNWIN
-Fullint64AddNWIN:
+ENTRY Fullint64AddNWIN
+	WIN64_ARGS
 	ADDSUBN adc
-
-global Fullint64SubNWIN
-Fullint64SubNWIN:
+ENTRY Fullint64SubNWIN
+	WIN64_ARGS
 	ADDSUBN sbb
