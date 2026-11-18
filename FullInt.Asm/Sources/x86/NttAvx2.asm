@@ -10,7 +10,7 @@
 ; =============================================================================
 
 %include "abi86.inc"
-section .text
+CODE_SECTION
 
 ; dst = a·w·2^-32 mod p in [0, 2p) (x64/NttAvx2.asm): %1 dst, %2 a (reg), %3 w, %4 w odd lanes
 ; (in even positions), %5 wq, %6..%8 temps; %6 may be %5's register (read first)
@@ -691,3 +691,7 @@ ENTRY Fullint64NttR3DitWIN_avx2
 	cmp eax, edx
 	jb .word
 	R3X_DONE
+
+; the file ends on a 64-byte boundary (the section align=64): the code linked after it keeps
+; its alignment whatever changes here
+	align 64, int3

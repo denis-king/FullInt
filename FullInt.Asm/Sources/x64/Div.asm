@@ -1,7 +1,7 @@
 
 default rel
 %include "abi.inc"
-section .text
+CODE_SECTION
 
 
 ENTRY Fullint64DivWin
@@ -381,3 +381,7 @@ Fullint64Div_body:
 	jnc .fixCarryDone
 	dec rax
 	jmp .fixCarryLoop
+
+; the file ends on a 64-byte boundary (the section align=64): the code linked after it keeps
+; its alignment whatever changes here
+	align 64, int3

@@ -1,7 +1,7 @@
 
 default rel
 %include "abi.inc"
-section .text
+CODE_SECTION
 
 ; =============================================================================
 ;  Division with a precomputed reciprocal of the divisor (Moller, Granlund: "Improved division
@@ -462,3 +462,7 @@ DIV_RECIP_LONG Fullint64DivWIN_recip, 0, 0
 DIV_RECIP_LONG Fullint64DivWIN_recipadx, 1, 0     ; BMI2 + ADX
 DIV_RECIP_LONG Fullint64DivQWIN_recip, 0, 1
 DIV_RECIP_LONG Fullint64DivQWIN_recipadx, 1, 1
+
+; the file ends on a 64-byte boundary (the section align=64): the code linked after it keeps
+; its alignment whatever changes here
+	align 64, int3

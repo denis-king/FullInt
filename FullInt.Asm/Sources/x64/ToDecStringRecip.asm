@@ -1,7 +1,7 @@
 
 default rel
 %include "abi.inc"
-section .text
+CODE_SECTION
 
 ; =============================================================================
 ;  ToDecString with the division by 10^19 through its reciprocal.
@@ -215,3 +215,7 @@ ENTRY Fullint64ToDecStringWIN_recip
 	pop rsi
 	pop rdi
 	WRET
+
+; the file ends on a 64-byte boundary (the section align=64): the code linked after it keeps
+; its alignment whatever changes here
+	align 64, int3

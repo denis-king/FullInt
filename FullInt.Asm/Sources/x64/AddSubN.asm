@@ -1,6 +1,6 @@
 default rel
 %include "abi.inc"
-section .text
+CODE_SECTION
 
 ; =============================================================================
 ;  Equal-length add / sub without the general kernels' length resolution (Add.asm / Sub.asm:

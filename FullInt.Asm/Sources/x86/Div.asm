@@ -27,7 +27,7 @@
 ; =============================================================================
 
 %include "abi86.inc"
-section .text
+CODE_SECTION
 
 EXTERNK fi_div128
 
@@ -568,3 +568,7 @@ ENTRY Fullint64DivWin
 	shld eax, esi, cl             ; low  = (Yhi, Ylo)
 	pop esi
 	ret
+
+; the file ends on a 64-byte boundary (the section align=64): the code linked after it keeps
+; its alignment whatever changes here
+	align 64, int3

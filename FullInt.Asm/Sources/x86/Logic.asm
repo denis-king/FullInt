@@ -26,7 +26,7 @@
 ; =============================================================================
 
 %include "abi86.inc"
-section .text
+CODE_SECTION
 
 ; one 32-bit half (%3 = 0 low, 4 high) of the current limb, %2 = and / or / xor
 ;  The carries live on the stack as one byte holding NOT carry, read back as a byte:
@@ -128,3 +128,7 @@ ENTRY Fullint64%1WIN
 BITWISE_OP And, and
 BITWISE_OP Or,  or
 BITWISE_OP Xor, xor
+
+; the file ends on a 64-byte boundary (the section align=64): the code linked after it keeps
+; its alignment whatever changes here
+	align 64, int3

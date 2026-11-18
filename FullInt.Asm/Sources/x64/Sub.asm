@@ -1,7 +1,7 @@
 
 default rel
 %include "abi.inc"
-section .text
+CODE_SECTION
 
 ; the entry (abi.inc): one for Windows and System V, the arguments to the body's registers
 
@@ -168,3 +168,7 @@ Fullint64Sub_body:
 .done:
 	mov rax, r15
     ARET rdi, rsi, rbx, r12, r13, r14, r15
+
+; the file ends on a 64-byte boundary (the section align=64): the code linked after it keeps
+; its alignment whatever changes here
+	align 64, int3

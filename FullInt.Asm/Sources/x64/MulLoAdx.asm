@@ -1,6 +1,6 @@
 default rel
 %include "abi.inc"
-section .text
+CODE_SECTION
 
 ; =============================================================================
 ;  The low half of a product: R = A·B mod β^n, with mulx / adcx / adox (BMI2 + ADX), next to
@@ -126,3 +126,7 @@ ENTRY Fullint64MulLoWIN_adx
 	pop rbp
 	pop rbx
 	WRET
+
+; the file ends on a 64-byte boundary (the section align=64): the code linked after it keeps
+; its alignment whatever changes here
+	align 64, int3

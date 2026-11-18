@@ -1,7 +1,7 @@
 
 default rel
 %include "abi.inc"
-section .text align=64
+CODE_SECTION
 
 ; the entry (abi.inc): the arguments to the body's registers, then a jump over the padding
 ENTRY Fullint64AddWIN
@@ -124,7 +124,7 @@ Fullint64Add_body:
 
 .done:
     ARET rdi, rsi, r12, r13, r14
-; Code placement: end this file at offset 30h mod 64, where it ended before the loop rewrite,
-; so every function linked after it (Compare, Div, Mult, ...) keeps its offset in the 64-byte
-; lines. Without this, all of them moved by 16 bytes and Div measured ~5% slower. Never executed.
-	times (30h - ($ - $$)) & 63 int3
+
+; the file ends on a 64-byte boundary (the section align=64): the code linked after it keeps
+; its alignment whatever changes here
+	align 64, int3

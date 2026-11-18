@@ -1,7 +1,7 @@
 
 default rel
 %include "abi.inc"
-section .text
+CODE_SECTION
 
 
 ENTRY Fullint64Div2longWin
@@ -46,3 +46,7 @@ Fullint64Div2long_body:
 .done:
     mov [r11], rdx
 	ARET rdi, rsi
+
+; the file ends on a 64-byte boundary (the section align=64): the code linked after it keeps
+; its alignment whatever changes here
+	align 64, int3

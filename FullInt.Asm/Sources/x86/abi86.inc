@@ -25,6 +25,20 @@
 %ifidn __OUTPUT_FORMAT__, win32
     %define FULLINT_WIN32 1
 %endif
+; The code section of every kernel file: 64-byte aligned, and every file ends on a 64-byte boundary
+; (align 64 at its end), so each kernel's place in the 64-byte lines depends only on its own file.
+; On Windows the name .text$zz: the linker merges .text$xx into .text sorted by the suffix, so the
+; kernels go after the compiler's code (.text$mn) - a change in a kernel does not move the C++
+; code (it did: the kernels were first in the image, so a change in their size moved all of
+; C++ and slowed or sped up paths that never call them).
+%macro CODE_SECTION 0
+    %ifdef FULLINT_WIN32
+        section .text$zz code align=64
+    %else
+        section .text align=64
+    %endif
+%endmacro
+
 
 %macro ENTRY 1
     %ifdef FULLINT_WIN32

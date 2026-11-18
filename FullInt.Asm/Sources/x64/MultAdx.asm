@@ -1,7 +1,7 @@
 
 default rel
 %include "abi.inc"
-section .text
+CODE_SECTION
 
 ; =============================================================================
 ;  R = A * B with mulx / adcx / adox (BMI2 + ADX: Broadwell, Zen and later).
@@ -864,3 +864,7 @@ align 8
 	dq .m5_0 - .smallTbl, .m5_1 - .smallTbl, .m5_2 - .smallTbl, .m5_3 - .smallTbl, .m5_4 - .smallTbl, 0, 0, 0
 	dq .m6_0 - .smallTbl, .m6_1 - .smallTbl, .m6_2 - .smallTbl, .m6_3 - .smallTbl, .m6_4 - .smallTbl, .m6_5 - .smallTbl, 0, 0
 	dq .m7_0 - .smallTbl, .m7_1 - .smallTbl, .m7_2 - .smallTbl, .m7_3 - .smallTbl, .m7_4 - .smallTbl, .m7_5 - .smallTbl, .m7_6 - .smallTbl, 0
+
+; the file ends on a 64-byte boundary (the section align=64): the code linked after it keeps
+; its alignment whatever changes here
+	align 64, int3

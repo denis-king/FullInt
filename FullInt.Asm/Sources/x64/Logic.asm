@@ -1,7 +1,7 @@
 
 default rel
 %include "abi.inc"
-section .text
+CODE_SECTION
 
 ; =============================================================================
 ;  Bitwise AND / OR / XOR with BigInteger semantics (two's complement view of
@@ -116,3 +116,7 @@ Fullint64%1_body:
 BITWISE_OP And, and
 BITWISE_OP Or,  or
 BITWISE_OP Xor, xor
+
+; the file ends on a 64-byte boundary (the section align=64): the code linked after it keeps
+; its alignment whatever changes here
+	align 64, int3

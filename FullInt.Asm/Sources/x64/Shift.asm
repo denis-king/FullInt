@@ -1,7 +1,7 @@
 
 default rel
 %include "abi.inc"
-section .text
+CODE_SECTION
 
 ; =============================================================================
 ;  Magnitude shifts. Limb order: index 0 = most significant word.
@@ -260,3 +260,7 @@ Fullint64Shr_body:
 	dec r10
 	jnz .zero
 	ARET rdi, rsi
+
+; the file ends on a 64-byte boundary (the section align=64): the code linked after it keeps
+; its alignment whatever changes here
+	align 64, int3

@@ -23,7 +23,7 @@
 ; =============================================================================
 
 %include "abi86.inc"
-section .text
+CODE_SECTION
 
 %define L_ROWS  esp             ; digits of the outer operand left
 %define L_AP    esp+4           ; outer operand: the current word (its address)
@@ -185,3 +185,7 @@ ENTRY Fullint64MultWIN_adx
 	pop ebx
 	pop ebp
 	ret
+
+; the file ends on a 64-byte boundary (the section align=64): the code linked after it keeps
+; its alignment whatever changes here
+	align 64, int3

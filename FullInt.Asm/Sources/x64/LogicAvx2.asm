@@ -1,7 +1,7 @@
 
 default rel
 %include "abi.inc"
-section .text
+CODE_SECTION
 
 ; =============================================================================
 ;  Bitwise AND / OR / XOR with AVX2 (Haswell, Zen and later; OS ymm support).
@@ -137,3 +137,7 @@ ENTRY Fullint64%1WIN_avx2
 BITWISE_AVX2 And, vpand, and, 0
 BITWISE_AVX2 Or,  vpor,  or,  1
 BITWISE_AVX2 Xor, vpxor, xor, 1
+
+; the file ends on a 64-byte boundary (the section align=64): the code linked after it keeps
+; its alignment whatever changes here
+	align 64, int3

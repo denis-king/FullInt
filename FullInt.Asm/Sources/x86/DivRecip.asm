@@ -16,7 +16,7 @@
 ; =============================================================================
 
 %include "abi86.inc"
-section .text
+CODE_SECTION
 
 EXTERNK Fullint64Div2longWin
 
@@ -890,3 +890,7 @@ ENTRY %1
 
 DIV_RECIP_V2 Fullint64DivWIN_recip_v2, 0
 DIV_RECIP_V2 Fullint64DivQWIN_recip, 1
+
+; the file ends on a 64-byte boundary (the section align=64): the code linked after it keeps
+; its alignment whatever changes here
+	align 64, int3

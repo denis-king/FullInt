@@ -1,6 +1,6 @@
 default rel
 %include "abi.inc"
-section .text
+CODE_SECTION
 
 ; =============================================================================
 ;  R = AÂ² with mulx / adcx / adox (BMI2 + ADX: Broadwell, Zen and later). A new kernel next to
@@ -5890,3 +5890,7 @@ align 8
 .midTbl: dq .n10 - .midTbl, .n11 - .midTbl, .n12 - .midTbl, .n13 - .midTbl, .n14 - .midTbl, .n15 - .midTbl, .n16 - .midTbl, .n17 - .midTbl
 align 8
 .smallTbl: dq .s1 - .smallTbl, .s2 - .smallTbl, .s3 - .smallTbl, .s4 - .smallTbl, .s5 - .smallTbl, .s6 - .smallTbl, .s7 - .smallTbl, .s8 - .smallTbl, .s9 - .smallTbl
+
+; the file ends on a 64-byte boundary (the section align=64): the code linked after it keeps
+; its alignment whatever changes here
+	align 64, int3
