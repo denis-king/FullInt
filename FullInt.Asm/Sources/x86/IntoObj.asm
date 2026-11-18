@@ -22,6 +22,13 @@
 ;      CF, then the carry through the longer's other words, the carry word on top. Opposite signs:
 ;      the larger magnitude (the longer; equal lengths: compared from the top, the equal top words
 ;      left out) minus the smaller with the borrow in CF, the leading zero words counted.
+;
+;    int Fullint64ShlObjWIN(FullInt64* r, const FullInt64* a, int shift)
+;      r = a << shift when r is not a, a is not zero, shift > 0 and not a multiple of 64, and r
+;      has room: la + shift/64 + 1 words. Words of r from the top: r[i] = a[i-1] << b | a[i] >>
+;      (64 - b), b = shift % 64, with SSE2's 64-bit lane shifts (psllq / psrlq), two words a pass
+;      (shld r, r, cl: several uops - 1.3-1.4x slower from 32 words); then shift/64 zero words.
+;      Only r[0] can be zero.
 ; =============================================================================
 
 %include "abi86.inc"
@@ -345,6 +352,113 @@ ENTRY Fullint64AddObjWIN
 .no:
 	mov eax, 1
 .ret:
+	pop edi
+	pop esi
+	pop ebx
+	pop ebp
+	ret
+
+ENTRY Fullint64ShlObjWIN
+	push ebp
+	push ebx
+	push esi
+	push edi
+	mov edi, [esp + 20]           ; r
+	mov esi, [esp + 24]           ; a
+	mov ecx, [esp + 28]           ; shift
+	cmp edi, esi
+	je .shlNo
+	test ecx, ecx
+	jle .shlNo                    ; 0 or negative
+	test ecx, 63
+	jz .shlNo                     ; whole words: a copy (the C++ path)
+	mov ebp, [esi + OBJ_SIZE]     ; la
+	mov eax, ecx
+	shr eax, 6
+	lea eax, [eax + ebp + 1]      ; n
+	cmp eax, [edi + OBJ_CAP]
+	ja .shlNo
+	movzx edx, byte [esi + OBJ_NEG]
+	mov [esp + 24], edx           ; the sign (a's argument slot as scratch)
+	mov edx, [esi + OBJ_OFF]
+	OBJ_BASE esi, ebx
+	lea esi, [ebx + edx*8]        ; a's words from the top
+	cmp ebp, 1
+	jne .shlGo
+	mov edx, [esi]
+	or edx, [esi + 4]
+	jz .shlNo                     ; zero
+.shlGo:
+	mov [edi + OBJ_SIZE], eax     ; n (a leading zero word taken off below)
+	mov edx, [esp + 24]
+	mov [edi + OBJ_NEG], dl
+	push edi                      ; r (the arguments 4 bytes further now)
+	OBJ_BASE edi, ebx
+	mov edi, ebx                  ; r's words from the top
+	and ecx, 63                   ; b
+	movd xmm6, ecx
+	neg ecx
+	add ecx, 64
+	movd xmm7, ecx                ; 64 - b
+	movq xmm0, [esi]              ; r[0] = a[0] >> (64 - b)
+	psrlq xmm0, xmm7
+	movq [edi], xmm0
+	add edi, 8
+	lea ecx, [ebp - 1]            ; r[1 .. la-1]: a[i-1] << b | a[i] >> (64 - b), esi at a[i-1]
+	cmp ecx, 2
+	jb .shlSingle
+.shlPair:                         ; two words: 16-byte psllq / psrlq / por
+	movdqu xmm0, [esi]
+	movdqu xmm1, [esi + 8]
+	psllq xmm0, xmm6
+	psrlq xmm1, xmm7
+	por xmm0, xmm1
+	movdqu [edi], xmm0
+	add esi, 16
+	add edi, 16
+	sub ecx, 2
+	cmp ecx, 2
+	jae .shlPair
+.shlSingle:
+	test ecx, ecx
+	jz .shlLast
+	movq xmm0, [esi]
+	movq xmm1, [esi + 8]
+	psllq xmm0, xmm6
+	psrlq xmm1, xmm7
+	por xmm0, xmm1
+	movq [edi], xmm0
+	add esi, 8
+	add edi, 8
+.shlLast:                         ; r[la] = a[la-1] << b
+	movq xmm0, [esi]
+	psllq xmm0, xmm6
+	movq [edi], xmm0
+.shlZeros:                        ; shift / 64 zero words below r[la]
+	mov ecx, [esp + 32]
+	shr ecx, 6
+	jecxz .shlLead
+.zeroWord:
+	mov dword [edi + 8], 0
+	mov dword [edi + 12], 0
+	add edi, 8
+	dec ecx
+	jnz .zeroWord
+.shlLead:                         ; r[0] zero: one word off (a's top bits all went to r[1])
+	pop ebp                       ; r
+	OBJ_BASE ebp, ebx
+	mov eax, [ebx]
+	or eax, [ebx + 4]
+	cmp eax, 1
+	sbb eax, eax
+	neg eax                       ; 1 when r[0] is zero
+	mov [ebp + OBJ_OFF], eax
+	sub [ebp + OBJ_SIZE], eax
+	xor eax, eax
+	jmp .shlRet
+.shlNo:
+	mov eax, 1
+.shlRet:
 	pop edi
 	pop esi
 	pop ebx

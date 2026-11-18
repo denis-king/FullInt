@@ -481,7 +481,15 @@ inline void Subtract(FullInt64& result, const FullInt64& a, const FullInt64& b)
 }
 #endif
 inline void Multiply(FullInt64& result, const FullInt64& a, const FullInt64& b) { FullInt64Engine::multInto(result, a, b); }
+#if defined(_M_X64) || defined(__x86_64__)
 inline void ShiftLeft(FullInt64& result, const FullInt64& a, int shift) { FullInt64Engine::shiftLeftInto(result, a, shift); }
+#else
+// x86: by bits (not whole words) into a result with room - one kernel on the objects (IntoObj.asm)
+inline void ShiftLeft(FullInt64& result, const FullInt64& a, int shift)
+{
+    if (Fullint64ShlObjWIN(&result, &a, shift) != 0) FullInt64Engine::shiftLeftInto(result, a, shift);
+}
+#endif
 inline void ShiftRight(FullInt64& result, const FullInt64& a, int shift) { FullInt64Engine::shiftRightInto(result, a, shift); }
 #if defined(_M_X64) || defined(__x86_64__)
 inline void And(FullInt64& result, const FullInt64& a, const FullInt64& b) { FullInt64Engine::bitwiseInto(result, 0, a, b); }

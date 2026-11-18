@@ -643,6 +643,26 @@ void AndLeadingZeros()
             }
 }
 
+// ShiftLeft into a reused result: every shift 1-140 (bits below and from 32, whole words), lengths
+// 1-12, small top words (the result's top word zero) and full ones, both signs - against GMP
+void ShiftLeftIntoAll()
+{
+    FullInt64 shared;
+    for (int la = 1; la <= 12; la++)
+        for (int shift = 1; shift <= 140; shift++)
+        {
+            std::vector<uint64_t> w(la);
+            for (auto& x : w) x = rng();
+            w[0] = shift % 3 == 0 ? 1 + (rng() & 0xFF) : w[0] | 1ull << 63;
+            FullInt64 a(shift % 2 == 0, fullint::CSpan(w));
+            Mpz ma, e;
+            ToMpz(a, ma.v);
+            mpz_mul_2exp(e.v, ma.v, shift);
+            fullint::ShiftLeft(shared, a, shift);
+            CHECK(Same(shared, e.v), "ShiftLeft into " + std::to_string(la) + " by " + std::to_string(shift));
+        }
+}
+
 // Add / Subtract into a reused result against GMP on the hard shapes: equal magnitudes, equal top
 // words, a = b + 1 at some word (a long borrow, the top words cancelling), carry runs (all ones),
 // zero operands; every sign pair, lengths 1-12 and some longer
@@ -937,6 +957,7 @@ int main()
     InPlaceApi();
     AndLeadingZeros();
     AddSubIntoShapes();
+    ShiftLeftIntoAll();
     DecimalByHalves();
 
     for (int sa : sizes)
