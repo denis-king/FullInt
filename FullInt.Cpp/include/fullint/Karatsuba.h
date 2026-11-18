@@ -80,9 +80,10 @@ struct Karatsuba
     static inline int Threshold = 48;
 
     // From this many words in the shorter operand (operands not too unbalanced): Toom-3.
-    // Tuned with fullint_kara_tune toom: Toom-3 gains from ~384 words, 96..256 equal within
-    // noise; the C# value is kept.
-    static inline int Toom3Threshold = 256;
+    // fullint_kara_tune toom (Zen 3, 2026-11-18, the 8-way MultAdx and the Karatsuba at 48): from
+    // 256 Toom-3 is 1.10 of Karatsuba alone at 256 words, from 384 1.00 there; 384 also 0.92 at
+    // 768, 0.99 at 1024 (from 256: 1.00, 1.06). C# keeps 256 (its interop per kernel call).
+    static inline int Toom3Threshold = 384;
 
     // From this many words in the shorter operand (operands not too unbalanced): Toom-4
     // (C#: Toom4Threshold, the same value).
