@@ -161,7 +161,7 @@ int main(int argc, char** argv)
         }
         else if (a == "--max" && i + 1 < argc) maxN = std::atoi(argv[++i]);
         else if (a == "--csv" && i + 1 < argc) csv = std::fopen(argv[++i], "w");
-        else { std::printf("usage: %s [--ops add,sub,addn,subn,mul,muladx,div,div1,shl,shr,cmp,todec,fromdec] [--max N] [--csv file]\n", argv[0]); return 2; }
+        else { std::printf("usage: %s [--ops add,sub,addn,subn,subcmpn,mul,muladx,div,div1,shl,shr,cmp,todec,fromdec] [--max N] [--csv file]\n", argv[0]); return 2; }
     }
     if (csv) std::fprintf(csv, "op,n,fullint_ns,gmp_ns\n");
 
@@ -225,6 +225,31 @@ int main(int argc, char** argv)
             run("subn", n,
                 [&] { Fullint64SubNWIN(oa.data(), ob.data(), orr.data(), n); },
                 [&] { mpn_sub_n(grr.data(), ga.data(), gb.data(), n); });
+        }
+
+        if (want(ops, "subcmpn"))   // |a - b| with the compare and the length (the engine's subto kernel)
+        {
+            Vec orr(n), grr(n);
+            auto gmpSubCmp = [&] {
+                int c = mpn_cmp(ga.data(), gb.data(), n);
+                mp_size_t m = n;
+                if (c == 0) m = 0;
+                else
+                {
+                    if (c > 0) mpn_sub_n(grr.data(), ga.data(), gb.data(), n);
+                    else mpn_sub_n(grr.data(), gb.data(), ga.data(), n);
+                    while (m > 0 && grr[m - 1] == 0) m--;
+                }
+                return m;
+            };
+            u64 r = Fullint64SubCmpNWIN(oa.data(), ob.data(), orr.data(), n);
+            mp_size_t m = gmpSubCmp();
+            Vec got(orr.begin() + (uint32_t)r, orr.end());
+            if ((mp_size_t)(n - (uint32_t)r) != m || reversed(got) != Vec(grr.begin(), grr.begin() + m))
+                fail("subcmpn", n, "difference");
+            run("subcmpn", n,
+                [&] { Fullint64SubCmpNWIN(oa.data(), ob.data(), orr.data(), n); },
+                [&] { gmpSubCmp(); });
         }
 
         if (want(ops, "mul"))
