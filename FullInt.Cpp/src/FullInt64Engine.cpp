@@ -977,6 +977,15 @@ std::string FullInt64Engine::ToDecString(const FullInt64& value)
     {
         return ToDecStringRecursive(value);
     }
+#if defined(_M_X64) || defined(__x86_64__)
+    if (w.size() >= (size_t)DecimalConversion::FractionFrom && w.size() <= (size_t)DecimalConversion::FractionMaxWords)
+    {
+        char text[19 * (DecimalConversion::FractionMaxWords + 4) + 2];
+        size_t start = WriteDecimalFraction(w, text, sizeof(text));
+        if (value.neg_) text[--start] = '-';
+        return std::string(text + start, sizeof(text) - start);
+    }
+#endif
 
     // small: stack buffers (as C# stackalloc), large: heap
     int resultBytes = (int)(w.size() * 1.014 + 1) * 19 + 1;

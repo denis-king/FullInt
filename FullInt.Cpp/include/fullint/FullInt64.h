@@ -37,13 +37,24 @@ struct DecimalConversion
 {
     // words; below: the ToDecString kernel. 32 with PreparedFrom 96 (x64, Zen 3): 0.95 of 48 / 48
     // over 64..4096 words (0.89-0.92 at 192-1024); 24 (2026-11-18): 0.94-0.98 of 32 at 32-1024
-    // words (16: no gain - the 32 / 16 division ate the smaller kernel's)
+    // words (16: no gain - the 32 / 16 division ate the smaller kernel's). x64 with the fraction
+    // leaves (2026-11-19): 48 - 32-256 words 0.61-0.80 of the division leaves at 24, 1024-4096
+    // 0.93 (64: the same, 96: worse from 256)
+#if defined(_M_X64) || defined(__x86_64__)
+    static inline int ToStringThreshold = 48;
+#else
     static inline int ToStringThreshold = 24;
+#endif
     static inline int ParseThreshold = 48 * 19;    // digits; below: the FromDecString kernel
     // ToString divides by the powers P_k from this many words of P_k through a reciprocal
     // computed once per power (NewtonDivision::Prepared), not the general division (below:
     // Burnikel-Ziegler / the kernel are faster)
     static inline int PreparedFrom = 96;
+    // x64: from this many words a leaf (and a short ToString) by Knuth's fraction method - one
+    // product by a cached reciprocal, then one-word multiplications (ToDecStringFrac.asm) instead
+    // of a division by 10^19 per word per 19 digits
+    static inline int FractionFrom = 8;
+    static constexpr int FractionMaxWords = 128;
 };
 
 // Word buffers for the heap-stored numbers. Freed buffers are kept per thread by size class
@@ -444,6 +455,7 @@ private:
     static std::string ToDecStringRecursive(const FullInt64& value);
     static size_t WriteDecimal(const FullInt64& x, char* text, size_t end, ptrdiff_t width);
     static size_t WriteDecimalLeaf(CSpan w, char* text, size_t end);
+    static size_t WriteDecimalFraction(CSpan w, char* text, size_t end);
     static FullInt64 ParseDecimal(std::string_view digits);
     static FullInt64 ParseDecimalLeaf(std::string_view digits);
 

@@ -643,6 +643,44 @@ void AndLeadingZeros()
             }
 }
 
+// ToString against GMP on every length 1-140 words (the short path, the fraction leaves, the
+// division by halves above) and the digit-boundary shapes: 10^k - 1 (runs of nines), 10^k, all
+// ones, powers of two, random; both signs
+void ToStringShapes()
+{
+    char* buf = nullptr;
+    for (int n = 1; n <= 140; n++)
+        for (int shape = 0; shape < 6; shape++)
+        {
+            Mpz e;
+            if (shape <= 1)   // 10^k - 1 / 10^k with about n words
+            {
+                unsigned long k = (unsigned long)(n * 19.266) - (n > 1 ? (unsigned long)(rng() % 19) : 0);
+                if (k == 0) k = 1;
+                mpz_ui_pow_ui(e.v, 10, k);
+                if (shape == 0) mpz_sub_ui(e.v, e.v, 1);
+            }
+            else
+            {
+                std::vector<uint64_t> w(n);
+                for (auto& x : w) x = shape == 2 ? ~0ull : shape == 3 ? 0 : rng();
+                if (shape == 3) w[0] = 1ull << (rng() % 64);
+                if (w[0] == 0) w[0] = 1;
+                mpz_import(e.v, n, 1, 8, 0, 0, w.data());
+            }
+            if (rng() & 1) mpz_neg(e.v, e.v);
+            size_t cnt = 0;
+            std::vector<uint64_t> words((mpz_sizeinbase(e.v, 2) + 63) / 64 + 1);
+            mpz_export(words.data(), &cnt, 1, 8, 0, 0, e.v);
+            FullInt64 a(mpz_sgn(e.v) < 0, fullint::CSpan(words.data(), cnt));
+            buf = mpz_get_str(nullptr, 10, e.v);
+            CHECK(a.ToString() == buf, "ToString " + std::to_string(n) + " words shape " + std::to_string(shape));
+            void (*freefunc)(void*, size_t);
+            mp_get_memory_functions(nullptr, nullptr, &freefunc);
+            freefunc(buf, std::strlen(buf) + 1);
+        }
+}
+
 // ShiftLeft into a reused result: every shift 1-140 (bits below and from 32, whole words), lengths
 // 1-12, small top words (the result's top word zero) and full ones, both signs - against GMP
 void ShiftLeftIntoAll()
@@ -958,6 +996,7 @@ int main()
     AndLeadingZeros();
     AddSubIntoShapes();
     ShiftLeftIntoAll();
+    ToStringShapes();
     DecimalByHalves();
 
     for (int sa : sizes)

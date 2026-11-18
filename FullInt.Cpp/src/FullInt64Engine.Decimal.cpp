@@ -7,6 +7,7 @@
 #include <fullint/FullInt64.h>
 #include <fullint/NewtonDivision.h>
 
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <memory>
@@ -58,7 +59,63 @@ const ShiftedPower& ShiftedDecimalPower(int k, const FullInt64& pk)
     return *shifted[k];
 }
 
+#if defined(_M_X64) || defined(__x86_64__)
+// The fraction method's reciprocal for n-word numbers: m chunks of 19 digits (10^(19m) > B^n),
+// r = ceil(B^(L+n) / 10^(19m)), L = m + 1 words below the point. Made once per n.
+struct FractionReciprocal
+{
+    uint32_t m;
+    std::vector<uint64_t> r;   // top first
+};
+std::atomic<const FractionReciprocal*> fractionReciprocals[DecimalConversion::FractionMaxWords + 1];
+std::mutex fractionLock;
+
+const FractionReciprocal& FractionReciprocalFor(uint32_t n)
+{
+    const FractionReciprocal* p = fractionReciprocals[n].load(std::memory_order_acquire);
+    if (p) return *p;
+    std::lock_guard<std::mutex> guard(fractionLock);
+    p = fractionReciprocals[n].load(std::memory_order_relaxed);
+    if (p) return *p;
+    auto e = new FractionReciprocal();   // kept for the process
+    e->m = (uint32_t)(n * 64 * 0.30102999566398120 / 19) + 1;
+    FullInt64 d(1);
+    for (uint32_t i = 0; i < e->m; i++) d = d * FullInt64(uint64_t(10000000000000000000ull));
+    FullInt64 num = FullInt64(1) << (int)(64 * (e->m + 1 + n));
+    FullInt64 q = (num + d - FullInt64(1)) / d;
+    CSpan w = q.Words();
+    e->r.assign(w.begin(), w.end());
+    fractionReciprocals[n].store(e, std::memory_order_release);
+    return *e;
+}
+#endif
+
 }  // namespace
+
+#if defined(_M_X64) || defined(__x86_64__)
+// Knuth's fraction method (TAOCP vol. 2, 4.4): f = x / 10^(19m) as an L-word fraction, an upper
+// bound (x times the reciprocal, the low n words dropped, + 1: below 2 units of its last word);
+// then ToDecStringFrac.asm multiplies f by 10^19 m times, each integer part 19 digits. The bound
+// keeps every integer part exact (see the kernel). x: n words, top nonzero; zero writes nothing.
+size_t FullInt64Engine::WriteDecimalFraction(CSpan w, char* text, size_t end)
+{
+    uint32_t n = (uint32_t)w.size();
+    const FractionReciprocal& rc = FractionReciprocalFor(n);
+    uint32_t lr = (uint32_t)rc.r.size(), L = rc.m + 1;
+    uint64_t prod[2 * DecimalConversion::FractionMaxWords + 8];
+    FullIntCore::Mult(w, CSpan(rc.r), Span(prod, n + lr));
+    uint64_t f[DecimalConversion::FractionMaxWords + 8];
+    for (uint32_t i = 0; i < L; i++) f[i] = prod[lr - L + i];   // the top lr words' low L (the rest zero)
+    for (uint32_t i = L; i-- > 0;)                              // + 1: an upper bound
+        if (++f[i] != 0) break;
+    char digits[19 * (DecimalConversion::FractionMaxWords + 4)];
+    Fullint64ToDecFracWIN(f, L, rc.m, (uint8_t*)digits);
+    size_t total = (size_t)19 * rc.m, i = 0;
+    while (i < total && digits[i] == '0') i++;
+    std::memcpy(text + end - (total - i), digits + i, total - i);
+    return end - (total - i);
+}
+#endif
 
 const FullInt64& FullInt64Engine::DecimalPower(int k)
 {
@@ -133,6 +190,10 @@ size_t FullInt64Engine::WriteDecimal(const FullInt64& x, char* text, size_t end,
 // the kernel on a short number; zero writes nothing
 size_t FullInt64Engine::WriteDecimalLeaf(CSpan w, char* text, size_t end)
 {
+#if defined(_M_X64) || defined(__x86_64__)
+    if (w.size() >= (size_t)DecimalConversion::FractionFrom && w.size() <= (size_t)DecimalConversion::FractionMaxWords)
+        return WriteDecimalFraction(w, text, end);
+#endif
     if (w.size() == 1)
     {
         for (uint64_t v = w[0]; v != 0; v /= 10) text[--end] = (char)('0' + (int)(v % 10));

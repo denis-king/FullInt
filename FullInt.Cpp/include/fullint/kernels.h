@@ -29,6 +29,9 @@ uint64_t Fullint64SubCmpNWIN(const uint64_t* a, const uint64_t* b, uint64_t* r, 
 void Fullint64AddNHdrWIN(const uint64_t* a, const uint64_t* b, uint64_t* r, uint32_t* hdr);
 void Fullint64SubCmpNHdrWIN(const uint64_t* a, const uint64_t* b, uint64_t* r, uint32_t* hdr);
 int      Fullint64SubWIN(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR);
+// Knuth's fraction method (ToDecStringFrac.asm, x64): f (L words, top first, overwritten) times
+// 10^19 m times, each integer part 19 ASCII digits at out (19·m bytes, leading zeros included)
+void Fullint64ToDecFracWIN(uint64_t* f, int64_t L, int64_t m, uint8_t* out);
 uint64_t Fullint64MultWIN(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR);
 uint64_t Fullint64DivWin(const uint64_t* a, const uint64_t* b, uint64_t* q, uint64_t* r, int lenA, int lenB);
 uint64_t Fullint64Div2longWin(const uint64_t* a, uint64_t b, uint64_t* q, uint64_t* r, int lenA);
