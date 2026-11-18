@@ -257,35 +257,26 @@ void FullInt64Engine::addIntoAddN(FullInt64& result, const FullInt64& value1, co
     result.size_ = n + (uint32_t)c;
 }
 
-// equal lengths >= 3, opposite signs, room in result, result neither operand: the first differing
-// word from the top decides, SubN on the words from it
-void FullInt64Engine::addIntoSubN(FullInt64& result, const FullInt64& value1, const FullInt64& value2, bool negate2) noexcept
+// equal lengths >= 3, opposite signs, room in result, result neither operand: one kernel compares
+// from the top, subtracts the smaller from the larger at the words' own places and counts the
+// zero words above (only volatile registers on either side of the call)
+void FullInt64Engine::addIntoSubN(FullInt64& result, const FullInt64& value1, const FullInt64& value2, bool) noexcept
 {
-    // few values live at a time (the volatile registers suffice for the compare loop): the two
-    // signs packed in one word, result's buffer taken after the loop
     uint32_t n = value1.size_;
-    const uint64_t* a = value1.Data();
-    const uint64_t* b = value2.Data();
-    uint32_t signs = (uint32_t)value1.neg_ | (uint32_t)(value2.neg_ != negate2) << 1;
-    uint32_t i = 0;
-    while (i < n && a[i] == b[i]) i++;
-    uint64_t* p = result.Base();
-    if (i == n)
+    uint64_t r = Fullint64SubCmpNWIN(value1.Data(), value2.Data(), result.Base(), (int64_t)n);
+    uint32_t off = (uint32_t)r;
+    if (off == n)
     {
-        p[0] = 0;
+        result.Base()[0] = 0;
         result.off_ = 0;
         result.size_ = 1;
         result.neg_ = false;
         return;
     }
-    bool aBig = a[i] > b[i];
-    result.neg_ = ((aBig ? signs : signs >> 1) & 1) != 0;
-    uint32_t m = n - i;   // the words from the first differing one: the difference fits them
-    Fullint64SubNWIN((aBig ? a : b) + i, (aBig ? b : a) + i, p, (int64_t)m);
-    uint32_t z = 0;
-    while (p[z] == 0) z++;   // the top difference word is nonzero below somewhere (a != b)
-    result.off_ = z;
-    result.size_ = m - z;
+    // opposite signs: the larger magnitude's sign - value1's, flipped when the kernel swapped
+    result.neg_ = value1.neg_ != (r >> 63 != 0);
+    result.off_ = off;
+    result.size_ = n - off;
 }
 #endif
 

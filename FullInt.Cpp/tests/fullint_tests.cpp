@@ -5,6 +5,7 @@
 #include <fullint/NewtonDivision.h>
 #include <fullint/FullInt64.h>
 #include <fullint/Karatsuba.h>
+#include <fullint/kernels.h>
 #include <gmp.h>
 
 #include <cstdio>
@@ -739,11 +740,66 @@ void DecimalByHalves()
 
 }  // namespace
 
+// Fullint64SubCmpNWIN against a plain compare + subtract: random words and the hard shapes (equal,
+// differing only low, top words differing by one with long zero runs in the difference)
+static void SubCmpNKernel()
+{
+    for (int round = 0; round < 20000; round++)
+    {
+        size_t n = 1 + rng() % (round % 20 == 0 ? 300 : 40);
+        std::vector<uint64_t> a(n), b(n);
+        for (auto& x : a) x = rng();
+        int shape = (int)(rng() % 6);
+        if (shape == 0) b = a;                                       // equal
+        else if (shape == 1) { b = a; b[n - 1 - rng() % n] ^= 1ull << (rng() % 64); }   // one bit
+        else if (shape == 2)                                         // a = b + 1 at some word: borrow run
+        {
+            for (auto& x : b) x = rng();
+            size_t k = rng() % n;
+            for (size_t i = 0; i < k; i++) a[i] = b[i];
+            if (k < n)
+            {
+                b[k] = rng() >> 1; a[k] = b[k] + (rng() & 1);   // +1: the difference 1 at the bottom
+                for (size_t i = k + 1; i < n; i++) { a[i] = 0; b[i] = ~0ull; }
+                if (rng() & 1) std::swap(a, b);
+            }
+        }
+        else if (shape == 3) { for (auto& x : b) x = rng(); }
+        else if (shape == 4) { b = a; size_t k = rng() % n; for (size_t i = k; i < n; i++) b[i] = rng(); }
+        else { for (auto& x : a) x = 0; for (auto& x : b) x = 0; a[rng() % n] = rng(); b[rng() % n] = rng(); }
+
+        // reference
+        size_t i = 0;
+        while (i < n && a[i] == b[i]) i++;
+        bool swap = i < n && a[i] < b[i];
+        std::vector<uint64_t> e(n, 0);
+        const auto& x = swap ? b : a; const auto& y = swap ? a : b;
+        uint64_t borrow = 0;
+        for (size_t j = n; j-- > i;)
+        {
+            uint64_t d = x[j] - y[j] - borrow;
+            borrow = (x[j] < y[j]) || (x[j] == y[j] && borrow) ? 1 : 0;
+            e[j] = d;
+        }
+        size_t off = i;
+        while (off < n && e[off] == 0) off++;
+
+        std::vector<uint64_t> r(n + 1, 0x5A5A5A5A5A5A5A5Aull);
+        uint64_t got = Fullint64SubCmpNWIN(a.data(), b.data(), r.data(), (int64_t)n);
+        bool ok = (uint32_t)got == off && (got >> 32 & 0x7FFFFFFF) == 0 && (off == n || (got >> 63 != 0) == swap);
+        for (size_t j = off; ok && j < n; j++) ok = r[j] == e[j];
+        ok = ok && r[n] == 0x5A5A5A5A5A5A5A5Aull;
+        for (size_t j = 0; ok && j < i && i < n; j++) ok = r[j] == 0x5A5A5A5A5A5A5A5Aull;   // above i untouched
+        CHECK(ok, "SubCmpN kernel");
+    }
+}
+
 int main()
 {
     const int sizes[] = { 1, 2, 3, 4, 5, 8, 17, 63, 64, 65, 100, 255, 256, 300, 700, 1500 };
 
     EdgeCases();
+    SubCmpNKernel();
     MultiplyThresholds();
     FftProducts();
     DivideThresholds();
