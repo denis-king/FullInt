@@ -25,6 +25,9 @@ uint64_t Fullint64AddNWIN(const uint64_t* a, const uint64_t* b, uint64_t* r, int
 uint64_t Fullint64SubNWIN(const uint64_t* a, const uint64_t* b, uint64_t* r, int64_t n);
 // |a - b| from the first differing word, at its places in r; returns off (zero words above; n when a == b) | (b > a) << 63
 uint64_t Fullint64SubCmpNWIN(const uint64_t* a, const uint64_t* b, uint64_t* r, int64_t n);
+// the same with a number's header {uint32 off, size; uint8 neg} written by the kernel (in: size = n, neg = a's sign)
+void Fullint64AddNHdrWIN(const uint64_t* a, const uint64_t* b, uint64_t* r, uint32_t* hdr);
+void Fullint64SubCmpNHdrWIN(const uint64_t* a, const uint64_t* b, uint64_t* r, uint32_t* hdr);
 int      Fullint64SubWIN(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR);
 uint64_t Fullint64MultWIN(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR);
 uint64_t Fullint64DivWin(const uint64_t* a, const uint64_t* b, uint64_t* q, uint64_t* r, int lenA, int lenB);

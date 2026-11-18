@@ -5,6 +5,7 @@
 #include <fullint/Karatsuba.h>
 
 #include <algorithm>
+#include <cstddef>
 #include <charconv>
 #include <cstring>
 #include <memory>
@@ -249,15 +250,14 @@ void FullInt64Engine::addInto(FullInt64& result, const FullInt64& value1, const 
 
 #if defined(_M_X64) || defined(__x86_64__)
 // equal lengths >= 3, same signs, room in result (n + 1 <= cap_), result neither operand
+// (the kernel writes the header too: nothing kept across the call, a jump to it)
 void FullInt64Engine::addIntoAddN(FullInt64& result, const FullInt64& value1, const FullInt64& value2) noexcept
 {
-    uint32_t n = value1.size_;
-    uint64_t* p = result.Base();
-    result.neg_ = value1.neg_;   // before the call: less to keep across it
-    uint64_t c = Fullint64AddNWIN(value1.Data(), value2.Data(), p + 1, (int64_t)n);
-    p[0] = c;
-    result.off_ = c == 0 ? 1 : 0;
-    result.size_ = n + (uint32_t)c;
+    static_assert(offsetof(FullInt64, size_) == offsetof(FullInt64, off_) + 4 &&
+                  offsetof(FullInt64, neg_) == offsetof(FullInt64, off_) + 8, "the kernels' header");
+    result.neg_ = value1.neg_;
+    result.size_ = value1.size_;   // in: n
+    Fullint64AddNHdrWIN(value1.Data(), value2.Data(), result.Base(), &result.off_);
 }
 
 // equal lengths >= 3, opposite signs, room in result, result neither operand: one kernel compares
@@ -265,21 +265,10 @@ void FullInt64Engine::addIntoAddN(FullInt64& result, const FullInt64& value1, co
 // zero words above (only volatile registers on either side of the call)
 void FullInt64Engine::addIntoSubN(FullInt64& result, const FullInt64& value1, const FullInt64& value2, bool) noexcept
 {
-    uint32_t n = value1.size_;
-    uint64_t r = Fullint64SubCmpNWIN(value1.Data(), value2.Data(), result.Base(), (int64_t)n);
-    uint32_t off = (uint32_t)r;
-    if (off == n)
-    {
-        result.Base()[0] = 0;
-        result.off_ = 0;
-        result.size_ = 1;
-        result.neg_ = false;
-        return;
-    }
-    // opposite signs: the larger magnitude's sign - value1's, flipped when the kernel swapped
-    result.neg_ = value1.neg_ != (r >> 63 != 0);
-    result.off_ = off;
-    result.size_ = n - off;
+    // opposite signs: the larger magnitude's sign - value1's, the kernel flips it when it swaps
+    result.neg_ = value1.neg_;
+    result.size_ = value1.size_;   // in: n
+    Fullint64SubCmpNHdrWIN(value1.Data(), value2.Data(), result.Base(), &result.off_);
 }
 #endif
 

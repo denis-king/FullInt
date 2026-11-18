@@ -23,7 +23,7 @@ section .text
 ;  loop entered in its middle (12-1024 words 3-8% faster than one register pair in turn).
 ; =============================================================================
 
-%macro ADDSUBN 1
+%macro ADDSUBN 2                ; %1 adc / sbb, %2 the exit (CF the carry, r8 the top word written)
 	lea r10, [rcx + r9*8]       ; past A's lowest word
 	lea r11, [rdx + r9*8]
 	lea r8, [r8 + r9*8]
@@ -49,9 +49,7 @@ section .text
 	dec rcx                     ; (keeps CF)
 	jmp %%mid
 %%none:                         ; (here: jrcxz reaches it)
-	setc al
-	movzx eax, al
-	WRET
+	%2
 	align 32
 %%group:
 	%1 r9, [r11 - 8]
@@ -80,19 +78,58 @@ section .text
 	mov [r8 - 16], rsi
 	mov [r8 - 24], rax
 	mov [r8 - 32], rdx
+	lea r8, [r8 - 32]
 	RESTORE rsi
+	%2
+%endmacro
+
+%macro EXIT_CARRY 0             ; returns the carry
 	setc al
 	movzx eax, al
 	WRET
 %endmacro
+
+%macro EXIT_HDR_ADD 0           ; the header (in the home area) and the carry word above the sum
+	setc al
+	movzx eax, al
+	mov rcx, [rsp + 8]
+	mov [r8 - 8], rax           ; R[0] = the carry
+	add [rcx + 4], eax          ; size = n + carry
+	xor eax, 1
+	mov [rcx], eax              ; off = 1 - carry
+	WRET
+%endmacro
+
 	align 32
 ENTRY Fullint64AddNWIN
 	WIN64_ARGS
-	ADDSUBN adc
+	ADDSUBN adc, EXIT_CARRY
 	align 32
 ENTRY Fullint64SubNWIN
 	WIN64_ARGS
-	ADDSUBN sbb
+	ADDSUBN sbb, EXIT_CARRY
+
+; =============================================================================
+;  The engine's into-paths with the number's header written here too, so the C++ caller keeps
+;  nothing across the call and jumps to the kernel (it saved three registers and set a frame):
+;    struct Header { uint32 off; uint32 size; uint8 neg; }   (FullInt64's off_, size_, neg_)
+;
+;  void Fullint64AddNHdrWIN(const uint64* A, const uint64* B, uint64* R, Header* h)
+;       in: h->size = n (>= 1). R[1 .. n] = A + B, R[0] = the carry; h->off = 1 - carry,
+;       h->size = n + carry (h->neg untouched). R must not overlap A or B.
+;  void Fullint64SubCmpNHdrWIN(const uint64* A, const uint64* B, uint64* R, Header* h)
+;       in: h->size = n (>= 1), h->neg = A's sign. |A - B| as Fullint64SubCmpNWIN; h->off /
+;       h->size the difference's place, h->neg flipped when B > A; A == B: R[0] = 0, off 0,
+;       size 1, neg false.
+;  The header pointer waits in the home area (rcx / r9 are word registers in the loops).
+; =============================================================================
+	align 32
+ENTRY Fullint64AddNHdrWIN
+	WIN64_ARGS
+	mov [rsp + 8], r9           ; the header
+	mov r9d, [r9 + 4]           ; n
+	add r8, 8                   ; the sum from R[1]
+	ADDSUBN adc, EXIT_HDR_ADD
 
 ; =============================================================================
 ;  uint64 Fullint64SubCmpNWIN(const uint64* A, const uint64* B, uint64* R, int64 n)
@@ -113,20 +150,18 @@ ENTRY Fullint64SubNWIN
 ;  the larger / the smaller / R, r9 n (then the single words), rax the word in work, rdx the
 ;  result (off | swap << 63) after the setup.
 ; =============================================================================
-ENTRY Fullint64SubCmpNWIN
-	WIN64_ARGS
+%macro SUBCMPN 2               ; %1 the exit for A == B, %2 the exit with rdx = off | swap << 63
 	xor r10d, r10d              ; i
 	align 16
-.cmp:
+%%cmp:
 	mov rax, [rcx + r10*8]
 	cmp rax, [rdx + r10*8]
-	jne .diff
+	jne %%diff
 	inc r10
 	cmp r10, r9
-	jne .cmp
-	mov rax, r9                 ; A == B: off = n
-	WRET
-.diff:                          ; CF = A[i] < B[i]
+	jne %%cmp
+	%1                          ; A == B
+%%diff:                          ; CF = A[i] < B[i]
 	mov rax, rcx
 	cmovb rcx, rdx              ; the larger
 	cmovb rdx, rax              ; the smaller
@@ -142,8 +177,8 @@ ENTRY Fullint64SubCmpNWIN
 	shr rcx, 2                  ; groups of four
 	and r9, 3                   ; single words first
 	test r9, r9                 ; (CF = 0)
-	jz .groups
-.single:
+	jz %%groups
+%%single:
 	mov rax, [r10 - 8]
 	sbb rax, [r11 - 8]
 	mov [r8 - 8], rax
@@ -151,11 +186,11 @@ ENTRY Fullint64SubCmpNWIN
 	lea r11, [r11 - 8]
 	lea r8, [r8 - 8]
 	dec r9
-	jnz .single
-.groups:
-	jrcxz .done
-	align 16
-.group:
+	jnz %%single
+%%groups:
+	jrcxz %%done
+	align 32
+%%group:
 	mov rax, [r10 - 8]
 	sbb rax, [r11 - 8]
 	mov [r8 - 8], rax
@@ -172,15 +207,53 @@ ENTRY Fullint64SubCmpNWIN
 	lea r11, [r11 - 32]
 	lea r8, [r8 - 32]
 	dec rcx
-	jnz .group
-.done:                          ; r8 = &R[i], rax = R[i] (the last word written)
+	jnz %%group
+%%done:                          ; r8 = &R[i], rax = R[i] (the last word written)
 	test rax, rax
-	jnz .found
-.scan:                          ; R[i] is zero only when A[i], B[i] differ by one: the
+	jnz %%found
+%%scan:                          ; R[i] is zero only when A[i], B[i] differ by one: the
 	add r8, 8                   ; difference is nonzero, a nonzero word is below
 	inc rdx
 	cmp qword [r8], 0
-	je .scan
-.found:
+	je %%scan
+%%found:
+	%2                          ; rdx = off | swap << 63
+%endmacro
+
+%macro EXIT_EQ_OFF 0
+	mov rax, r9                 ; off = n
+	WRET
+%endmacro
+%macro EXIT_OFF 0
 	mov rax, rdx
 	WRET
+%endmacro
+%macro EXIT_EQ_HDR 0            ; zero: R[0] = 0, off 0, size 1, neg false
+	mov rcx, [rsp + 8]
+	mov qword [r8], 0
+	mov dword [rcx], 0
+	mov dword [rcx + 4], 1
+	mov byte [rcx + 8], 0
+	WRET
+%endmacro
+%macro EXIT_HDR_SUB 0
+	mov rcx, [rsp + 8]
+	mov [rcx], edx              ; off
+	mov eax, [rcx + 4]
+	sub eax, edx
+	mov [rcx + 4], eax          ; size = n - off
+	shr rdx, 63
+	xor [rcx + 8], dl           ; neg ^= swap
+	WRET
+%endmacro
+
+	align 32
+ENTRY Fullint64SubCmpNWIN
+	WIN64_ARGS
+	SUBCMPN EXIT_EQ_OFF, EXIT_OFF
+	align 32
+ENTRY Fullint64SubCmpNHdrWIN
+	WIN64_ARGS
+	mov [rsp + 8], r9           ; the header
+	mov r9d, [r9 + 4]           ; n
+	SUBCMPN EXIT_EQ_HDR, EXIT_HDR_SUB

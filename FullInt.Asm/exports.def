@@ -60,3 +60,5 @@ Fullint64NttR3DitWIN_avx2
 Fullint64AddNWIN
 Fullint64SubNWIN
 Fullint64SubCmpNWIN
+Fullint64AddNHdrWIN
+Fullint64SubCmpNHdrWIN
