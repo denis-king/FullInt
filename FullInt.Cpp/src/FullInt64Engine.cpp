@@ -226,50 +226,68 @@ void FullInt64Engine::addIntoShort(FullInt64& result, const FullInt64& value1, c
 void FullInt64Engine::addInto(FullInt64& result, const FullInt64& value1, const FullInt64& value2, bool negate2)
 {
 #if defined(_M_X64) || defined(__x86_64__)
+    // a dispatcher only: every case is a jump with the same arguments, so this saves no registers
+    // (with the add and the subtract inline it saved eight on every call, the add's four too)
     uint32_t n = value1.size_;
-    if (n <= 2 && value2.size_ <= 2)   // out of line, a leaf: its registers stay out of this entry (a jump: the same arguments)
+    if (n <= 2 && value2.size_ <= 2)
     {
         addIntoShort(result, value1, value2, negate2);
         return;
     }
     if (n >= 3 && n == value2.size_ && n < result.cap_ && &result != &value1 && &result != &value2)
     {
-        const uint64_t* a = value1.Data();
-        const uint64_t* b = value2.Data();
-        uint64_t* p = result.Base();   // n + 1 <= cap_: no Grow
-        bool neg1 = value1.neg_, neg2 = value2.neg_ != negate2;
-        if (neg1 == neg2)
-        {
-            uint64_t c = Fullint64AddNWIN(a, b, p + 1, (int64_t)n);
-            p[0] = c;
-            result.off_ = c == 0 ? 1 : 0;
-            result.size_ = n + (uint32_t)c;
-            result.neg_ = neg1;
-            return;
-        }
-        uint32_t i = 0;
-        while (i < n && a[i] == b[i]) i++;
-        if (i == n)
-        {
-            p[0] = 0;
-            result.off_ = 0;
-            result.size_ = 1;
-            result.neg_ = false;
-            return;
-        }
-        bool aBig = a[i] > b[i];
-        uint32_t m = n - i;   // the words from the first differing one: the difference fits them
-        Fullint64SubNWIN((aBig ? a : b) + i, (aBig ? b : a) + i, p, (int64_t)m);
-        uint32_t z = 0;
-        while (p[z] == 0) z++;   // the top difference word is nonzero below somewhere (a != b)
-        result.off_ = z;
-        result.size_ = m - z;
-        result.neg_ = aBig ? neg1 : neg2;
+        if (value1.neg_ == (value2.neg_ != negate2)) addIntoAddN(result, value1, value2);
+        else addIntoSubN(result, value1, value2, negate2);
         return;
     }
 #endif
     addIntoGeneral(result, value1, value2, negate2);
 }
+
+#if defined(_M_X64) || defined(__x86_64__)
+// equal lengths >= 3, same signs, room in result (n + 1 <= cap_), result neither operand
+void FullInt64Engine::addIntoAddN(FullInt64& result, const FullInt64& value1, const FullInt64& value2) noexcept
+{
+    uint32_t n = value1.size_;
+    uint64_t* p = result.Base();
+    result.neg_ = value1.neg_;   // before the call: less to keep across it
+    uint64_t c = Fullint64AddNWIN(value1.Data(), value2.Data(), p + 1, (int64_t)n);
+    p[0] = c;
+    result.off_ = c == 0 ? 1 : 0;
+    result.size_ = n + (uint32_t)c;
+}
+
+// equal lengths >= 3, opposite signs, room in result, result neither operand: the first differing
+// word from the top decides, SubN on the words from it
+void FullInt64Engine::addIntoSubN(FullInt64& result, const FullInt64& value1, const FullInt64& value2, bool negate2) noexcept
+{
+    // few values live at a time (the volatile registers suffice for the compare loop): the two
+    // signs packed in one word, result's buffer taken after the loop
+    uint32_t n = value1.size_;
+    const uint64_t* a = value1.Data();
+    const uint64_t* b = value2.Data();
+    uint32_t signs = (uint32_t)value1.neg_ | (uint32_t)(value2.neg_ != negate2) << 1;
+    uint32_t i = 0;
+    while (i < n && a[i] == b[i]) i++;
+    uint64_t* p = result.Base();
+    if (i == n)
+    {
+        p[0] = 0;
+        result.off_ = 0;
+        result.size_ = 1;
+        result.neg_ = false;
+        return;
+    }
+    bool aBig = a[i] > b[i];
+    result.neg_ = ((aBig ? signs : signs >> 1) & 1) != 0;
+    uint32_t m = n - i;   // the words from the first differing one: the difference fits them
+    Fullint64SubNWIN((aBig ? a : b) + i, (aBig ? b : a) + i, p, (int64_t)m);
+    uint32_t z = 0;
+    while (p[z] == 0) z++;   // the top difference word is nonzero below somewhere (a != b)
+    result.off_ = z;
+    result.size_ = m - z;
+}
+#endif
 
 void FullInt64Engine::addIntoGeneral(FullInt64& result, const FullInt64& value1, const FullInt64& value2, bool negate2)
 {

@@ -362,6 +362,8 @@ private:
     // both operands at most two words: here, into result's buffer (FullInt64Engine.cpp)
 #if defined(_M_X64) || defined(__x86_64__)
     FULLINT_NOINLINE static void addIntoShort(FullInt64& result, const FullInt64& value1, const FullInt64& value2, bool negate2) noexcept;
+    FULLINT_NOINLINE static void addIntoAddN(FullInt64& result, const FullInt64& value1, const FullInt64& value2) noexcept;
+    FULLINT_NOINLINE static void addIntoSubN(FullInt64& result, const FullInt64& value1, const FullInt64& value2, bool negate2) noexcept;
 #endif
     // addInto's cases other than its short common one (see FullInt64Engine.cpp)
     FULLINT_NOINLINE static void addIntoGeneral(FullInt64& result, const FullInt64& value1, const FullInt64& value2, bool negate2);
