@@ -58,17 +58,25 @@ long long Now()
     return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 
-double Batch(const std::function<void()>& f, long long iters)
+// one operation per direct call: the operation's code compiled whole into Call, as in user code
+// (inlined, no std::function's indirect call), and the call keeps the compiler from moving the
+// work out of the loop - the same for both libraries
+template <class F>
+__declspec(noinline) void Call(const F& f) { f(); }
+
+template <class F>
+double Batch(const F& f, long long iters)
 {
     long long t0 = Now();
-    for (long long i = 0; i < iters; i++) f();
+    for (long long i = 0; i < iters; i++) Call(f);
     return double(Now() - t0) / iters;
 }
 
 double batchTarget = 3e6;   // ns per batch; --quick: 1e6
 int quickRounds = 0;        // --quick: 3
 
-long long Calibrate(const std::function<void()>& f)
+template <class F>
+long long Calibrate(const F& f)
 {
     const double target = batchTarget;
     for (long long iters = 1;; iters *= 4)
@@ -78,7 +86,8 @@ long long Calibrate(const std::function<void()>& f)
     }
 }
 
-std::pair<double, double> Run(const std::function<void()>& ours, const std::function<void()>& gmp)
+template <class F, class G>
+std::pair<double, double> Run(const F& ours, const G& gmp)
 {
     long long io = Calibrate(ours), ig = Calibrate(gmp);
     double perCall = Batch(ours, 1);
@@ -174,7 +183,7 @@ int main(int argc, char** argv)
         FullInt64 r;
         std::string s;
 
-        auto row = [&](const char* op, const std::function<void()>& ours, const std::function<void()>& gmp) {
+        auto row = [&](const char* op, const auto& ours, const auto& gmp) {
             if (!ops.empty() && ops.find(std::string(",") + op + ",") == std::string::npos) return;
             auto [o, g] = Run(ours, gmp);
             if (csv) std::fprintf(csv, "%s,%d,%.2f,%.2f\n", op, n, o, g);
