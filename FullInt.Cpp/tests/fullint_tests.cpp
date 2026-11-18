@@ -814,12 +814,40 @@ static void SubCmpNKernel()
     }
 }
 
+// the compare kernels at equal lengths (the engine decides different lengths and top words
+// itself, so random pairs rarely reach them): equal numbers, and one word differing either way at
+// every position - the AVX2 kernel's short (1-3), overlapping (4-8) and loop paths
+static void CompareKernels()
+{
+    for (int n = 1; n <= 40; n++)
+        for (int pos = -1; pos < n; pos++)
+            for (int dir = 0; dir < 2; dir++)
+            {
+                std::vector<uint64_t> a(n), b;
+                for (auto& x : a) x = rng();
+                b = a;
+                int expect = 0;
+                if (pos >= 0)
+                {
+                    uint64_t lo = rng() >> 1, hi = lo + 1 + (rng() & 0xFF);
+                    a[pos] = dir ? hi : lo; b[pos] = dir ? lo : hi;
+                    expect = dir ? 1 : -1;
+                }
+                CHECK(Fullint64CompareWIN(a.data(), b.data(), n, n) == expect, "Compare kernel");
+#if defined(_M_X64) || defined(__x86_64__)
+                if (fullint::Cpu::Has(fullint::Cpu::Avx2))
+                    CHECK(Fullint64CompareWIN_avx2(a.data(), b.data(), n, n) == expect, "CompareAvx2 kernel");
+#endif
+            }
+}
+
 int main()
 {
     const int sizes[] = { 1, 2, 3, 4, 5, 8, 17, 63, 64, 65, 100, 255, 256, 300, 700, 1500 };
 
     EdgeCases();
     SubCmpNKernel();
+    CompareKernels();
     MultiplyThresholds();
     FftProducts();
     DivideThresholds();
