@@ -837,6 +837,9 @@ static void CompareKernels()
 #if defined(_M_X64) || defined(__x86_64__)
                 if (fullint::Cpu::Has(fullint::Cpu::Avx2))
                     CHECK(Fullint64CompareWIN_avx2(a.data(), b.data(), n, n) == expect, "CompareAvx2 kernel");
+#else
+                if (fullint::Cpu::Has(fullint::Cpu::Sse2))
+                    CHECK(Fullint64CompareWIN_sse2(a.data(), b.data(), n, n) == expect, "CompareSse2 kernel");
 #endif
             }
 }

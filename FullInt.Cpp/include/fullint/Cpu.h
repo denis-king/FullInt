@@ -49,8 +49,8 @@ struct Cpu
     {
         bool adx = Has(Bmi2 | Adx), avx2 = Has(Avx2);
         if (!Has(Recip)) return "all: baseline";
-        if (Has(Sse2)) return Has(Bmi2 | Adx) ? "Mult: adx; And/Or/Xor: sse2; Div, ToDecString: recip; other: baseline"   // x86
-                                              : "And/Or/Xor: sse2; Div, ToDecString: recip; other: baseline";
+        if (Has(Sse2)) return Has(Bmi2 | Adx) ? "Mult: adx; And/Or/Xor, Compare: sse2; Div, ToDecString: recip; other: baseline"   // x86
+                                              : "And/Or/Xor, Compare: sse2; Div, ToDecString: recip; other: baseline";
         return adx && avx2 ? "Mult: adx; And/Or/Xor, Shl/Shr, Compare: avx2; Div, ToDecString: recip; other: baseline"
              : adx         ? "Mult: adx; Div, ToDecString: recip; other: baseline"
              : avx2        ? "And/Or/Xor, Shl/Shr, Compare: avx2; Div, ToDecString: recip; other: baseline"

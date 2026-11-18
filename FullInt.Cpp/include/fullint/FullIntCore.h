@@ -345,6 +345,9 @@ struct FullIntCore
 #if defined(_M_X64) || defined(__x86_64__)
         if (Cpu::Has(Cpu::Avx2))   // CompareAvx2.asm (different lengths: the baseline inside)
             return Fullint64CompareWIN_avx2(a.data(), b.data(), (int)a.size(), (int)b.size());
+#else
+        if (Cpu::Has(Cpu::Sse2))   // x86 CompareSse2.asm (different lengths: the baseline inside)
+            return Fullint64CompareWIN_sse2(a.data(), b.data(), (int)a.size(), (int)b.size());
 #endif
         return Fullint64CompareWIN(a.data(), b.data(), (int)a.size(), (int)b.size());
     }

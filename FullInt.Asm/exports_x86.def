@@ -20,6 +20,7 @@ Fullint64CpuFeatures
 Fullint64AndWIN_sse2
 Fullint64OrWIN_sse2
 Fullint64XorWIN_sse2
+Fullint64CompareWIN_sse2
 Fullint64MultWIN_adx
 Fullint64DivExactWIN
 Fullint64SqrWIN_adx

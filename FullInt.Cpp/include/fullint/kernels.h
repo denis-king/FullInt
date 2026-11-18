@@ -97,6 +97,7 @@ void Fullint64MultWIN_adx(const uint64_t* a, const uint64_t* b, uint64_t* r, int
 int  Fullint64AndWIN_sse2(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR, int signs);   // x86 SSE2
 int  Fullint64OrWIN_sse2(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR, int signs);
 int  Fullint64XorWIN_sse2(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR, int signs);
+int  Fullint64CompareWIN_sse2(const uint64_t* a, const uint64_t* b, int lenA, int lenB);   // x86 SSE2 (CompareSse2.asm)
 #endif
 
 // division by a precomputed reciprocal (DivRecip.asm, x64 and x86): any CPU. Div: lenA > lenB >= 2,
