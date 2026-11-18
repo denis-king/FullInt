@@ -466,8 +466,20 @@ inline FullInt64 operator>>(const FullInt64& a, int shift) { return FullInt64Eng
 
 // GMP style: result = a op b into result's buffer (no new number per call in a loop);
 // result may be a or b
+#if defined(_M_X64) || defined(__x86_64__)
 inline void Add(FullInt64& result, const FullInt64& a, const FullInt64& b) { FullInt64Engine::addInto(result, a, b, false); }
 inline void Subtract(FullInt64& result, const FullInt64& a, const FullInt64& b) { FullInt64Engine::addInto(result, a, b, true); }
+#else
+// x86: result neither operand with room - one kernel on the objects (IntoObj.asm), the rest as on x64
+inline void Add(FullInt64& result, const FullInt64& a, const FullInt64& b)
+{
+    if (Fullint64AddObjWIN(&result, &a, &b, 0) != 0) FullInt64Engine::addInto(result, a, b, false);
+}
+inline void Subtract(FullInt64& result, const FullInt64& a, const FullInt64& b)
+{
+    if (Fullint64AddObjWIN(&result, &a, &b, 1) != 0) FullInt64Engine::addInto(result, a, b, true);
+}
+#endif
 inline void Multiply(FullInt64& result, const FullInt64& a, const FullInt64& b) { FullInt64Engine::multInto(result, a, b); }
 inline void ShiftLeft(FullInt64& result, const FullInt64& a, int shift) { FullInt64Engine::shiftLeftInto(result, a, shift); }
 inline void ShiftRight(FullInt64& result, const FullInt64& a, int shift) { FullInt64Engine::shiftRightInto(result, a, shift); }

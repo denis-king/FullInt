@@ -643,6 +643,52 @@ void AndLeadingZeros()
             }
 }
 
+// Add / Subtract into a reused result against GMP on the hard shapes: equal magnitudes, equal top
+// words, a = b + 1 at some word (a long borrow, the top words cancelling), carry runs (all ones),
+// zero operands; every sign pair, lengths 1-12 and some longer
+void AddSubIntoShapes()
+{
+    FullInt64 shared;
+    for (int round = 0; round < 20000; round++)
+    {
+        int la = 1 + (int)(rng() % (round % 10 == 0 ? 40 : 12)), lb = 1 + (int)(rng() % (round % 10 == 0 ? 40 : 12));
+        int shape = (int)(rng() % 6);
+        if (shape <= 2) lb = la;
+        std::vector<uint64_t> wa(la), wb(lb);
+        for (auto& x : wa) x = rng();
+        for (auto& x : wb) x = rng();
+        if (shape == 0) wb = wa;                                                   // equal magnitudes
+        else if (shape == 1) { int k = (int)(rng() % la); for (int i = 0; i < k; i++) wb[i] = wa[i]; }   // equal top words
+        else if (shape == 2)                                                       // a = b + 1 at word k
+        {
+            int k = (int)(rng() % la);
+            for (int i = 0; i < k; i++) wa[i] = wb[i];
+            if (wb[k] == ~0ull) wb[k]--;
+            wa[k] = wb[k] + 1;
+            for (int i = k + 1; i < la; i++) { wa[i] = 0; wb[i] = ~0ull; }
+        }
+        else if (shape == 3) { for (auto& x : wa) x = ~0ull; }                     // carry runs
+        else if (shape == 4) { for (auto& x : wa) x = 0; la = 1; wa.resize(1); }   // zero
+        if (wa[0] == 0 && la > 1) wa[0] = 1;
+        if (wb[0] == 0 && lb > 1) wb[0] = 1;
+        FullInt64 a(rng() & 1, fullint::CSpan(wa)), b(rng() & 1, fullint::CSpan(wb));
+        Mpz ma, mb, e;
+        ToMpz(a, ma.v);
+        ToMpz(b, mb.v);
+        std::string ctx = std::to_string(la) + "/" + std::to_string(lb) + " shape " + std::to_string(shape);
+        mpz_add(e.v, ma.v, mb.v);
+        fullint::Add(shared, a, b);
+        CHECK(Same(shared, e.v), "Add into " + ctx);
+        mpz_sub(e.v, ma.v, mb.v);
+        fullint::Subtract(shared, a, b);
+        CHECK(Same(shared, e.v), "Subtract into " + ctx);
+        FullInt64 fresh;   // a fresh (inline) result
+        fullint::Subtract(fresh, b, a);
+        mpz_sub(e.v, mb.v, ma.v);
+        CHECK(Same(fresh, e.v), "Subtract into fresh " + ctx);
+    }
+}
+
 // the in-place API (Add(result, a, b) etc.) and the compound operators against the plain
 // operators: result fresh, reused across sizes, and the same object as a or b
 void InPlaceApi()
@@ -890,6 +936,7 @@ int main()
     NttCheck();
     InPlaceApi();
     AndLeadingZeros();
+    AddSubIntoShapes();
     DecimalByHalves();
 
     for (int sa : sizes)

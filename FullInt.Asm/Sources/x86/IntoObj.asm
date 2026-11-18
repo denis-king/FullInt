@@ -15,6 +15,13 @@
 ;      r = a & b when both are non-negative, r is neither and has room for the shorter's
 ;      length: eight words a pass with SSE2 (movdqu / pand; the C++ x86 build needs SSE2 anyway),
 ;      then four, two, one.
+;
+;    int Fullint64AddObjWIN(FullInt64* r, const FullInt64* a, const FullInt64* b, int negate2)
+;      r = a + b (negate2 = 0) or a - b (1) when r is neither and has room (the longer's length,
+;      + 1 for a sum); any lengths. Same signs: the words added from the low end with the carry in
+;      CF, then the carry through the longer's other words, the carry word on top. Opposite signs:
+;      the larger magnitude (the longer; equal lengths: compared from the top, the equal top words
+;      left out) minus the smaller with the borrow in CF, the leading zero words counted.
 ; =============================================================================
 
 %include "abi86.inc"
@@ -150,6 +157,194 @@ ENTRY Fullint64AndObjWIN
 	ret
 .no:
 	mov eax, 1
+	pop edi
+	pop esi
+	pop ebx
+	pop ebp
+	ret
+
+; %1 = the object, %2 = its word count (a register), %3 = the base register to use (out: the
+; address just past its lowest word)
+%macro OBJ_END 3
+	OBJ_BASE %1, %3
+	add %2, [%1 + OBJ_OFF]
+	lea %1, [%3 + %2*8]
+%endmacro
+
+; the words' loop from the low end: %1 adc / sbb; esi / edi / ebx past the lowest words of the
+; longer / the shorter / r, edx the shorter's words (>= 1), ecx the longer's other words; CF in / out
+%macro ADDSUB_WORDS 1
+%%word:
+	mov eax, [esi - 8]
+	%1 eax, [edi - 8]
+	mov [ebx - 8], eax
+	mov eax, [esi - 4]
+	%1 eax, [edi - 4]
+	mov [ebx - 4], eax
+	lea esi, [esi - 8]
+	lea edi, [edi - 8]
+	lea ebx, [ebx - 8]
+	dec edx
+	jnz %%word
+	jecxz %%done
+%%carry:                          ; the longer's other words with the carry / borrow
+	mov eax, [esi - 8]
+	%1 eax, 0
+	mov [ebx - 8], eax
+	mov eax, [esi - 4]
+	%1 eax, 0
+	mov [ebx - 4], eax
+	lea esi, [esi - 8]
+	lea ebx, [ebx - 8]
+	dec ecx
+	jnz %%carry
+%%done:
+%endmacro
+
+ENTRY Fullint64AddObjWIN
+	push ebp
+	push ebx
+	push esi
+	push edi
+	mov ebp, [esp + 20]           ; r
+	mov esi, [esp + 24]           ; a
+	mov edi, [esp + 28]           ; b
+	cmp ebp, esi
+	je .no
+	cmp ebp, edi
+	je .no
+	movzx eax, byte [esi + OBJ_NEG]
+	movzx edx, byte [edi + OBJ_NEG]
+	xor edx, [esp + 32]           ; b's sign in the operation
+	mov [esp + 24], eax           ; the argument slots as scratch: a's sign
+	mov [esp + 28], edx           ; b's
+	mov ecx, [esi + OBJ_SIZE]     ; la
+	mov edx, [edi + OBJ_SIZE]     ; lb
+	cmp eax, [esp + 28]
+	jne .sub
+
+	; a + b, same signs: the sum has the longer's length + 1 (the carry word on top)
+	cmp ecx, edx
+	jae .addOrdered
+	xchg esi, edi
+	xchg ecx, edx
+.addOrdered:
+	lea eax, [ecx + 1]
+	cmp eax, [ebp + OBJ_CAP]
+	ja .no
+	mov [ebp + OBJ_SIZE], eax     ; lx + 1 (the offset taken off below)
+	mov eax, [esp + 24]
+	mov [ebp + OBJ_NEG], al       ; the common sign
+	push ecx                      ; lx
+	OBJ_END esi, ecx, ebx
+	pop ecx
+	mov eax, edx
+	OBJ_END edi, eax, ebx
+	OBJ_BASE ebp, ebx
+	lea ebx, [ebx + ecx*8 + 8]    ; past r's lowest word (lx + 1 words)
+	sub ecx, edx                  ; the longer's other words
+	clc
+	ADDSUB_WORDS adc
+	setc al                       ; the carry word
+	movzx eax, al
+	mov [ebx - 8], eax
+	mov dword [ebx - 4], 0
+	xor eax, 1                    ; the offset: 1 without a carry
+	mov [ebp + OBJ_OFF], eax
+	sub [ebp + OBJ_SIZE], eax
+	xor eax, eax
+	jmp .ret
+
+.sub:                             ; opposite signs: the larger magnitude minus the smaller
+	cmp ecx, edx
+	ja .subLonger
+	jb .subSwap
+	; equal lengths: compared from the top
+	cmp ecx, [ebp + OBJ_CAP]
+	ja .no
+	mov [ebp + OBJ_SIZE], ecx     ; n
+	mov eax, [esi + OBJ_OFF]
+	OBJ_BASE esi, ebx
+	lea esi, [ebx + eax*8]        ; a's words from the top
+	mov eax, [edi + OBJ_OFF]
+	OBJ_BASE edi, ebx
+	lea edi, [ebx + eax*8]
+	xor edx, edx                  ; i
+.cmp:
+	mov eax, [esi + edx*8 + 4]
+	cmp eax, [edi + edx*8 + 4]
+	jne .differ
+	mov eax, [esi + edx*8]
+	cmp eax, [edi + edx*8]
+	jne .differ
+	inc edx
+	cmp edx, ecx
+	jne .cmp
+	OBJ_BASE ebp, ebx             ; a == b: zero
+	xor eax, eax
+	mov [ebx], eax
+	mov [ebx + 4], eax
+	mov [ebp + OBJ_OFF], eax
+	mov dword [ebp + OBJ_SIZE], 1
+	mov [ebp + OBJ_NEG], al
+	jmp .ret
+.differ:                          ; CF = a[i] < b[i]
+	jae .subFrom
+	xchg esi, edi
+	mov eax, [esp + 28]
+	mov [esp + 24], eax           ; b's sign
+.subFrom:                         ; the words below i: n - i of each, no other words
+	mov [esp + 28], edx           ; the zero scan starts at i
+	lea esi, [esi + ecx*8]        ; past the lowest words
+	lea edi, [edi + ecx*8]
+	OBJ_BASE ebp, ebx
+	lea ebx, [ebx + ecx*8]
+	sub ecx, edx
+	mov edx, ecx                  ; n - i words
+	xor ecx, ecx
+	jmp .subWords
+
+.subSwap:
+	xchg esi, edi
+	xchg ecx, edx
+	mov eax, [esp + 28]
+	mov [esp + 24], eax           ; b's sign
+.subLonger:                       ; the longer is the larger: lx words
+	cmp ecx, [ebp + OBJ_CAP]
+	ja .no
+	mov [ebp + OBJ_SIZE], ecx     ; n
+	mov dword [esp + 28], 0       ; the zero scan from the top
+	push ecx
+	OBJ_END esi, ecx, ebx
+	pop ecx
+	mov eax, edx
+	OBJ_END edi, eax, ebx
+	OBJ_BASE ebp, ebx
+	lea ebx, [ebx + ecx*8]
+	sub ecx, edx
+
+.subWords:
+	clc
+	ADDSUB_WORDS sbb
+	; ebx = r's word at the scan's start; the larger minus the smaller: a nonzero word below
+	mov ecx, [esp + 28]
+.zeros:
+	mov eax, [ebx]
+	or eax, [ebx + 4]
+	jnz .found
+	add ebx, 8
+	inc ecx
+	jmp .zeros
+.found:
+	mov [ebp + OBJ_OFF], ecx
+	sub [ebp + OBJ_SIZE], ecx
+	mov eax, [esp + 24]
+	mov [ebp + OBJ_NEG], al       ; the larger's sign
+	xor eax, eax
+	jmp .ret
+.no:
+	mov eax, 1
+.ret:
 	pop edi
 	pop esi
 	pop ebx
