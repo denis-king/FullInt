@@ -36,8 +36,9 @@ class FullInt64Engine;
 struct DecimalConversion
 {
     // words; below: the ToDecString kernel. 32 with PreparedFrom 96 (x64, Zen 3): 0.95 of 48 / 48
-    // over 64..4096 words (0.89-0.92 at 192-1024)
-    static inline int ToStringThreshold = 32;
+    // over 64..4096 words (0.89-0.92 at 192-1024); 24 (2026-11-18): 0.94-0.98 of 32 at 32-1024
+    // words (16: no gain - the 32 / 16 division ate the smaller kernel's)
+    static inline int ToStringThreshold = 24;
     static inline int ParseThreshold = 48 * 19;    // digits; below: the FromDecString kernel
     // ToString divides by the powers P_k from this many words of P_k through a reciprocal
     // computed once per power (NewtonDivision::Prepared), not the general division (below:
