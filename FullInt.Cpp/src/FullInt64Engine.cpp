@@ -241,6 +241,9 @@ void FullInt64Engine::addInto(FullInt64& result, const FullInt64& value1, const 
         return;
     }
 #endif
+    // x86: straight to addIntoGeneral. MSVC makes no tail calls there: any dispatcher in front (out of
+    // line, inline at the caller, or inside addIntoGeneral calling AddN / SubCmpN paths) cost 1-2
+    // words 10-20% or 16-128 words 3-7% - tried 2026-11-18
     addIntoGeneral(result, value1, value2, negate2);
 }
 
@@ -376,6 +379,23 @@ void FullInt64Engine::addIntoGeneral(FullInt64& result, const FullInt64& value1,
         }
         else if (lx == ly)
         {
+#if defined(_M_X64) || defined(__x86_64__)
+            // one kernel: the compare from the top, the larger minus the smaller at the words' own
+            // places, the zero words above counted (AddSubN.asm); x86 keeps the compare here (with
+            // the kernel there: 16-128 words 3-7% slower, its frame and the 32-bit compare loop)
+            uint64_t* p = result.Prepare((uint32_t)lx);
+            uint64_t r = Fullint64SubCmpNWIN(x, y, p, (int64_t)lx);
+            uint32_t off = (uint32_t)r;
+            if (off == lx)
+            {
+                result.SetWords(false, 0, 0);
+                return;
+            }
+            result.off_ = off;
+            result.size_ = (uint32_t)lx - off;
+            result.neg_ = r >> 63 != 0 ? neg2 : neg1;
+            return;
+#else
             size_t i = 0;
             while (i < lx && x[i] == y[i]) i++;
             if (i == lx)
@@ -392,6 +412,7 @@ void FullInt64Engine::addIntoGeneral(FullInt64& result, const FullInt64& value1,
             y += i;
             lx -= i;
             ly -= i;
+#endif
         }
         uint64_t* p = result.Prepare((uint32_t)lx);
         uint64_t borrow = Fullint64SubNWIN(x + (lx - ly), y, p + (lx - ly), (int64_t)ly);
