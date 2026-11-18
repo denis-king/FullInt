@@ -25,6 +25,18 @@ namespace FullInt.Core
         /// Div are faster.
         /// </summary>
         public static int PreparedFrom { get; set; } = 128;
+
+        /// <summary>
+        /// From this many words a leaf (and a short ToString) by Knuth's fraction method when the
+        /// core has its passes (x64): one product by a reciprocal cached per length, then one-word
+        /// multiplications instead of a division by 10^19 per word per 19 digits. 12: at 8 words the
+        /// two native calls still cost more than they save (1.18 of the kernel; C++: 0.94);
+        /// 16 words 0.93, 32 words 0.75. Up to <see cref="FractionMaxWords"/>.
+        /// </summary>
+        public static int FractionFrom { get; set; } = 12;
+
+        /// <summary>The longest leaf the fraction method takes (its reciprocals are cached per length).</summary>
+        public const int FractionMaxWords = 128;
     }
 
     /// <summary>
@@ -165,9 +177,65 @@ namespace FullInt.Core
             return WriteDecimal(q, text, end - low, width < 0 ? -1 : width - low);
         }
 
+        // The fraction method's reciprocal for n-word numbers: m chunks of 19 digits (10^(19m) > β^n),
+        // r = ceil(β^(L+n) / 10^(19m)), L = m + 1 words below the point. Made once per n.
+        private sealed class FractionReciprocal
+        {
+            public int M;
+            public ulong[] R = null!;   // the most significant first
+        }
+        private static readonly FractionReciprocal?[] _fractionReciprocals = new FractionReciprocal?[DecimalConversion.FractionMaxWords + 1];
+
+        private FractionReciprocal FractionReciprocalFor(int n)
+        {
+            var e = Volatile.Read(ref _fractionReciprocals[n]);
+            if (e != null) return e;
+            int m = (int)(n * 64 * 0.30102999566398120 / 19) + 1;
+            var d = new FullInt64(1UL);
+            var p19 = new FullInt64(false, new ulong[] { FullInt64.maxDecCapasity });
+            for (int i = 0; i < m; i++) d = mult(d, p19);
+            var num = shiftLeft(new FullInt64(1UL), 64 * (m + 1 + n));
+            var q = div(sub(add(num, d), new FullInt64(1UL)), d);
+            e = new FractionReciprocal { M = m, R = FullHelper.DeleteZeros(q.value).ToArray() };
+            Volatile.Write(ref _fractionReciprocals[n], e);   // a race makes the same value twice
+            return e;
+        }
+
+        // Knuth's fraction method (TAOCP vol. 2, 4.4): f = x / 10^(19m) as an L-word fraction, an upper
+        // bound (x times the reciprocal, the low n words dropped, + 1: below 2 units of its last word);
+        // the core multiplies f by 10^19 m times, each integer part 19 digits (ToDecStringFrac.asm: the
+        // bound keeps every integer part exact). x: n words, top nonzero. -1: the core has no passes.
+#if NET5_0_OR_GREATER
+        [System.Runtime.CompilerServices.SkipLocalsInit]   // every buffer below is written in full before it is read
+#endif
+        private int WriteDecimalFraction(Span<ulong> w, Span<char> text, int end)
+        {
+            int n = w.Length;
+            var rc = FractionReciprocalFor(n);
+            int lr = rc.R.Length, L = rc.M + 1;
+            Span<ulong> prod = stackalloc ulong[n + lr];
+            _core.Mult(w, rc.R, prod);
+            Span<ulong> f = stackalloc ulong[L];
+            prod.Slice(lr - L, L).CopyTo(f);   // the top lr words' low L (the rest zero)
+            for (int i = L - 1; i >= 0; i--)   // + 1: an upper bound
+                if (++f[i] != 0) break;
+            int total = 19 * rc.M;
+            Span<byte> digits = stackalloc byte[total];
+            if (!_core.ToDecFraction(f, rc.M, digits)) return -1;
+            int s = 0;
+            while (s < total && digits[s] == (byte)'0') s++;
+            for (int i = total - 1; i >= s; i--) text[--end] = (char)digits[i];
+            return end;
+        }
+
         // the core kernel on a short number; zero writes nothing
         private int WriteDecimalLeaf(Span<ulong> w, char[] text, int end)
         {
+            if (w.Length >= DecimalConversion.FractionFrom && w.Length <= DecimalConversion.FractionMaxWords)
+            {
+                int fs = WriteDecimalFraction(w, text, end);
+                if (fs >= 0) return fs;
+            }
             if (w.Length == 1)
             {
                 for (ulong v = w[0]; v != 0; v /= 10) text[--end] = (char)('0' + (int)(v % 10));

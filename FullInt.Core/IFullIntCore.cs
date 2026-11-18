@@ -33,6 +33,10 @@ namespace FullInt.Core
 		
 		int Compare(Span<ulong> a, Span<ulong> b);
         void ToDecString(Span<ulong> value, Span<byte> resultBuf, out int resultStartIndex);
+        // Knuth's fraction method's passes (the x64 core: ToDecStringFrac.asm): f (L words, the most
+        // significant first, overwritten) times 10^19, m times, each integer part 19 ASCII digits at
+        // digits (19·m bytes, leading zeros included). false: not in this core (nothing written).
+        bool ToDecFraction(Span<ulong> f, int m, Span<byte> digits);
         void FromDecString(Span<byte> value, Span<ulong> resultBuf, out int resultStartIndex);
 
         // Bitwise operations with two's complement semantics on sign-magnitude operands.

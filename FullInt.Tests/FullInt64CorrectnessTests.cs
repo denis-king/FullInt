@@ -124,6 +124,41 @@ namespace FullInt.Tests
 
         // ---------------------------------------------------------------- byte[] (C5)
 
+        /// <summary>
+        /// ToString on every length 1-140 words (the short path, the fraction-method leaves, the
+        /// division by halves above) and the digit-boundary shapes: 10^k - 1 (runs of nines), 10^k,
+        /// all ones, powers of two, random; both signs - against BigInteger.
+        /// </summary>
+        [TestMethod]
+        public void ToString_EveryLength_BoundaryShapes()
+        {
+            var rnd = new Random(19);
+            for (int n = 1; n <= 140; n++)
+                for (int shape = 0; shape < 6; shape++)
+                {
+                    BigInteger e;
+                    if (shape <= 1)
+                    {
+                        int k = Math.Max(1, (int)(n * 19.266) - (n > 1 ? rnd.Next(19) : 0));
+                        e = BigInteger.Pow(10, k);
+                        if (shape == 0) e -= 1;
+                    }
+                    else
+                    {
+                        var bytes = new byte[n * 8];
+                        if (shape == 2) for (int i = 0; i < bytes.Length; i++) bytes[i] = 0xFF;
+                        else if (shape == 3) bytes[bytes.Length - 1 - rnd.Next(8)] = (byte)(1 << rnd.Next(8));
+                        else rnd.NextBytes(bytes);
+                        if (bytes[bytes.Length - 1] == 0 && shape != 3) bytes[bytes.Length - 1] = 1;
+                        e = BigCompat.FromUnsignedLittleEndian(bytes);
+                    }
+                    bool neg = rnd.Next(2) == 0;
+                    var mag = e.ToByteArray();   // little-endian two's complement of a positive: the magnitude (+ a sign byte)
+                    var f = new FullInt64(mag, neg);
+                    Assert.AreEqual((neg ? -e : e).ToString(), f.ToString(10), $"n {n} shape {shape}");
+                }
+        }
+
         [TestMethod]
         public void FromBytes_LittleEndianMagnitude_SignSeparate()
         {

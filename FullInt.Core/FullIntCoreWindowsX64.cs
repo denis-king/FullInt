@@ -353,6 +353,33 @@ namespace FullInt.Core
 			return LogicAvx2 ? Slow.Fullint64CompareWIN_avx2(a, b, lenA, lenB) : Slow.Fullint64CompareWIN(a, b, lenA, lenB);
 		}
         
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
+        private static extern unsafe void Fullint64ToDecFracWIN(ulong* f, long L, long m, byte* digits);
+
+#if NET5_0_OR_GREATER
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "Fullint64ToDecFracWIN"), SuppressGCTransition]
+        private static extern unsafe void Fullint64ToDecFracWIN_Fast(ulong* f, long L, long m, byte* digits);
+#endif
+
+        // the fraction method's passes (ToDecStringFrac.asm, plain x86-64: any CPU); up to 32 chunks
+        // (about 1 us) without the GC transition
+        public override unsafe bool ToDecFraction(Span<ulong> f, int m, Span<byte> digits)
+        {
+            fixed (ulong* pf = f)
+            fixed (byte* pd = digits)
+            {
+#if NET5_0_OR_GREATER
+                if (m <= 32)
+                {
+                    Fullint64ToDecFracWIN_Fast(pf, f.Length, m, pd);
+                    return true;
+                }
+#endif
+                Fullint64ToDecFracWIN(pf, f.Length, m, pd);
+            }
+            return true;
+        }
+
         protected override void ToDecString(IntPtr value, IntPtr valueBuf, IntPtr resultBuf, int lenValue, ref int lenResult)
         {
             if (DivRecip) Fullint64ToDecStringWIN_recip(value, valueBuf, resultBuf, lenValue, ref lenResult);   // 10^19 by its reciprocal

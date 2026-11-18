@@ -1052,6 +1052,19 @@ namespace FullInt.Core
 
             return result;
         }
+        // a short number by the fraction method (FullInt64Engine.Decimal.cs); null: the core has no passes
+#if NET5_0_OR_GREATER
+        [System.Runtime.CompilerServices.SkipLocalsInit]   // the text is written before it is read
+#endif
+        private string? ToDecStringFraction(Span<ulong> w, bool negative)
+        {
+            Span<char> text = stackalloc char[19 * (w.Length + 4) + 2];
+            int start = WriteDecimalFraction(w, text, text.Length);
+            if (start < 0) return null;
+            if (negative) text[--start] = '-';
+            return text.Slice(start).ToString();
+        }
+
 		private string ToDecString(FullInt64 value)
         {
             if (value.value.Length == 1)   // one word: the BCL formats a ulong without the buffers and the native call
@@ -1062,6 +1075,14 @@ namespace FullInt.Core
             if (value.value.Length > DecimalConversion.ToStringThreshold)   // long: by halves (FullInt64Engine.Decimal.cs)
             {
                 return ToDecStringRecursive(value);
+            }
+            {
+                var w = FullHelper.DeleteZeros(value.value);
+                if (w.Length >= DecimalConversion.FractionFrom && w.Length <= DecimalConversion.FractionMaxWords)
+                {
+                    var s = ToDecStringFraction(w, value.Sing);
+                    if (s != null) return s;
+                }
             }
 
             int resultBytes = (int)(value.value.Length * 1.014 + 1) * 19 + 1;

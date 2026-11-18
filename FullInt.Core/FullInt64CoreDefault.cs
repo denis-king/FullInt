@@ -348,6 +348,8 @@ namespace FullInt.Core
         private const ulong Base10 = 10000000000000000000UL;   // 10^19: the top bit set (normalized)
         private static readonly ulong Base10Reciprocal = FullHelper.Reciprocal2By1(Base10);
 
+        public bool ToDecFraction(Span<ulong> f, int m, Span<byte> digits) => false;
+
         public void ToDecString(Span<ulong> value, Span<byte> resultBuf, out int resultStartIndex)
         {
             // repeated division by 10^19 (as ToDecString.asm), each word by the reciprocal of 10^19; digits

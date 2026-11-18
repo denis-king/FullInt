@@ -282,6 +282,8 @@ namespace FullInt.Core
         
         protected abstract void ToDecString(IntPtr value, IntPtr valueBuf, IntPtr resultBuf, int lenValue, ref int lenResult);
 
+        public virtual bool ToDecFraction(Span<ulong> f, int m, Span<byte> digits) => false;
+
         public void FromDecString(Span<byte> value, Span<ulong> resultBuf, out int resultStartIndex)
         {
             resultStartIndex = resultBuf.Length; 

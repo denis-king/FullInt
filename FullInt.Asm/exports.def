@@ -36,6 +36,7 @@ Fullint64CompareWIN_avx2
 Fullint64Div2longWIN_recip
 Fullint64DivWIN_recip
 Fullint64ToDecStringWIN_recip
+Fullint64ToDecFracWIN
 Fullint64FftAddSubWIN_adx
 Fullint64FftShlModWIN_bmi2
 Fullint64DivWIN_recipadx
