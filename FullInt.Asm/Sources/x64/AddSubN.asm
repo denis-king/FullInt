@@ -107,6 +107,7 @@ ENTRY Fullint64AddNWIN
 	align 32
 ENTRY Fullint64SubNWIN
 	WIN64_ARGS
+fi_subn_body:                   ; (SubCmpNHdr's fast path continues here)
 	ADDSUBN sbb, EXIT_CARRY
 
 ; =============================================================================
@@ -251,9 +252,59 @@ ENTRY Fullint64AddNHdrWIN
 ENTRY Fullint64SubCmpNWIN
 	WIN64_ARGS
 	SUBCMPN EXIT_EQ_OFF, EXIT_OFF
+; SubCmpNHdr: the length is known before the subtraction unless the first differing words differ
+; by one (only then can the difference's top word vanish). So the common case writes the header
+; first and goes on in SubN's loop - nothing kept across it, all in registers; the rare case takes
+; the full path (fi_subcmpn_hdr_full: the compare again, the zero words counted after).
+;  Registers: rcx / rdx A / B (then the larger / the smaller), r8 R, r9 n, r10 i, r11 the
+;  header, rax the top words' difference.
 	align 32
 ENTRY Fullint64SubCmpNHdrWIN
 	WIN64_ARGS
-	mov [rsp + 8], r9           ; the header
+	mov r11, r9                 ; the header
+	mov r9d, [r9 + 4]           ; n
+	xor r10d, r10d              ; i
+.cmp:
+	mov rax, [rcx + r10*8]
+	sub rax, [rdx + r10*8]      ; the difference itself (CF: A[i] < B[i])
+	jnz .diff
+	inc r10
+	cmp r10, r9
+	jne .cmp
+	mov qword [r8], 0           ; A == B: zero
+	mov dword [r11], 0
+	mov dword [r11 + 4], 1
+	mov byte [r11 + 8], 0
+	WRET
+.diff:
+	jc .swapped
+	cmp rax, 1                  ; A[i] - B[i] = 1: the top word may vanish
+	je .full
+	jmp .ordered
+.swapped:
+	cmp rax, -1                 ; B[i] - A[i] = 1
+	je .full
+	xor byte [r11 + 8], 1       ; the sign: B's
+	mov rax, rcx
+	mov rcx, rdx                ; the larger
+	mov rdx, rax                ; the smaller
+.ordered:
+	mov [r11], r10d             ; off = i
+	mov eax, r9d
+	sub eax, r10d
+	mov [r11 + 4], eax          ; size = n - i
+	lea rcx, [rcx + r10*8]
+	lea rdx, [rdx + r10*8]
+	lea r8, [r8 + r10*8]        ; the difference at its own places
+	mov r9, rax                 ; n - i words
+	jmp fi_subn_body
+.full:
+	mov r9, r11
+fi_subcmpn_hdr_full:
+	mov [rsp + 8], r9           ; the header (the rare case only)
 	mov r9d, [r9 + 4]           ; n
 	SUBCMPN EXIT_EQ_HDR, EXIT_HDR_SUB
+
+; the file's code a multiple of 64 bytes: the kernels linked after it keep their alignment whatever
+; changes here (a 200-byte change once cost addto 8 words 6.3 -> 9.5 ns through the layout alone)
+	align 64, int3

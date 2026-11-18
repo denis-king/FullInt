@@ -791,6 +791,26 @@ static void SubCmpNKernel()
         ok = ok && r[n] == 0x5A5A5A5A5A5A5A5Aull;
         for (size_t j = 0; ok && j < i && i < n; j++) ok = r[j] == 0x5A5A5A5A5A5A5A5Aull;   // above i untouched
         CHECK(ok, "SubCmpN kernel");
+
+#if defined(_M_X64) || defined(__x86_64__)
+        // the header form (x64): off / size / neg written by the kernel, both its paths
+        for (int neg0 = 0; neg0 < 2; neg0++)
+        {
+            uint32_t hdr[3] = { 0xDEADu, (uint32_t)n, (uint32_t)neg0 };
+            std::vector<uint64_t> r2(n + 1, 0x5A5A5A5A5A5A5A5Aull);
+            Fullint64SubCmpNHdrWIN(a.data(), b.data(), r2.data(), hdr);
+            bool ok2;
+            if (off == n)
+                ok2 = r2[0] == 0 && hdr[0] == 0 && hdr[1] == 1 && (hdr[2] & 0xFF) == 0;
+            else
+            {
+                ok2 = hdr[0] == off && hdr[1] == n - off && (hdr[2] & 0xFF) == (uint32_t)(neg0 ^ (swap ? 1 : 0));
+                for (size_t j = off; ok2 && j < n; j++) ok2 = r2[j] == e[j];
+            }
+            ok2 = ok2 && r2[n] == 0x5A5A5A5A5A5A5A5Aull;
+            CHECK(ok2, "SubCmpNHdr kernel");
+        }
+#endif
     }
 }
 
