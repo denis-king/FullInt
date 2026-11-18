@@ -311,6 +311,11 @@ public:
 
     static int Compare(const FullInt64& value1, const FullInt64& value2) noexcept
     {
+#if defined(_M_X64) || defined(__x86_64__)
+        // one kernel on the objects (CompareN.asm): the signs, lengths, words - nothing around the
+        // call here (the inline checks before a kernel call cost 4 words 1.3x GMP)
+        return Fullint64CmpObjWIN(&value1, &value2);
+#endif
         bool neg1 = value1.neg_, neg2 = value2.neg_;
         if (neg1 != neg2) return neg1 ? -1 : 1;
         int abs = CompareAbsQuick(value1.Words(), value2.Words());
@@ -409,6 +414,7 @@ public:
         if constexpr (ShortLoopCompareWords == 2)   // x64: the second word only (a loop here grew the inline body)
         {
             if (n == 2) return value1[1] == value2[1] ? 0 : value1[1] > value2[1] ? 1 : -1;
+            return Fullint64CmpNWIN(value1.data(), value2.data(), (int64_t)n);   // equal lengths: CompareN.asm
         }
         else if (n <= ShortLoopCompareWords)   // the first differing word decides: a plain loop (C# the same)
         {

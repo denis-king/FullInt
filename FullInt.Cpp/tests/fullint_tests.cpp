@@ -951,7 +951,7 @@ static void SubCmpNKernel()
 // every position - the AVX2 kernel's short (1-3), overlapping (4-8) and loop paths
 static void CompareKernels()
 {
-    for (int n = 1; n <= 40; n++)
+    for (int n = 1; n <= 70; n++)
         for (int pos = -1; pos < n; pos++)
             for (int dir = 0; dir < 2; dir++)
             {
@@ -969,6 +969,16 @@ static void CompareKernels()
 #if defined(_M_X64) || defined(__x86_64__)
                 if (fullint::Cpu::Has(fullint::Cpu::Avx2))
                     CHECK(Fullint64CompareWIN_avx2(a.data(), b.data(), n, n) == expect, "CompareAvx2 kernel");
+                CHECK(Fullint64CmpNWIN(a.data(), b.data(), n) == expect, "CmpN kernel");
+                // the whole compare on the objects (x64: CmpObj): both signs, and mixed signs
+                for (int sg = 0; sg < 4; sg++)
+                {
+                    bool na = sg & 1, nb = (sg >> 1) & 1;
+                    if (a[0] == 0 || b[0] == 0) continue;   // normalized numbers only
+                    FullInt64 fa(na, fullint::CSpan(a)), fb(nb, fullint::CSpan(b));
+                    int want = na != nb ? (na ? -1 : 1) : (na ? -expect : expect);
+                    CHECK(fullint::FullInt64Engine::Compare(fa, fb) == want, "Compare objects");
+                }
 #else
                 if (fullint::Cpu::Has(fullint::Cpu::Sse2))
                     CHECK(Fullint64CompareWIN_sse2(a.data(), b.data(), n, n) == expect, "CompareSse2 kernel");

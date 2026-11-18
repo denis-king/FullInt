@@ -36,6 +36,10 @@ uint64_t Fullint64MultWIN(const uint64_t* a, const uint64_t* b, uint64_t* r, int
 uint64_t Fullint64DivWin(const uint64_t* a, const uint64_t* b, uint64_t* q, uint64_t* r, int lenA, int lenB);
 uint64_t Fullint64Div2longWin(const uint64_t* a, uint64_t b, uint64_t* q, uint64_t* r, int lenA);
 int      Fullint64CompareWIN(const uint64_t* a, const uint64_t* b, int lenA, int lenB);
+// x64 CompareN.asm: equal lengths n >= 1, SSE2 only (no CPU check, no lengths)
+int      Fullint64CmpNWIN(const uint64_t* a, const uint64_t* b, int64_t n);
+// x64 CompareN.asm: the whole signed compare on the FullInt64 objects
+int      Fullint64CmpObjWIN(const void* a, const void* b);
 void     Fullint64ToDecStringWin(const uint64_t* value, uint64_t* valueBuf, uint8_t* resultBuf, int lenValue, int* lenResult);
 void     Fullint64FromDecStringWin(const uint8_t* value, uint64_t* valueBuf, uint64_t* resultBuf, int lenValue, int* lenResult);
 
