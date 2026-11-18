@@ -867,6 +867,12 @@ FullInt64 FullInt64Engine::bitwise(int op, const FullInt64& value1, const FullIn
 // result = value1 op value2 in result's buffer; result aliased with an operand: a new number
 void FullInt64Engine::bitwiseInto(FullInt64& result, int op, const FullInt64& value1, const FullInt64& value2)
 {
+#if !(defined(_M_X64) || defined(__x86_64__))
+    // x86 IntoObj.asm works on the objects: its offsets
+    static_assert(sizeof(void*) == 4 && offsetof(FullInt64, cap_) == 64 && offsetof(FullInt64, off_) == 68 &&
+                  offsetof(FullInt64, size_) == 72 && offsetof(FullInt64, neg_) == 76 && FullInt64::InlineWords == 8,
+                  "IntoObj.asm's FullInt64 layout");
+#endif
     if (&result == &value1 || &result == &value2)
     {
         bitwiseIntoAliased(result, op, value1, value2);

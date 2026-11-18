@@ -471,7 +471,15 @@ inline void Subtract(FullInt64& result, const FullInt64& a, const FullInt64& b) 
 inline void Multiply(FullInt64& result, const FullInt64& a, const FullInt64& b) { FullInt64Engine::multInto(result, a, b); }
 inline void ShiftLeft(FullInt64& result, const FullInt64& a, int shift) { FullInt64Engine::shiftLeftInto(result, a, shift); }
 inline void ShiftRight(FullInt64& result, const FullInt64& a, int shift) { FullInt64Engine::shiftRightInto(result, a, shift); }
+#if defined(_M_X64) || defined(__x86_64__)
 inline void And(FullInt64& result, const FullInt64& a, const FullInt64& b) { FullInt64Engine::bitwiseInto(result, 0, a, b); }
+#else
+// x86: the short non-negative case on the objects in one kernel (IntoObj.asm), the rest as on x64
+inline void And(FullInt64& result, const FullInt64& a, const FullInt64& b)
+{
+    if (Fullint64AndObjWIN(&result, &a, &b) != 0) FullInt64Engine::bitwiseInto(result, 0, a, b);
+}
+#endif
 inline void Or(FullInt64& result, const FullInt64& a, const FullInt64& b) { FullInt64Engine::bitwiseInto(result, 1, a, b); }
 inline void Xor(FullInt64& result, const FullInt64& a, const FullInt64& b) { FullInt64Engine::bitwiseInto(result, 2, a, b); }
 // truncating, as / and %

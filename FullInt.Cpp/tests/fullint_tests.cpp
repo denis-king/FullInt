@@ -615,6 +615,34 @@ void NewtonDivide()
     }
 }
 
+// And into a reused result when the top words cancel (a's and b's disjoint there): the result's
+// leading zero words, down to zero itself - against GMP
+void AndLeadingZeros()
+{
+    FullInt64 shared;
+    for (int la = 1; la <= 20; la++)
+        for (int lb = 1; lb <= 20; lb++)
+            for (int k = 0; k <= std::min(la, lb); k++)
+            {
+                std::vector<uint64_t> wa(la), wb(lb);
+                for (auto& x : wa) x = rng() | 1ull << 63;
+                for (auto& x : wb) x = rng() | 1ull << 63;
+                for (int i = 0; i < k; i++)   // b's low-aligned word i of the shorter's top k: a's complement
+                {
+                    int ia = la - std::min(la, lb) + i, ib = lb - std::min(la, lb) + i;
+                    wb[ib] = ~wa[ia];
+                    if (ib == 0) wb[0] |= 1;   // keep b's top word nonzero
+                }
+                FullInt64 a(false, fullint::CSpan(wa)), b(false, fullint::CSpan(wb));
+                Mpz ma, mb, e;
+                ToMpz(a, ma.v);
+                ToMpz(b, mb.v);
+                mpz_and(e.v, ma.v, mb.v);
+                fullint::And(shared, a, b);
+                CHECK(Same(shared, e.v), "And leading zeros " + std::to_string(la) + "/" + std::to_string(lb) + "/" + std::to_string(k));
+            }
+}
+
 // the in-place API (Add(result, a, b) etc.) and the compound operators against the plain
 // operators: result fresh, reused across sizes, and the same object as a or b
 void InPlaceApi()
@@ -861,6 +889,7 @@ int main()
     MultiplyLowCheck();
     NttCheck();
     InPlaceApi();
+    AndLeadingZeros();
     DecimalByHalves();
 
     for (int sa : sizes)

@@ -98,6 +98,9 @@ int  Fullint64AndWIN_sse2(const uint64_t* a, const uint64_t* b, uint64_t* r, int
 int  Fullint64OrWIN_sse2(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR, int signs);
 int  Fullint64XorWIN_sse2(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR, int signs);
 int  Fullint64CompareWIN_sse2(const uint64_t* a, const uint64_t* b, int lenA, int lenB);   // x86 SSE2 (CompareSse2.asm)
+// x86 IntoObj.asm: the C++ into-operations' common short cases on the FullInt64 objects (0: done,
+// 1: not this case, nothing written)
+int  Fullint64AndObjWIN(void* r, const void* a, const void* b);
 #endif
 
 // division by a precomputed reciprocal (DivRecip.asm, x64 and x86): any CPU. Div: lenA > lenB >= 2,
