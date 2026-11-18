@@ -18,7 +18,7 @@ section .text
 ;  The carry stays in CF: the loop control is lea / dec / jrcxz (dec keeps CF).
 ;
 ;  Registers: r10 / r11 / r8 past the low words of A / B / R, rcx the groups of four, r9 the
-;  single words (n mod 4, first, rax the word). The group loop as GMP's mpn_add_n: four word
+;  single words (n mod 4, first, rax the word). The group loop software-pipelined: four word
 ;  registers (r9 / rsi / rax / rdx), the next group's A words loaded at the end of a pass, the
 ;  loop entered in its middle (12-1024 words 3-8% faster than one register pair in turn).
 ; =============================================================================
@@ -44,7 +44,7 @@ section .text
 %%groups:
 	jrcxz %%none
 	SAVE rsi
-	mov r9, [r10 - 8]           ; the first group's A words loaded ahead (as GMP's mpn_add_n)
+	mov r9, [r10 - 8]           ; the first group's A words loaded ahead
 	mov rsi, [r10 - 16]
 	dec rcx                     ; (keeps CF)
 	jmp %%mid
