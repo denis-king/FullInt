@@ -6,7 +6,8 @@ section .text
 ;  Equal-length add / sub without the general kernels' length resolution (Add.asm / Sub.asm:
 ;  a Win64 wrapper, three runs, the magnitude compare in Sub): for the many short calls of the
 ;  engine and the Karatsuba / Toom levels, where that entry cost more than the words (a + b on
-;  1-8 words: 4.9-9.1 ns against GMP's mpn_add_n 1.4-2.8). Only volatile registers, no frame.
+;  1-8 words: 4.9-9.1 ns against GMP's mpn_add_n 1.4-2.8). Under four words only volatile
+;  registers; from four, rsi too (one push: the fourth word register of the group loop).
 ;
 ;  Windows x64, limbs big-endian (index 0 = most significant):
 ;    uint64 Fullint64AddNWIN(const uint64* A, const uint64* B, uint64* R, int64 n)
@@ -17,7 +18,9 @@ section .text
 ;  The carry stays in CF: the loop control is lea / dec / jrcxz (dec keeps CF).
 ;
 ;  Registers: r10 / r11 / r8 past the low words of A / B / R, rcx the groups of four, r9 the
-;  single words (n mod 4, first), rax / rdx the words in work.
+;  single words (n mod 4, first, rax the word). The group loop as GMP's mpn_add_n: four word
+;  registers (r9 / rsi / rax / rdx), the next group's A words loaded at the end of a pass, the
+;  loop entered in its middle (12-1024 words 3-8% faster than one register pair in turn).
 ; =============================================================================
 
 %macro ADDSUBN 1
@@ -27,8 +30,8 @@ section .text
 	mov rcx, r9
 	shr rcx, 2                  ; groups of four
 	and r9, 3                   ; single words first
-	test r9, r9                 ; (CF = 0)
-	jz %%groups
+	jz %%groups                 ; (and: CF = 0)
+	align 16
 %%single:
 	mov rax, [r10 - 8]
 	%1 rax, [r11 - 8]
@@ -39,33 +42,54 @@ section .text
 	dec r9
 	jnz %%single
 %%groups:
-	jrcxz %%done
+	jrcxz %%none
+	SAVE rsi
+	mov r9, [r10 - 8]           ; the first group's A words loaded ahead (as GMP's mpn_add_n)
+	mov rsi, [r10 - 16]
+	dec rcx                     ; (keeps CF)
+	jmp %%mid
+%%none:                         ; (here: jrcxz reaches it)
+	setc al
+	movzx eax, al
+	WRET
+	align 32
 %%group:
-	mov rax, [r10 - 8]
-	%1 rax, [r11 - 8]
-	mov [r8 - 8], rax
-	mov rdx, [r10 - 16]
-	%1 rdx, [r11 - 16]
-	mov [r8 - 16], rdx
-	mov rax, [r10 - 24]
+	%1 r9, [r11 - 8]
+	%1 rsi, [r11 - 16]
 	%1 rax, [r11 - 24]
-	mov [r8 - 24], rax
-	mov rdx, [r10 - 32]
 	%1 rdx, [r11 - 32]
-	mov [r8 - 32], rdx
+	mov [r8 - 8], r9
 	lea r10, [r10 - 32]
-	lea r11, [r11 - 32]
-	lea r8, [r8 - 32]
+	mov [r8 - 16], rsi
+	mov [r8 - 24], rax
 	dec rcx
+	mov [r8 - 32], rdx
+	lea r11, [r11 - 32]
+	mov r9, [r10 - 8]           ; the next group's A words
+	mov rsi, [r10 - 16]
+	lea r8, [r8 - 32]
+%%mid:
+	mov rax, [r10 - 24]
+	mov rdx, [r10 - 32]
 	jnz %%group
-%%done:
+	%1 r9, [r11 - 8]            ; the last group
+	%1 rsi, [r11 - 16]
+	%1 rax, [r11 - 24]
+	%1 rdx, [r11 - 32]
+	mov [r8 - 8], r9
+	mov [r8 - 16], rsi
+	mov [r8 - 24], rax
+	mov [r8 - 32], rdx
+	RESTORE rsi
 	setc al
 	movzx eax, al
 	WRET
 %endmacro
+	align 32
 ENTRY Fullint64AddNWIN
 	WIN64_ARGS
 	ADDSUBN adc
+	align 32
 ENTRY Fullint64SubNWIN
 	WIN64_ARGS
 	ADDSUBN sbb
