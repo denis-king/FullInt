@@ -54,6 +54,7 @@ ENTRY Fullint64SubNWIN
 ;  (x64/AddSubN.asm): the compare from the top, the larger minus the smaller on the words from
 ;  the first differing one (written to R at their own places), the zero words above counted.
 ;  Returns edx:eax = off | swap << 63 (off = n when A == B).
+;  R may be A or B (the same places), no other overlap.
 ;
 ;  Registers: esi / edi the larger / the smaller, ebx R, ecx the words, ebp off | swap << 31,
 ;  edx:eax the word in work.

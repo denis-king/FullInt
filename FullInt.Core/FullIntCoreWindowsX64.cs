@@ -223,12 +223,12 @@ namespace FullInt.Core
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern unsafe ulong Fullint64AddNWIN(ulong* a, ulong* b, ulong* r, long n);
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
-        private static extern unsafe ulong Fullint64SubNWIN(ulong* a, ulong* b, ulong* r, long n);
+        private static extern unsafe ulong Fullint64SubCmpNWIN(ulong* a, ulong* b, ulong* r, long n);
 #if NET5_0_OR_GREATER
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "Fullint64AddNWIN"), SuppressGCTransition]
         private static extern unsafe ulong Fullint64AddNWIN_Fast(ulong* a, ulong* b, ulong* r, long n);
-        [DllImport(dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "Fullint64SubNWIN"), SuppressGCTransition]
-        private static extern unsafe ulong Fullint64SubNWIN_Fast(ulong* a, ulong* b, ulong* r, long n);
+        [DllImport(dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "Fullint64SubCmpNWIN"), SuppressGCTransition]
+        private static extern unsafe ulong Fullint64SubCmpNWIN_Fast(ulong* a, ulong* b, ulong* r, long n);
 #endif
 
         private static unsafe ulong AddN(ulong* a, ulong* b, ulong* r, int n)
@@ -239,12 +239,12 @@ namespace FullInt.Core
             return Slow.Fullint64AddNWIN(a, b, r, n);
         }
 
-        private static unsafe ulong SubN(ulong* a, ulong* b, ulong* r, int n)
+        private static unsafe ulong SubCmpN(ulong* a, ulong* b, ulong* r, int n)
         {
 #if NET5_0_OR_GREATER
-            if (n <= FastWords) return Fullint64SubNWIN_Fast(a, b, r, n);
+            if (n <= FastWords) return Fullint64SubCmpNWIN_Fast(a, b, r, n);
 #endif
-            return Slow.Fullint64SubNWIN(a, b, r, n);
+            return Slow.Fullint64SubCmpNWIN(a, b, r, n);
         }
 
         // equal lengths (AddSubN.asm): no length resolution in the kernel; r at least as long as
@@ -272,25 +272,19 @@ namespace FullInt.Core
             return 0;
         }
 
-        // equal lengths: compared here, then the larger minus the smaller (AddSubN.asm)
+        // equal lengths: one kernel compares from the top, subtracts the smaller from the larger and
+        // counts the zero words above (SubCmpN, AddSubN.asm)
         protected override unsafe int Sub(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR)
         {
             int n = lenA;
             if (n != lenB || lenR < n || n == 0) return SubGeneral(a, b, r, lenA, lenB, lenR);
-            ulong* pa = (ulong*)a, pb = (ulong*)b, pr = (ulong*)r;
-            int i = 0;
-            while (i < n && pa[i] == pb[i]) i++;
+            ulong* pr = (ulong*)r;
             int top = lenR - n;
-            for (int k = 0; k < top; k++) pr[k] = 0;
-            if (i == n)
-            {
-                for (int k = top; k < lenR; k++) pr[k] = 0;
-                return 0;
-            }
-            bool aBig = pa[i] > pb[i];   // the words above i are equal: the n - i words from i on
-            SubN((aBig ? pa : pb) + i, (aBig ? pb : pa) + i, pr + top + i, n - i);
-            for (int k = top; k < top + i; k++) pr[k] = 0;
-            return aBig ? 1 : -1;
+            ulong rv = SubCmpN((ulong*)a, (ulong*)b, pr + top, n);
+            int off = (int)(uint)rv;   // the zero words above the difference (n: a == b, nothing written)
+            for (int k = 0; k < top + off; k++) pr[k] = 0;
+            if (off == n) return 0;
+            return (long)rv < 0 ? -1 : 1;
         }
 		
         private int SubGeneral(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR)
@@ -449,7 +443,7 @@ namespace FullInt.Core
             [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
             public static unsafe ulong Fullint64AddNWIN(ulong* a, ulong* b, ulong* r, long n) => FullIntCoreWindowsX64.Fullint64AddNWIN(a, b, r, n);
             [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-            public static unsafe ulong Fullint64SubNWIN(ulong* a, ulong* b, ulong* r, long n) => FullIntCoreWindowsX64.Fullint64SubNWIN(a, b, r, n);
+            public static unsafe ulong Fullint64SubCmpNWIN(ulong* a, ulong* b, ulong* r, long n) => FullIntCoreWindowsX64.Fullint64SubCmpNWIN(a, b, r, n);
             [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
             public static ulong Fullint64MultWIN(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR) => FullIntCoreWindowsX64.Fullint64MultWIN(a, b, r, lenA, lenB, lenR);
             [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]

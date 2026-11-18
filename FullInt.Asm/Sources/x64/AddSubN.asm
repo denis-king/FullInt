@@ -82,7 +82,8 @@ ENTRY Fullint64SubNWIN
 ;    bits 0-31   off: the zero words above the difference (i + its leading zero words);
 ;                n when A == B (nothing written)
 ;    bit 63      1 when B > A (the operands swapped: R = B - A)
-;  so the difference is R[off .. n-1], n - off words. R must not overlap A or B.
+;  so the difference is R[off .. n-1], n - off words. R may be A or B (each word is read before
+;  its place is written: the compare writes nothing), but no other overlap.
 ;
 ;  Registers: rcx / rdx A / B (then the groups of four), r10 / r11 / r8 past the low words of
 ;  the larger / the smaller / R, r9 n (then the single words), rax the word in work, rdx the

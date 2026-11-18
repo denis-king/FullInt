@@ -185,7 +185,7 @@ namespace FullInt.Core
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern unsafe ulong Fullint64AddNWIN(ulong* a, ulong* b, ulong* r, long n);
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
-        private static extern unsafe ulong Fullint64SubNWIN(ulong* a, ulong* b, ulong* r, long n);
+        private static extern unsafe ulong Fullint64SubCmpNWIN(ulong* a, ulong* b, ulong* r, long n);
 
         // equal lengths through x86/AddSubN.asm, as the x64 core does (see there)
         protected override unsafe ulong Add(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR)
@@ -213,20 +213,13 @@ namespace FullInt.Core
         {
             int n = lenA;
             if (n != lenB || lenR < n || n == 0) return Fullint64SubWIN(a, b, r, lenA, lenB, lenR);
-            ulong* pa = (ulong*)a, pb = (ulong*)b, pr = (ulong*)r;
-            int i = 0;
-            while (i < n && pa[i] == pb[i]) i++;
+            ulong* pr = (ulong*)r;
             int top = lenR - n;
-            for (int k = 0; k < top; k++) pr[k] = 0;
-            if (i == n)
-            {
-                for (int k = top; k < lenR; k++) pr[k] = 0;
-                return 0;
-            }
-            bool aBig = pa[i] > pb[i];
-            Fullint64SubNWIN((aBig ? pa : pb) + i, (aBig ? pb : pa) + i, pr + top + i, n - i);
-            for (int k = top; k < top + i; k++) pr[k] = 0;
-            return aBig ? 1 : -1;
+            ulong rv = Fullint64SubCmpNWIN((ulong*)a, (ulong*)b, pr + top, n);
+            int off = (int)(uint)rv;   // the zero words above the difference (n: a == b, nothing written)
+            for (int k = 0; k < top + off; k++) pr[k] = 0;
+            if (off == n) return 0;
+            return (long)rv < 0 ? -1 : 1;
         }
 
         protected override void Mult(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR)
