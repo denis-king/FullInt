@@ -559,6 +559,16 @@ void FullInt64Engine::shiftLeftInto(FullInt64& result, const FullInt64& value, i
     shiftLeftIntoGeneral(result, value, shift);
 }
 
+#if defined(_M_X64) && defined(_WIN32)
+}  // namespace fullint
+// IntoObj.asm's ShlObj jumps here when the case is not its own (the arguments as they came)
+extern "C" void Fullint64ShlIntoGeneral(void* r, const void* a, int shift)
+{
+    fullint::FullInt64Engine::shiftLeftInto(*static_cast<fullint::FullInt64*>(r), *static_cast<const fullint::FullInt64*>(a), shift);
+}
+namespace fullint {
+#endif
+
 void FullInt64Engine::shiftLeftIntoGeneral(FullInt64& result, const FullInt64& value, int shift)
 {
     CSpan a = value.Words();

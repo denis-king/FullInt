@@ -499,15 +499,17 @@ inline void Subtract(FullInt64& result, const FullInt64& a, const FullInt64& b)
 }
 #endif
 inline void Multiply(FullInt64& result, const FullInt64& a, const FullInt64& b) { FullInt64Engine::multInto(result, a, b); }
-#if defined(_M_X64) || defined(__x86_64__)
-inline void ShiftLeft(FullInt64& result, const FullInt64& a, int shift) { FullInt64Engine::shiftLeftInto(result, a, shift); }
-#else
-// x86: by bits (not whole words) into a result with room - one kernel on the objects (IntoObj.asm)
+// by bits (not whole words) into a result with room - one kernel on the objects (IntoObj.asm)
 inline void ShiftLeft(FullInt64& result, const FullInt64& a, int shift)
 {
+#if defined(_M_X64) && defined(_WIN32)
+    // x64 1-32 words in the kernel; anything else: the kernel jumps on to shiftLeftInto itself
+    // (Fullint64ShlIntoGeneral) - a jump from here, no frame here
+    Fullint64ShlObjWIN(&result, &a, shift);
+#else
     if (Fullint64ShlObjWIN(&result, &a, shift) != 0) FullInt64Engine::shiftLeftInto(result, a, shift);
-}
 #endif
+}
 inline void ShiftRight(FullInt64& result, const FullInt64& a, int shift) { FullInt64Engine::shiftRightInto(result, a, shift); }
 // the non-negative case on the objects in one kernel (x64 / x86 IntoObj.asm), the rest in C++
 inline void And(FullInt64& result, const FullInt64& a, const FullInt64& b)

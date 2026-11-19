@@ -42,8 +42,11 @@ add_library(fullint_kernels STATIC ${FULLINT_ASM_SOURCES})
 # archive with the C++ toolchain's librarian (CMake's ASM_NASM archive rule is the ar one)
 set_target_properties(fullint_kernels PROPERTIES LINKER_LANGUAGE CXX)
 target_include_directories(fullint_kernels PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+# FULLINT_CPP: the kernels built into the C++ library (they may jump on to its C++ paths; the C#
+# library's native DLL is assembled without it)
 target_compile_options(fullint_kernels PRIVATE
-    $<$<COMPILE_LANGUAGE:ASM_NASM>:-I${FULLINT_ASM_DIR}/>)
+    $<$<COMPILE_LANGUAGE:ASM_NASM>:-I${FULLINT_ASM_DIR}/>
+    $<$<COMPILE_LANGUAGE:ASM_NASM>:-DFULLINT_CPP>)
 if(FULLINT_ARCH STREQUAL "x86")
     # the NASM objects carry no SafeSEH table (the DLL is linked with /safeseh:no as well)
     target_link_options(fullint_kernels INTERFACE /SAFESEH:NO)

@@ -17,6 +17,16 @@ CODE_SECTION
 ;      room for them: eight words a pass with SSE2 (every x86-64), then four, two, one; the leading
 ;      zero words taken off. (The C++ loop: 4 words 1.17 of GMP - its vectorized path's checks.)
 ;
+;    int Fullint64ShlObjWIN(FullInt64* r, const FullInt64* a, int shift)
+;      r = a << shift when r is not a, a is not zero and has 1-32 words, shift > 0 and not a
+;      multiple of 64, r has room (la + shift/64 + 1 words): r[i] = a[i-1] << b | a[i] >> (64 - b),
+;      b = shift % 64, with SSE2's 64-bit lane shifts (psllq / psrlq), two words a pass, then
+;      shift/64 zero words; only r[0] can be zero. (The C++ paths: 8 words 1.07 of GMP; 1-32
+;      words here 0.64-0.72.) Not this
+;      case: 1 (the C# DLL); in the C++ library on Windows (FULLINT_CPP) a jump on to its general
+;      path with the arguments as they came - the caller jumps here and has no frame of its own
+;      (a call with a check after it gave every length a frame: 1 word 1.25x).
+;
 ;  Registers (Win64 volatile only): r11 r, rdx / r8 / r9 the words of a / b / r, r10 n,
 ;  rcx index, rax; xmm0-5.
 ; =============================================================================
@@ -133,6 +143,116 @@ ENTRY Fullint64AndObjWIN
 	xor eax, eax
 	WRET
 .no:
+	mov eax, 1
+	WRET
+
+%ifdef FULLINT_CPP
+%ifdef FULLINT_WIN64
+	extern Fullint64ShlIntoGeneral
+%endif
+%endif
+
+ENTRY Fullint64ShlObjWIN
+	WIN64_ARGS
+	cmp rcx, rdx                  ; (rcx r, rdx a, r8 shift kept until every check has passed)
+	je .shlNo
+	test r8d, r8d
+	jle .shlNo                    ; 0 or negative
+	test r8d, 63
+	jz .shlNo                     ; whole words: a copy (the C++ path)
+	mov r10d, [rdx + OBJ_SIZE]    ; la
+	lea eax, [r10 - 1]
+	cmp eax, 31
+	ja .shlNo                     ; 1-32 words only
+	mov eax, r8d
+	shr eax, 6
+	lea eax, [rax + r10 + 1]      ; n
+	cmp eax, [rcx + OBJ_CAP]
+	ja .shlNo
+	mov r11, rcx                  ; r
+	mov r9d, [rdx + OBJ_OFF]
+	mov rcx, [rdx]
+	cmp dword [rdx + OBJ_CAP], OBJ_INLINE
+	cmovbe rcx, rdx
+	lea rcx, [rcx + r9*8]         ; a's words from the top
+	cmp r10d, 1
+	jne .shlGo
+	cmp qword [rcx], 0
+	jne .shlGo
+	mov rcx, r11                  ; zero: the C++ path with the arguments as they came
+	jmp .shlNo
+.shlGo:
+	mov [r11 + OBJ_SIZE], eax     ; n (a leading zero word taken off below)
+	movzx eax, byte [rdx + OBJ_NEG]
+	mov [r11 + OBJ_NEG], al
+	mov r9, [r11]
+	cmp dword [r11 + OBJ_CAP], OBJ_INLINE
+	cmovbe r9, r11                ; r's words from the top
+	mov eax, r8d
+	and eax, 63                   ; b
+	movd xmm4, eax
+	neg eax
+	add eax, 64
+	movd xmm5, eax                ; 64 - b
+	movq xmm0, [rcx]              ; r[0] = a[0] >> (64 - b)
+	psrlq xmm0, xmm5
+	movq [r9], xmm0
+	add r9, 8
+	lea rax, [r10 - 1]            ; r[1 .. la-1]: a[i-1] << b | a[i] >> (64 - b), rcx at a[i-1]
+	cmp rax, 2
+	jb .shlSingle
+.shlPair:                         ; two words: 16-byte psllq / psrlq / por
+	movdqu xmm0, [rcx]
+	movdqu xmm1, [rcx + 8]
+	psllq xmm0, xmm4
+	psrlq xmm1, xmm5
+	por xmm0, xmm1
+	movdqu [r9], xmm0
+	add rcx, 16
+	add r9, 16
+	sub rax, 2
+	cmp rax, 2
+	jae .shlPair
+.shlSingle:
+	test rax, rax
+	jz .shlLast
+	movq xmm0, [rcx]
+	movq xmm1, [rcx + 8]
+	psllq xmm0, xmm4
+	psrlq xmm1, xmm5
+	por xmm0, xmm1
+	movq [r9], xmm0
+	add rcx, 8
+	add r9, 8
+.shlLast:                         ; r[la] = a[la-1] << b
+	movq xmm0, [rcx]
+	psllq xmm0, xmm4
+	movq [r9], xmm0
+	mov eax, r8d                  ; shift / 64 zero words below r[la]
+	shr eax, 6
+	jz .shlLead
+.shlZero:
+	mov qword [r9 + 8], 0
+	add r9, 8
+	dec eax
+	jnz .shlZero
+.shlLead:                         ; r[0] zero: one word off (a's top bits all went to r[1])
+	mov r9, [r11]
+	cmp dword [r11 + OBJ_CAP], OBJ_INLINE
+	cmovbe r9, r11
+	xor eax, eax
+	cmp qword [r9], 0
+	sete al
+	mov [r11 + OBJ_OFF], eax
+	sub [r11 + OBJ_SIZE], eax
+	xor eax, eax
+	WRET
+.shlNo:                           ; not this case: the arguments untouched
+%ifdef FULLINT_CPP
+%ifdef FULLINT_WIN64
+	jmp Fullint64ShlIntoGeneral   ; the C++ library: on to its general path (a jump, its return is ours)
+%endif
+%endif
 	mov eax, 1
 	WRET
 
