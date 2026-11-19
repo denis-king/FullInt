@@ -1,4 +1,5 @@
     .include "abi.inc"
+    .include "arith.inc"
 
 // =============================================================================
 //  Schoolbook multiplication (AArch64), the contract of x64 Mult.asm:
@@ -9,44 +10,12 @@
 //  end. The first row is mul_1 (R = A * b + carry), the others addmul_1 (R += A * b); each row's
 //  top word is the carry, a word no row before has written.
 //
-//  mul_1 / addmul_1 as macros (the Div and Sqr kernels to come take them too). A word product:
-//  mul (the low half) and umulh (the high half) - AArch64 has no 64 x 64 -> 128 in one
-//  instruction. The carry adds by adds / adc within the step; the loop's subs comes after it.
+//  mul_1 / addmul_1: the macros of arith.inc (Sqr and MulLo take them too).
 //
 //  Registers: x0 A, x1 B, x2 R, x3 lenA, x4 rows left, x5 the R word (addmul_1), x6 / x7 the
 //  product's halves, x8 the row's end in R, x9 B's next word (from below), x10 the B word,
 //  x11 / x12 / x13 the row's A / R pointers and count, x14 the carry, x15 the A word.
 // =============================================================================
-
-// rp[-1 .. -n] = ap[-1 .. -n] * b; ap / rp move down n words (rp at the last word written),
-// n -> 0, c the carry out (the row's next word up)
-.macro MUL_1 ap, rp, n, b, c, t, lo, hi
-    mov \c, xzr
-1:  ldr \t, [\ap, #-8]!
-    mul \lo, \t, \b
-    umulh \hi, \t, \b
-    adds \lo, \lo, \c
-    adc \c, \hi, xzr
-    str \lo, [\rp, #-8]!
-    subs \n, \n, #1
-    b.ne 1b
-.endm
-
-// rp[-1 .. -n] += ap[-1 .. -n] * b; the same moves, c the carry out
-.macro ADDMUL_1 ap, rp, n, b, c, t, lo, hi, w
-    mov \c, xzr
-1:  ldr \t, [\ap, #-8]!
-    ldr \w, [\rp, #-8]!
-    mul \lo, \t, \b
-    umulh \hi, \t, \b
-    adds \lo, \lo, \c
-    adc \hi, \hi, xzr
-    adds \lo, \lo, \w
-    adc \c, \hi, xzr
-    str \lo, [\rp]
-    subs \n, \n, #1
-    b.ne 1b
-.endm
 
 ENTRY Fullint64MultWIN
     sxtw x3, w3                     // lenA

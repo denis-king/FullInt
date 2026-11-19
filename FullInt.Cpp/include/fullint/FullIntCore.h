@@ -115,7 +115,7 @@ struct FullIntCore
 
     // r = a² (r.size() == 2·a.size(), r not a): the products of different words once, then
     // doubled. SqrAdx.asm with BMI2 + ADX (x64 and x86); without them x64 Sqr.asm (mul / adc),
-    // x86 the multiplication a·a
+    // AArch64 Sqr.s, x86 the multiplication a·a
     static void Sqr(CSpan a, Span r) noexcept
     {
 #if FULLINT_X86_FAMILY
@@ -125,7 +125,7 @@ struct FullIntCore
             return;
         }
 #endif
-#if FULLINT_X64
+#if FULLINT_X64 || FULLINT_ARM64
         Fullint64SqrWIN(a.data(), r.data(), (int)a.size(), (int)r.size());
 #else
         Mult(a, a, r);

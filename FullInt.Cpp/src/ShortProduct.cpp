@@ -43,6 +43,12 @@ void Karatsuba::MultiplyLow(CSpan a, CSpan b, Span r)
             Fullint64MulLoWIN_adx(a.data(), b.data(), r.data(), (int)la, (int)lb, (int)n);
             return;
         }
+#elif FULLINT_ARM64
+        if (n <= la + lb)   // AArch64 Sqr.s
+        {
+            Fullint64MulLoWIN(a.data(), b.data(), r.data(), (int)la, (int)lb, (int)n);
+            return;
+        }
 #endif
         std::vector<uint64_t> full(la + lb);
         Multiply(a, b, full);

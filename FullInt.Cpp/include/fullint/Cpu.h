@@ -38,7 +38,7 @@ struct Cpu
 #elif FULLINT_X86
         return Fullint64CpuFeatures() | Recip;   // x86: SSE2 (x86/Cpu.asm) and the reciprocal division
 #else
-        return 0;   // the portable C++ kernels (kernels_generic.cpp): one version of each
+        return Recip;   // AArch64: the divisions by reciprocal (no 128 / 64 division instruction)
 #endif
     }
 
@@ -50,8 +50,10 @@ struct Cpu
     static const char* Describe() noexcept
     {
         bool adx = Has(Bmi2 | Adx), avx2 = Has(Avx2);
-#if FULLINT_GENERIC_KERNELS
-        return "all: portable C++ (no asm kernels for this CPU yet)";
+#if FULLINT_GENERIC_KERNELS && FULLINT_ARM64_ASM
+        return Has(Recip) ? "all: AArch64 asm (Div, ToDecString: recip)" : "all: AArch64 asm (baseline)";
+#elif FULLINT_GENERIC_KERNELS
+        return "all: portable C++ (built without the AArch64 kernels)";
 #endif
         if (!Has(Recip)) return "all: baseline";
         if (Has(Sse2)) return Has(Bmi2 | Adx) ? "Mult: adx; And/Or/Xor, Compare: sse2; Div, ToDecString: recip; other: baseline"   // x86

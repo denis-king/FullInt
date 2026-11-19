@@ -29,7 +29,7 @@ Tested on Windows: .NET 8 x64 (asm and managed), .NET Framework 4.8 x64 (asm and
 | `win-x64` | x86-64 asm | NASM `-f win64` + MSVC `link.exe` | ✅ builds and runs; see ANALYSIS A1–A3 |
 | `linux-x64` | x86-64 asm (same sources, System V entries of `abi.inc`) | NASM `-f elf64` + `cc -shared -nostdlib -z defs` → `libFullIntOperations_linux_x64.so` | ✅ C# (the x64 core through a DllImport resolver) and C++ (CMake + GCC); all tests pass in Docker, see below |
 | `osx-x64` | x86-64 asm (same sources) | NASM `-f macho64 --prefix _` + `cc -dynamiclib` | ⏳ stub, same as linux-x64 |
-| `linux-arm64` | AArch64 asm (`Sources/arm64`, GNU syntax) + portable C++ kernels for the rest | gcc / clang (`enable_language(ASM)`) | ⏳ C++ library: AddN / SubN / Mult in asm, the rest in C++ (`kernels_generic.cpp`); tested in Docker under QEMU. C#: the managed core |
+| `linux-arm64` | AArch64 asm (`Sources/arm64`, GNU syntax) + portable C++ kernels for the rest | gcc / clang (`enable_language(ASM)`) | ⏳ C++ library: every baseline kernel in AArch64 asm (the x64 set without the x86 vector ones); tested in Docker under QEMU against the C++ kernels and GMP. Speed on real hardware: next. C#: the managed core |
 | `osx-arm64` (Apple Silicon) | AArch64 asm | `clang` | ❌ not started |
 | `win-arm64` | AArch64 asm | `clang --target=aarch64-pc-windows-msvc` or `armasm64` | ❌ not started |
 | `win-x86` | x86 (32-bit) asm, a port of the x64 kernels (`Sources/x86`) | NASM `-f win32 --prefix _` + MSVC `link.exe` (`Hostx64\x86`) | ✅ all kernels; built next to win-x64 |
@@ -192,15 +192,21 @@ CPU detection and kernel choice are the same as on Windows. First runs (Ryzen 7 
 ```powershell
 powershell -File docker/test-linux-arm64.ps1             # C++ (gcc) and .NET
 powershell -File docker/test-linux-arm64.ps1 -NoCSharp -Clang
+powershell -File docker/test-linux-arm64.ps1 -Kernels    # only the AArch64 kernels against the C++ ones
 ```
 
+The build lives in the Docker volume `fullint-arm64-cache`, so a second run rebuilds only what changed (`docker volume rm fullint-arm64-cache` starts afresh). A full C++ run executes `fullint_arm64_kernels` (each AArch64 kernel against its C++ version, word for word, no GMP) and then `fullint_tests` against GMP twice: with the kernels the engine picks, and with `FULLINT_CPU=baseline` (the baseline division entries).
+
+First full run (gcc 13, clang 18): `fullint_arm64_kernels` 145166 checks, `fullint_tests` 230679 checks against GMP in both modes, 0 failed. Under QEMU an endless loop in a kernel looks like silence, so `fullint_arm64_kernels` prints each section before it runs and has a watchdog: if nothing moves for a minute, it prints `STUCK at <kernel and its sizes>` and exits; `run-tests.sh` also caps the run with `timeout 1800`.
+
 **How the C++ library builds on AArch64:**
-- `src/kernels_generic.cpp` holds every kernel entry in portable C++, mostly a port of the C# managed core with the same contracts.
-- The asm kernels in `FullInt.Asm/Sources/arm64/*.s` replace them one at a time. The C++ version of a replaced kernel stays under the name `..._generic`. The tests compare the kernel against it word for word, and the kernel falls back to it for the cases it does not handle.
-- `-DFULLINT_ARM64_ASM=OFF` builds the C++ kernels only, as the reference for A/B timing.
+- `FullInt.Asm/Sources/arm64/*.s` has every kernel the x64 baseline set has, with the same algorithms and contracts: add / sub (general, equal-length, the header forms, `SubCmpN`), compare, and / or / xor, shifts, schoolbook multiply, square, low product (`MulLo`), the divisions (one word, long, approximate quotient), exact division for Toom-Cook, and decimal conversion both ways (including the fraction digits). `arith.inc` holds the shared macros.
+- AArch64 has no 128 / 64 division, so every division divides by a reciprocal of the normalized divisor (Möller–Granlund). The reciprocal is computed once per division in 32-bit digits by `udiv`. The baseline entries (`Div2longWin`, `DivWin`, `ToDecStringWin`) use the same arithmetic as the `_recip` ones, so `Cpu::Recip` is set on ARM too.
+- `src/kernels_generic.cpp` holds every kernel entry in portable C++, mostly a port of the C# managed core with the same contracts, under the names `..._generic`. It is the reference `fullint_arm64_kernels` checks the asm against. `-DFULLINT_ARM64_ASM=OFF` builds it as the kernels themselves, as the baseline for A/B timing.
+- Not ported: the x86 vector kernels (NTT on AVX2; AND / shift / compare on AVX2) and the object kernels (`CmpObj`, `AndObj`, `ShlObj`), where the C++ paths do the work. The FFT helpers (`FftAddSub`, `FftShlMod`) also stay in C++. NEON versions are the next step once timings on real ARM hardware show where they pay off.
 - The engine's code paths are selected with `FULLINT_X64` / `FULLINT_X86` / `FULLINT_ARM64`, `FULLINT_X86_FAMILY` (asm with cpuid dispatch) and `FULLINT_WORD64` (the 64-bit paths and thresholds) in `kernels.h`.
 
-Under QEMU, `tar` cannot extract into the container (`Cannot open: Invalid argument`), so `run-tests.sh` copies the sources with `cp`.
+Under QEMU, `tar` cannot extract into the container (`Cannot open: Invalid argument`), so `run-tests.sh` copies the sources with `cp -a`. Keeping the timestamps lets ninja skip the unchanged sources.
 
 ### Managed fallback
 

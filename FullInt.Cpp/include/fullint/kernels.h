@@ -8,8 +8,9 @@
 //     remainder: lenB + 2 words, the value right-aligned;
 //   - ToDecString / FromDecString: lenResult in = buffer length, out = start index.
 //
-// Windows x64 / x86 and Linux x64 in asm; AArch64 (any OS) in portable C++ so far
-// (src/kernels_generic.cpp, the same entries and contracts). The ...WIN names are historical: on
+// Windows x64 / x86 and Linux x64 in NASM; AArch64 (any OS) in GNU-syntax asm
+// (FullInt.Asm/Sources/arm64) over the portable C++ kernels (src/kernels_generic.cpp, the same
+// entries and contracts: the reference, and the build with FULLINT_ARM64_ASM=OFF). The ...WIN names are historical: on
 // Linux the same entries take the System V arguments (abi.inc), the contracts are the same.
 #pragma once
 
@@ -19,7 +20,8 @@
 //   FULLINT_X64 / FULLINT_X86 / FULLINT_ARM64  the CPU;
 //   FULLINT_X86_FAMILY  the asm kernels with cpuid dispatch (their x86 vector / BMI2 versions);
 //   FULLINT_WORD64      a 64-bit CPU: the engine's 64-bit paths and thresholds (x64 and ARM64);
-//   FULLINT_GENERIC_KERNELS  the kernels in portable C++ (no asm for this CPU yet).
+//   FULLINT_GENERIC_KERNELS  the portable C++ kernels built (the reference; the kernels
+//                       themselves with FULLINT_ARM64_ASM=0).
 #if defined(_M_X64) || defined(__x86_64__)
 #define FULLINT_X64 1
 #define FULLINT_X86 0
@@ -103,12 +105,46 @@ void Fullint64NttScaleWIN_avx2(uint32_t* x, int64_t n, uint32_t p, uint32_t c, u
 void Fullint64NttLoadWIN_avx2(const uint64_t* a, int64_t la, uint32_t* x, int64_t L, uint32_t p);
 uint64_t Fullint64NttCrtWIN(const uint32_t* x0, const uint32_t* x1, const uint32_t* x2, int64_t nd, uint64_t* r, int64_t len, const uint64_t* k);
 
+// R = A² without BMI2 / ADX (x64 Sqr.asm, mul / adc; AArch64 Sqr.s), the same contract as
+// Fullint64SqrWIN_adx
+#if FULLINT_X64 || FULLINT_ARM64
+void Fullint64SqrWIN(const uint64_t* a, uint64_t* r, int lenA, int lenR);
+#endif
+#if FULLINT_ARM64
+// the low half of a product (AArch64 Sqr.s; the contract of Fullint64MulLoWIN_adx)
+void Fullint64MulLoWIN(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int n);
+#endif
+
 #if FULLINT_GENERIC_KERNELS && FULLINT_ARM64_ASM
-// the portable C++ versions where an AArch64 kernel (FullInt.Asm/Sources/arm64) has the name:
+// the portable C++ versions of the entries with an AArch64 kernel (FullInt.Asm/Sources/arm64):
 // the reference for the tests and the A/B timings (kernels_generic.cpp)
+uint64_t Fullint64AddWIN_generic(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR);
 uint64_t Fullint64AddNWIN_generic(const uint64_t* a, const uint64_t* b, uint64_t* r, int64_t n);
 uint64_t Fullint64SubNWIN_generic(const uint64_t* a, const uint64_t* b, uint64_t* r, int64_t n);
+uint64_t Fullint64SubCmpNWIN_generic(const uint64_t* a, const uint64_t* b, uint64_t* r, int64_t n);
+void     Fullint64AddNHdrWIN_generic(const uint64_t* a, const uint64_t* b, uint64_t* r, uint32_t* hdr);
+void     Fullint64SubCmpNHdrWIN_generic(const uint64_t* a, const uint64_t* b, uint64_t* r, uint32_t* hdr);
+int      Fullint64SubWIN_generic(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR);
+void     Fullint64ToDecFracWIN_generic(uint64_t* f, int64_t L, int64_t m, uint8_t* out);
 uint64_t Fullint64MultWIN_generic(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR);
+void     Fullint64SqrWIN_generic(const uint64_t* a, uint64_t* r, int lenA, int lenR);
+void     Fullint64MulLoWIN_generic(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int n);
+uint64_t Fullint64DivWin_generic(const uint64_t* a, const uint64_t* b, uint64_t* q, uint64_t* r, int lenA, int lenB);
+uint64_t Fullint64Div2longWin_generic(const uint64_t* a, uint64_t b, uint64_t* q, uint64_t* r, int lenA);
+int      Fullint64CompareWIN_generic(const uint64_t* a, const uint64_t* b, int lenA, int lenB);
+int      Fullint64CmpNWIN_generic(const uint64_t* a, const uint64_t* b, int64_t n);
+void     Fullint64ToDecStringWin_generic(const uint64_t* value, uint64_t* valueBuf, uint8_t* resultBuf, int lenValue, int* lenResult);
+void     Fullint64FromDecStringWin_generic(const uint8_t* value, uint64_t* valueBuf, uint64_t* resultBuf, int lenValue, int* lenResult);
+int      Fullint64AndWIN_generic(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR, int signs);
+int      Fullint64OrWIN_generic(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR, int signs);
+int      Fullint64XorWIN_generic(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR, int signs);
+void     Fullint64ShlWIN_generic(const uint64_t* a, uint64_t* r, int lenA, int lenR, int shift);
+void     Fullint64ShrWIN_generic(const uint64_t* a, uint64_t* r, int lenA, int lenR, int shift);
+uint64_t Fullint64DivExactWIN_generic(const uint64_t* a, uint64_t* q, int len, uint64_t d);
+void     Fullint64Div2longWIN_recip_generic(const uint64_t* a, uint64_t b, uint64_t* q, uint64_t* r, int lenA);
+void     Fullint64DivWIN_recip_generic(const uint64_t* a, const uint64_t* b, uint64_t* q, uint64_t* r, int lenA, int lenB, uint64_t* work);
+uint64_t Fullint64DivQWIN_recip_generic(const uint64_t* a, const uint64_t* b, uint64_t* q, uint64_t* r, int lenA, int lenB, uint64_t* work);
+void     Fullint64ToDecStringWIN_recip_generic(const uint64_t* value, uint64_t* valueBuf, uint8_t* resultBuf, int lenValue, int* lenResult);
 #endif
 
 // CPU features for picking kernel versions (Cpu.asm): bit 0 BMI2, bit 1 ADX, bit 2 AVX2
@@ -131,8 +167,6 @@ void Fullint64FftAddSubWIN_adx(uint64_t* u, uint64_t* v, int n1);
 void Fullint64DivWIN_recipadx(const uint64_t* a, const uint64_t* b, uint64_t* q, uint64_t* r, int lenA, int lenB, uint64_t* work);
 uint64_t Fullint64DivQWIN_recipadx(const uint64_t* a, const uint64_t* b, uint64_t* q, uint64_t* r, int lenA, int lenB, uint64_t* work);
 void Fullint64FftShlModWIN_bmi2(const uint64_t* x, uint64_t* dst, int n1, int s);
-// R = A² without BMI2 / ADX (Sqr.asm, mul / adc), the same contract as Fullint64SqrWIN_adx
-void Fullint64SqrWIN(const uint64_t* a, uint64_t* r, int lenA, int lenR);
 #elif FULLINT_X86
 void Fullint64MultWIN_adx(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR);   // x86 BMI2 + ADX
 int  Fullint64AndWIN_sse2(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR, int signs);   // x86 SSE2

@@ -20,7 +20,8 @@ endif()
 # asm kernels
 # ----------------------------------------------------------------------------
 # Windows x64 / x86 (NASM win64 / win32) and Linux x64 (NASM elf64, the System V entries of abi.inc);
-# ARM64 (AArch64, any OS): the kernels in portable C++ so far (src/kernels_generic.cpp)
+# ARM64 (AArch64, any OS): GNU-syntax asm (Sources/arm64) over the portable C++ kernels
+# (src/kernels_generic.cpp: the reference, the ..._generic names)
 string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" FULLINT_PROCESSOR)
 if(FULLINT_PROCESSOR MATCHES "^(aarch64|arm64)$")
     set(FULLINT_ARCH arm64)
@@ -32,8 +33,8 @@ else()
 endif()
 
 if(FULLINT_ARCH STREQUAL "arm64")
-    # the AArch64 kernels (GNU syntax, assembler directives only: abi.inc) where they exist, the
-    # portable C++ ones for the rest (kernels_generic.cpp; FULLINT_ARM64_ASM=0: C++ only, the A/B
+    # the AArch64 kernels (GNU syntax, assembler directives only: abi.inc) and the portable C++
+    # ones under ..._generic names (kernels_generic.cpp; FULLINT_ARM64_ASM=0: C++ only, the A/B
     # reference build)
     option(FULLINT_ARM64_ASM "Build the AArch64 asm kernels (OFF: the portable C++ ones only)" ON)
     set(FULLINT_ASM_DIR "${FULLINT_ROOT}/FullInt.Asm/Sources/arm64")
@@ -101,6 +102,13 @@ add_library(fullint STATIC
     src/Fft.cpp)
 target_link_libraries(fullint PUBLIC FullInt::kernels)
 add_library(FullInt::fullint ALIAS fullint)
+
+# the AArch64 kernels against the portable C++ ones (no GMP: quick under QEMU)
+if(FULLINT_ARCH STREQUAL "arm64" AND FULLINT_ARM64_ASM)
+    add_executable(fullint_arm64_kernels tests/arm64_kernels.cpp)
+    find_package(Threads REQUIRED)   # (the test's watchdog)
+    target_link_libraries(fullint_arm64_kernels PRIVATE FullInt::kernels Threads::Threads)
+endif()
 
 add_executable(fullint_kara_tune EXCLUDE_FROM_ALL bench/kara_tune.cpp)
 target_link_libraries(fullint_kara_tune PRIVATE FullInt::fullint)
