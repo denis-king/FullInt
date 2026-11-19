@@ -35,6 +35,9 @@
 %ifidn __OUTPUT_FORMAT__, macho64
     %define FULLINT_MACHO 1             ; macOS: System V, C names with a leading underscore
 %endif
+%ifidn __OUTPUT_FORMAT__, elf64
+    section .note.GNU-stack noalloc noexec nowrite progbits   ; ELF: the stack is not executable
+%endif
 ; The code section of every kernel file: 64-byte aligned, and every file ends on a 64-byte boundary
 ; (align 64 at its end), so each kernel's place in the 64-byte lines depends only on its own file.
 ; On Windows the name .text$zz: the linker merges .text$xx into .text sorted by the suffix, so the

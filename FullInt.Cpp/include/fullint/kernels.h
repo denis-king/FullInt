@@ -8,13 +8,14 @@
 //     remainder: lenB + 2 words, the value right-aligned;
 //   - ToDecString / FromDecString: lenResult in = buffer length, out = start index.
 //
-// Windows only for now: the ...WIN entry points (Win64 ABI on x64, cdecl on x86).
+// Windows x64 / x86 and Linux x64. The ...WIN names are historical: on Linux the same entries take
+// the System V arguments (abi.inc), the contracts are the same.
 #pragma once
 
 #include <cstdint>
 
-#if !defined(_WIN32)
-#error "FullInt kernels: only Windows (x64, x86) is wired up so far"
+#if !defined(_WIN32) && !(defined(__linux__) && defined(__x86_64__))
+#error "FullInt kernels: Windows (x64, x86) and Linux x64 so far"
 #endif
 
 extern "C" {

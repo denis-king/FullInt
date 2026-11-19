@@ -19,20 +19,20 @@ endif()
 # ----------------------------------------------------------------------------
 # asm kernels
 # ----------------------------------------------------------------------------
-if(NOT CMAKE_ASM_NASM_COMPILER AND EXISTS "${FULLINT_ROOT}/Tools/nasm/nasm.exe")
+if(WIN32 AND NOT CMAKE_ASM_NASM_COMPILER AND EXISTS "${FULLINT_ROOT}/Tools/nasm/nasm.exe")   # elsewhere: the system NASM
     set(CMAKE_ASM_NASM_COMPILER "${FULLINT_ROOT}/Tools/nasm/nasm.exe")
 endif()
 enable_language(ASM_NASM)
 
-if(NOT WIN32)
-    message(FATAL_ERROR "FullInt.Cpp: only Windows is wired up so far (x64, x86)")
-endif()
-
+# Windows x64 / x86 (NASM win64 / win32) and Linux x64 (NASM elf64, the System V entries of abi.inc)
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
     set(FULLINT_ARCH x64)
 else()
     set(FULLINT_ARCH x86)
     # (32-bit COFF names carry a leading underscore: the sources put it, abi86.inc)
+endif()
+if(NOT WIN32 AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND FULLINT_ARCH STREQUAL "x64"))
+    message(FATAL_ERROR "FullInt.Cpp: Windows x64 / x86 and Linux x64 so far")
 endif()
 
 set(FULLINT_ASM_DIR "${FULLINT_ROOT}/FullInt.Asm/Sources/${FULLINT_ARCH}")
@@ -88,11 +88,13 @@ if(FULLINT_WITH_GMP)
     target_link_libraries(fullint_tests PRIVATE FullInt::fullint "${GMP_LIBRARY}")
     add_test(NAME fullint_tests COMMAND fullint_tests)
 
+    if(WIN32)   # the benchmarks: Windows so far (windows.h: the process priority, the timers)
     add_executable(fullint_bench_api bench/api_vs_gmp.cpp)
     target_include_directories(fullint_bench_api PRIVATE "${GMP_INCLUDE_DIR}")
     target_link_libraries(fullint_bench_api PRIVATE FullInt::fullint "${GMP_LIBRARY}")
+    endif()
 
-    if(FULLINT_ARCH STREQUAL "x64")   # the kernel benchmark compares 64-bit limbs with GMP's
+    if(WIN32 AND FULLINT_ARCH STREQUAL "x64")   # the kernel benchmark compares 64-bit limbs with GMP's
         add_executable(fullint_bench_kernels bench/kernels_vs_gmp.cpp)
         target_include_directories(fullint_bench_kernels PRIVATE "${GMP_INCLUDE_DIR}")
         target_link_libraries(fullint_bench_kernels PRIVATE FullInt::kernels "${GMP_LIBRARY}")

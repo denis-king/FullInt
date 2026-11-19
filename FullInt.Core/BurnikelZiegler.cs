@@ -89,7 +89,7 @@ namespace FullInt.Core
             var zz = new ulong[2 * n];
             for (int p = 0; p < c; p++)
             {
-                ri.CopyTo(zz);
+                ri.AsSpan().CopyTo(zz);   // (an array to an array: explicit, older compilers find CopyTo ambiguous)
                 at.Slice(n + h + p * n, n).CopyTo(zz.AsSpan(n));
                 Div2n1n(core, zz, bn, quotient.AsSpan(1 + h + p * n, n), ri, threshold, scratch);
             }
