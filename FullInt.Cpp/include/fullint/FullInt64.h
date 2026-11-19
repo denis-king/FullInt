@@ -509,15 +509,20 @@ inline void ShiftLeft(FullInt64& result, const FullInt64& a, int shift)
 }
 #endif
 inline void ShiftRight(FullInt64& result, const FullInt64& a, int shift) { FullInt64Engine::shiftRightInto(result, a, shift); }
-#if defined(_M_X64) || defined(__x86_64__)
-inline void And(FullInt64& result, const FullInt64& a, const FullInt64& b) { FullInt64Engine::bitwiseInto(result, 0, a, b); }
-#else
-// x86: the short non-negative case on the objects in one kernel (IntoObj.asm), the rest as on x64
+// the non-negative case on the objects in one kernel (x64 / x86 IntoObj.asm), the rest in C++
 inline void And(FullInt64& result, const FullInt64& a, const FullInt64& b)
 {
+#if defined(_M_X64) || defined(__x86_64__)
+    // x64: the kernel up to 32 words (the shorter one sets the length); longer: straight to the C++
+    // loop (a call in front of it slowed 64-1024 words 7-9%). x86: the kernel at any length.
+    if (a.Length() > 32 && b.Length() > 32)
+    {
+        FullInt64Engine::bitwiseInto(result, 0, a, b);
+        return;
+    }
+#endif
     if (Fullint64AndObjWIN(&result, &a, &b) != 0) FullInt64Engine::bitwiseInto(result, 0, a, b);
 }
-#endif
 inline void Or(FullInt64& result, const FullInt64& a, const FullInt64& b) { FullInt64Engine::bitwiseInto(result, 1, a, b); }
 inline void Xor(FullInt64& result, const FullInt64& a, const FullInt64& b) { FullInt64Engine::bitwiseInto(result, 2, a, b); }
 // truncating, as / and %
