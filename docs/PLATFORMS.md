@@ -101,7 +101,14 @@ Select at load time: check `System.Runtime.Intrinsics.X86.Bmi2.X64.IsSupported` 
 
 ## AArch64 (ARM64)
 
-NASM cannot assemble ARM code, so ARM64 needs its own sources. A single GNU-syntax `.S` file can serve Linux, macOS and Windows on ARM when built with clang, with a few macros for symbol naming and section directives.
+NASM cannot assemble ARM code, so ARM64 needs its own sources. One GNU-syntax `.s` file serves Linux, Android, macOS and Windows on ARM.
+
+- **Directives only.** It uses assembler directives (`.macro`, `.ifdef`, `--defsym FULLINT_MACHO=1` for the `_` symbol prefix on macOS), not the C preprocessor.
+- **Toolchains.** It builds the same with clang, GNU `as` and `llvm-mc`.
+- **Bundled assembler.** For the Windows x64 development machine, `Tools/llvm/llvm-mc.exe` (LLVM 23.1.6, standalone) emits ELF, Mach-O and COFF objects for AArch64.
+- **ARM hosts** (Termux, Linux, macOS) use their native clang.
+
+Checked in Docker `linux/arm64` (QEMU): the same source runs correctly from clang, GNU `as`, and an `llvm-mc` object built on Windows.
 
 ### Calling convention (AAPCS64; Apple and Windows ARM64 are close variants)
 
