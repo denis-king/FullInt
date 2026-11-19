@@ -19,21 +19,51 @@ endif()
 # ----------------------------------------------------------------------------
 # asm kernels
 # ----------------------------------------------------------------------------
-if(WIN32 AND NOT CMAKE_ASM_NASM_COMPILER AND EXISTS "${FULLINT_ROOT}/Tools/nasm/nasm.exe")   # elsewhere: the system NASM
-    set(CMAKE_ASM_NASM_COMPILER "${FULLINT_ROOT}/Tools/nasm/nasm.exe")
-endif()
-enable_language(ASM_NASM)
-
-# Windows x64 / x86 (NASM win64 / win32) and Linux x64 (NASM elf64, the System V entries of abi.inc)
-if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+# Windows x64 / x86 (NASM win64 / win32) and Linux x64 (NASM elf64, the System V entries of abi.inc);
+# ARM64 (AArch64, any OS): the kernels in portable C++ so far (src/kernels_generic.cpp)
+string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" FULLINT_PROCESSOR)
+if(FULLINT_PROCESSOR MATCHES "^(aarch64|arm64)$")
+    set(FULLINT_ARCH arm64)
+elseif(CMAKE_SIZEOF_VOID_P EQUAL 8)
     set(FULLINT_ARCH x64)
 else()
     set(FULLINT_ARCH x86)
     # (32-bit COFF names carry a leading underscore: the sources put it, abi86.inc)
 endif()
+
+if(FULLINT_ARCH STREQUAL "arm64")
+    # the AArch64 kernels (GNU syntax, assembler directives only: abi.inc) where they exist, the
+    # portable C++ ones for the rest (kernels_generic.cpp; FULLINT_ARM64_ASM=0: C++ only, the A/B
+    # reference build)
+    option(FULLINT_ARM64_ASM "Build the AArch64 asm kernels (OFF: the portable C++ ones only)" ON)
+    set(FULLINT_ASM_DIR "${FULLINT_ROOT}/FullInt.Asm/Sources/arm64")
+    set(FULLINT_ASM_SOURCES)
+    if(FULLINT_ARM64_ASM)
+        enable_language(ASM)
+        file(GLOB FULLINT_ASM_SOURCES CONFIGURE_DEPENDS "${FULLINT_ASM_DIR}/*.s")
+    endif()
+    add_library(fullint_kernels STATIC src/kernels_generic.cpp ${FULLINT_ASM_SOURCES})
+    target_include_directories(fullint_kernels PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+    target_compile_definitions(fullint_kernels PUBLIC FULLINT_ARM64_ASM=$<BOOL:${FULLINT_ARM64_ASM}>)
+    # .include "abi.inc" (from the sources' directory); the object format for the macros there
+    set(FULLINT_ASM_FLAGS "-Wa,-I${FULLINT_ASM_DIR}")
+    if(APPLE)
+        list(APPEND FULLINT_ASM_FLAGS "-Wa,--defsym,FULLINT_MACHO=1")
+    elseif(WIN32)
+        list(APPEND FULLINT_ASM_FLAGS "-Wa,--defsym,FULLINT_COFF=1")
+    endif()
+    foreach(flag IN LISTS FULLINT_ASM_FLAGS)
+        target_compile_options(fullint_kernels PRIVATE "$<$<COMPILE_LANGUAGE:ASM>:${flag}>")
+    endforeach()
+    add_library(FullInt::kernels ALIAS fullint_kernels)
+else()
 if(NOT WIN32 AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND FULLINT_ARCH STREQUAL "x64"))
-    message(FATAL_ERROR "FullInt.Cpp: Windows x64 / x86 and Linux x64 so far")
+    message(FATAL_ERROR "FullInt.Cpp: Windows x64 / x86, Linux x64 and ARM64 so far")
 endif()
+if(WIN32 AND NOT CMAKE_ASM_NASM_COMPILER AND EXISTS "${FULLINT_ROOT}/Tools/nasm/nasm.exe")   # elsewhere: the system NASM
+    set(CMAKE_ASM_NASM_COMPILER "${FULLINT_ROOT}/Tools/nasm/nasm.exe")
+endif()
+enable_language(ASM_NASM)
 
 set(FULLINT_ASM_DIR "${FULLINT_ROOT}/FullInt.Asm/Sources/${FULLINT_ARCH}")
 file(GLOB FULLINT_ASM_SOURCES CONFIGURE_DEPENDS "${FULLINT_ASM_DIR}/*.asm")
@@ -52,6 +82,7 @@ if(FULLINT_ARCH STREQUAL "x86")
     target_link_options(fullint_kernels INTERFACE /SAFESEH:NO)
 endif()
 add_library(FullInt::kernels ALIAS fullint_kernels)
+endif()
 
 # ----------------------------------------------------------------------------
 # the library: FullInt64 and its engine

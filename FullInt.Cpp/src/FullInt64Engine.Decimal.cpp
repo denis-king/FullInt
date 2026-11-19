@@ -59,7 +59,7 @@ const ShiftedPower& ShiftedDecimalPower(int k, const FullInt64& pk)
     return *shifted[k];
 }
 
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_WORD64
 // The fraction method's reciprocal for n-word numbers: m chunks of 19 digits (10^(19m) > B^n),
 // r = ceil(B^(L+n) / 10^(19m)), L = m + 1 words below the point. Made once per n.
 struct FractionReciprocal
@@ -92,7 +92,7 @@ const FractionReciprocal& FractionReciprocalFor(uint32_t n)
 
 }  // namespace
 
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_WORD64
 // Knuth's fraction method (TAOCP vol. 2, 4.4): f = x / 10^(19m) as an L-word fraction, an upper
 // bound (x times the reciprocal, the low n words dropped, + 1: below 2 units of its last word);
 // then ToDecStringFrac.asm multiplies f by 10^19 m times, each integer part 19 digits. The bound
@@ -190,7 +190,7 @@ size_t FullInt64Engine::WriteDecimal(const FullInt64& x, char* text, size_t end,
 // the kernel on a short number; zero writes nothing
 size_t FullInt64Engine::WriteDecimalLeaf(CSpan w, char* text, size_t end)
 {
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_WORD64
     if (w.size() >= (size_t)DecimalConversion::FractionFrom && w.size() <= (size_t)DecimalConversion::FractionMaxWords)
         return WriteDecimalFraction(w, text, end);
 #endif

@@ -905,6 +905,66 @@ void DecimalByHalves()
 
 // Fullint64SubCmpNWIN against a plain compare + subtract: random words and the hard shapes (equal,
 // differing only low, top words differing by one with long zero runs in the difference)
+#if FULLINT_GENERIC_KERNELS && FULLINT_ARM64_ASM
+// the AArch64 kernels against the portable C++ ones (kernels_generic.cpp) word for word: every length
+// 1-40 and some longer, random words and the carry / borrow extremes (all ones, all zeros), R apart
+// and R = A / R = B for add / sub; Mult also with lenR above the product and every lenA x lenB 1-12.
+static void Arm64Kernels()
+{
+    auto fill = [](std::vector<uint64_t>& v, int kind) {
+        for (auto& x : v) x = kind == 0 ? rng() : kind == 1 ? ~0ull : kind == 2 ? 0 : (rng() & 1 ? ~0ull : 0);
+    };
+    std::vector<int> lengths;
+    for (int n = 1; n <= 40; n++) lengths.push_back(n);
+    for (int n : { 63, 64, 65, 100, 257 }) lengths.push_back(n);
+    for (int n : lengths)
+        for (int ka = 0; ka < 4; ka++)
+            for (int kb = 0; kb < 4; kb++)
+            {
+                std::vector<uint64_t> a(n), b(n), r1(n + 2, 0x5A5Aull), r2(n + 2, 0x5A5Aull);
+                fill(a, ka);
+                fill(b, kb);
+                for (int sub = 0; sub < 2; sub++)
+                {
+                    auto asmK = sub ? Fullint64SubNWIN : Fullint64AddNWIN;
+                    auto genK = sub ? Fullint64SubNWIN_generic : Fullint64AddNWIN_generic;
+                    uint64_t c1 = asmK(a.data(), b.data(), r1.data() + 1, n);
+                    uint64_t c2 = genK(a.data(), b.data(), r2.data() + 1, n);
+                    CHECK(c1 == c2 && r1 == r2, std::string(sub ? "SubN" : "AddN") + " arm64 " + std::to_string(n));
+                    std::vector<uint64_t> x = a, y = b, e(n);   // in place: R = A, then R = B
+                    genK(a.data(), b.data(), e.data(), n);
+                    uint64_t cx = asmK(x.data(), b.data(), x.data(), n);
+                    uint64_t cy = asmK(a.data(), y.data(), y.data(), n);
+                    CHECK(cx == c2 && cy == c2 && x == e && y == e, std::string(sub ? "SubN" : "AddN") + " arm64 in place");
+                }
+            }
+    for (int la = 1; la <= 12; la++)
+        for (int lb = 1; lb <= 12; lb++)
+            for (int kind = 0; kind < 4; kind++)
+                for (int extra = 0; extra < 3; extra++)
+                {
+                    std::vector<uint64_t> a(la), b(lb);
+                    fill(a, kind);
+                    fill(b, kind == 3 ? 0 : kind);
+                    int lr = la + lb + (extra == 2 ? 2 : 0) - (extra == 1 ? 1 : 0);   // extra 1: shorter R
+                    std::vector<uint64_t> r1(lr + 2, 0x5A5Aull), r2(lr + 2, 0x5A5Aull);
+                    Fullint64MultWIN(a.data(), b.data(), r1.data() + 1, la, lb, lr);
+                    Fullint64MultWIN_generic(a.data(), b.data(), r2.data() + 1, la, lb, lr);
+                    CHECK(r1 == r2, "Mult arm64 " + std::to_string(la) + "x" + std::to_string(lb) + " lr " + std::to_string(lr));
+                }
+    for (int la : { 33, 64, 100, 257 })
+        for (int lb : { 1, 7, 33, 64 })
+        {
+            std::vector<uint64_t> a(la), b(lb), r1(la + lb), r2(la + lb);
+            fill(a, 0);
+            fill(b, 0);
+            Fullint64MultWIN(a.data(), b.data(), r1.data(), la, lb, la + lb);
+            Fullint64MultWIN_generic(a.data(), b.data(), r2.data(), la, lb, la + lb);
+            CHECK(r1 == r2, "Mult arm64 " + std::to_string(la) + "x" + std::to_string(lb));
+        }
+}
+#endif
+
 static void SubCmpNKernel()
 {
     for (int round = 0; round < 20000; round++)
@@ -955,7 +1015,7 @@ static void SubCmpNKernel()
         for (size_t j = 0; ok && j < i && i < n; j++) ok = r[j] == 0x5A5A5A5A5A5A5A5Aull;   // above i untouched
         CHECK(ok, "SubCmpN kernel");
 
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_WORD64
         // the header form (x64): off / size / neg written by the kernel, both its paths
         for (int neg0 = 0; neg0 < 2; neg0++)
         {
@@ -997,7 +1057,7 @@ static void CompareKernels()
                     expect = dir ? 1 : -1;
                 }
                 CHECK(Fullint64CompareWIN(a.data(), b.data(), n, n) == expect, "Compare kernel");
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_X64
                 if (fullint::Cpu::Has(fullint::Cpu::Avx2))
                     CHECK(Fullint64CompareWIN_avx2(a.data(), b.data(), n, n) == expect, "CompareAvx2 kernel");
                 CHECK(Fullint64CmpNWIN(a.data(), b.data(), n) == expect, "CmpN kernel");
@@ -1010,7 +1070,7 @@ static void CompareKernels()
                     int want = na != nb ? (na ? -1 : 1) : (na ? -expect : expect);
                     CHECK(fullint::FullInt64Engine::Compare(fa, fb) == want, "Compare objects");
                 }
-#else
+#elif FULLINT_X86
                 if (fullint::Cpu::Has(fullint::Cpu::Sse2))
                     CHECK(Fullint64CompareWIN_sse2(a.data(), b.data(), n, n) == expect, "CompareSse2 kernel");
 #endif
@@ -1022,6 +1082,9 @@ int main()
     const int sizes[] = { 1, 2, 3, 4, 5, 8, 17, 63, 64, 65, 100, 255, 256, 300, 700, 1500 };
 
     EdgeCases();
+#if FULLINT_GENERIC_KERNELS && FULLINT_ARM64_ASM
+    Arm64Kernels();
+#endif
     SubCmpNKernel();
     CompareKernels();
     MultiplyThresholds();

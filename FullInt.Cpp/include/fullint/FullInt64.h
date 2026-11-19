@@ -40,7 +40,7 @@ struct DecimalConversion
     // words (16: no gain - the 32 / 16 division ate the smaller kernel's). x64 with the fraction
     // leaves (2026-11-19): 48 - 32-256 words 0.61-0.80 of the division leaves at 24, 1024-4096
     // 0.93 (64: the same, 96: worse from 256)
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_WORD64
     static inline int ToStringThreshold = 48;
 #else
     static inline int ToStringThreshold = 24;
@@ -311,7 +311,7 @@ public:
 
     static int Compare(const FullInt64& value1, const FullInt64& value2) noexcept
     {
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_X64
         // one kernel on the objects (CompareN.asm): the signs, lengths, words - nothing around the
         // call here (the inline checks before a kernel call cost 4 words 1.3x GMP)
         return Fullint64CmpObjWIN(&value1, &value2);
@@ -377,7 +377,7 @@ private:
     // the into-functions' rare cases that build a new number (kept out of them: the temporary
     // gave each a large frame and an unwind state, several ns on every short call)
     // both operands at most two words: here, into result's buffer (FullInt64Engine.cpp)
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_WORD64
     FULLINT_NOINLINE static void addIntoShort(FullInt64& result, const FullInt64& value1, const FullInt64& value2, bool negate2) noexcept;
     FULLINT_NOINLINE static void addIntoAddN(FullInt64& result, const FullInt64& value1, const FullInt64& value2) noexcept;
     FULLINT_NOINLINE static void addIntoSubN(FullInt64& result, const FullInt64& value1, const FullInt64& value2, bool negate2) noexcept;
@@ -398,7 +398,7 @@ public:
 
     // equal lengths up to this many words: a plain loop instead of the kernel call (x86 2-16 words:
     // 0.66-0.78 of the call; x64 from 8 words the AVX2 kernel is ahead, 2 words still 0.6 for % )
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_X64
     static constexpr size_t ShortLoopCompareWords = 2;
 #else
     static constexpr size_t ShortLoopCompareWords = 16;
@@ -484,7 +484,7 @@ inline FullInt64 operator>>(const FullInt64& a, int shift) { return FullInt64Eng
 
 // GMP style: result = a op b into result's buffer (no new number per call in a loop);
 // result may be a or b
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_WORD64
 inline void Add(FullInt64& result, const FullInt64& a, const FullInt64& b) { FullInt64Engine::addInto(result, a, b, false); }
 inline void Subtract(FullInt64& result, const FullInt64& a, const FullInt64& b) { FullInt64Engine::addInto(result, a, b, true); }
 #else
@@ -506,6 +506,8 @@ inline void ShiftLeft(FullInt64& result, const FullInt64& a, int shift)
     // x64 1-32 words in the kernel; anything else: the kernel jumps on to shiftLeftInto itself
     // (Fullint64ShlIntoGeneral) - a jump from here, no frame here
     Fullint64ShlObjWIN(&result, &a, shift);
+#elif FULLINT_GENERIC_KERNELS
+    FullInt64Engine::shiftLeftInto(result, a, shift);   // no object kernels here
 #else
     if (Fullint64ShlObjWIN(&result, &a, shift) != 0) FullInt64Engine::shiftLeftInto(result, a, shift);
 #endif
@@ -514,7 +516,7 @@ inline void ShiftRight(FullInt64& result, const FullInt64& a, int shift) { FullI
 // the non-negative case on the objects in one kernel (x64 / x86 IntoObj.asm), the rest in C++
 inline void And(FullInt64& result, const FullInt64& a, const FullInt64& b)
 {
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_X64
     // x64: the kernel up to 32 words (the shorter one sets the length); longer: straight to the C++
     // loop (a call in front of it slowed 64-1024 words 7-9%). x86: the kernel at any length.
     if (a.Length() > 32 && b.Length() > 32)
@@ -523,7 +525,11 @@ inline void And(FullInt64& result, const FullInt64& a, const FullInt64& b)
         return;
     }
 #endif
+#if FULLINT_GENERIC_KERNELS
+    FullInt64Engine::bitwiseInto(result, 0, a, b);   // no object kernels here
+#else
     if (Fullint64AndObjWIN(&result, &a, &b) != 0) FullInt64Engine::bitwiseInto(result, 0, a, b);
+#endif
 }
 inline void Or(FullInt64& result, const FullInt64& a, const FullInt64& b) { FullInt64Engine::bitwiseInto(result, 1, a, b); }
 inline void Xor(FullInt64& result, const FullInt64& a, const FullInt64& b) { FullInt64Engine::bitwiseInto(result, 2, a, b); }

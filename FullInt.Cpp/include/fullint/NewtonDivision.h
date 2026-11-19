@@ -18,7 +18,7 @@ struct NewtonDivision
     // Burnikel–Ziegler: a % b (2 blocks) 2048 0.94 / 1.03, 4096 0.87 / 1.08, 8192 0.81 / 0.97;
     // a / b (Quotient: 1 block, no remainder) 2048 1.05 / 1.20, 4096 0.90 / 1.23, 8192 0.82 /
     // 1.27 (at 1024 Burnikel–Ziegler stays ahead: % 1.09 / 1.35, / 1.16 / 1.22).
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_X64
     static inline int Threshold = 2048;
     static inline int LongQuotientThreshold = 2048;
     static inline int CyclicFrom = 2048;

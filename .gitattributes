@@ -72,3 +72,4 @@
 # shell scripts and Dockerfiles run on Linux: LF whatever the checkout
 *.sh text eol=lf
 Dockerfile text eol=lf
+FullInt.Asm/Sources/arm64/* text eol=lf

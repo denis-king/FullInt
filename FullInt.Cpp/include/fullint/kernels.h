@@ -8,14 +8,39 @@
 //     remainder: lenB + 2 words, the value right-aligned;
 //   - ToDecString / FromDecString: lenResult in = buffer length, out = start index.
 //
-// Windows x64 / x86 and Linux x64. The ...WIN names are historical: on Linux the same entries take
-// the System V arguments (abi.inc), the contracts are the same.
+// Windows x64 / x86 and Linux x64 in asm; AArch64 (any OS) in portable C++ so far
+// (src/kernels_generic.cpp, the same entries and contracts). The ...WIN names are historical: on
+// Linux the same entries take the System V arguments (abi.inc), the contracts are the same.
 #pragma once
 
 #include <cstdint>
 
-#if !defined(_WIN32) && !(defined(__linux__) && defined(__x86_64__))
-#error "FullInt kernels: Windows (x64, x86) and Linux x64 so far"
+// The target, for the code that differs by it:
+//   FULLINT_X64 / FULLINT_X86 / FULLINT_ARM64  the CPU;
+//   FULLINT_X86_FAMILY  the asm kernels with cpuid dispatch (their x86 vector / BMI2 versions);
+//   FULLINT_WORD64      a 64-bit CPU: the engine's 64-bit paths and thresholds (x64 and ARM64);
+//   FULLINT_GENERIC_KERNELS  the kernels in portable C++ (no asm for this CPU yet).
+#if defined(_M_X64) || defined(__x86_64__)
+#define FULLINT_X64 1
+#define FULLINT_X86 0
+#define FULLINT_ARM64 0
+#elif defined(_M_IX86) || defined(__i386__)
+#define FULLINT_X64 0
+#define FULLINT_X86 1
+#define FULLINT_ARM64 0
+#elif defined(_M_ARM64) || defined(__aarch64__)
+#define FULLINT_X64 0
+#define FULLINT_X86 0
+#define FULLINT_ARM64 1
+#else
+#error "FullInt: x64, x86 and ARM64 so far"
+#endif
+#define FULLINT_X86_FAMILY (FULLINT_X64 || FULLINT_X86)
+#define FULLINT_WORD64 (FULLINT_X64 || FULLINT_ARM64)
+#define FULLINT_GENERIC_KERNELS FULLINT_ARM64
+
+#if FULLINT_X86_FAMILY && !defined(_WIN32) && !(defined(__linux__) && FULLINT_X64)
+#error "FullInt asm kernels: Windows (x64, x86) and Linux x64 so far"
 #endif
 
 extern "C" {
@@ -78,12 +103,20 @@ void Fullint64NttScaleWIN_avx2(uint32_t* x, int64_t n, uint32_t p, uint32_t c, u
 void Fullint64NttLoadWIN_avx2(const uint64_t* a, int64_t la, uint32_t* x, int64_t L, uint32_t p);
 uint64_t Fullint64NttCrtWIN(const uint32_t* x0, const uint32_t* x1, const uint32_t* x2, int64_t nd, uint64_t* r, int64_t len, const uint64_t* k);
 
+#if FULLINT_GENERIC_KERNELS && FULLINT_ARM64_ASM
+// the portable C++ versions where an AArch64 kernel (FullInt.Asm/Sources/arm64) has the name:
+// the reference for the tests and the A/B timings (kernels_generic.cpp)
+uint64_t Fullint64AddNWIN_generic(const uint64_t* a, const uint64_t* b, uint64_t* r, int64_t n);
+uint64_t Fullint64SubNWIN_generic(const uint64_t* a, const uint64_t* b, uint64_t* r, int64_t n);
+uint64_t Fullint64MultWIN_generic(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR);
+#endif
+
 // CPU features for picking kernel versions (Cpu.asm): bit 0 BMI2, bit 1 ADX, bit 2 AVX2
 // (OS-enabled); x86 bit 4 SSE2
 int Fullint64CpuFeatures(void);
 
 // kernel versions for newer CPUs (same contracts as the baseline ones above)
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_X64
 
 void Fullint64MultWIN_adx(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR);   // BMI2 + ADX
 int  Fullint64AndWIN_avx2(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR, int signs);   // AVX2
@@ -100,7 +133,7 @@ uint64_t Fullint64DivQWIN_recipadx(const uint64_t* a, const uint64_t* b, uint64_
 void Fullint64FftShlModWIN_bmi2(const uint64_t* x, uint64_t* dst, int n1, int s);
 // R = A² without BMI2 / ADX (Sqr.asm, mul / adc), the same contract as Fullint64SqrWIN_adx
 void Fullint64SqrWIN(const uint64_t* a, uint64_t* r, int lenA, int lenR);
-#else
+#elif FULLINT_X86
 void Fullint64MultWIN_adx(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR);   // x86 BMI2 + ADX
 int  Fullint64AndWIN_sse2(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR, int signs);   // x86 SSE2
 int  Fullint64OrWIN_sse2(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR, int signs);

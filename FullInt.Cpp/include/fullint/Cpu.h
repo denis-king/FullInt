@@ -33,10 +33,12 @@ struct Cpu
 #pragma warning(suppress : 4996)   // getenv: read once at start-up
         const char* forced = std::getenv("FULLINT_CPU");
         if (forced != nullptr && std::strcmp(forced, "baseline") == 0) return 0;
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_X64
         return Fullint64CpuFeatures() | Recip;
-#else
+#elif FULLINT_X86
         return Fullint64CpuFeatures() | Recip;   // x86: SSE2 (x86/Cpu.asm) and the reciprocal division
+#else
+        return 0;   // the portable C++ kernels (kernels_generic.cpp): one version of each
 #endif
     }
 
@@ -48,6 +50,9 @@ struct Cpu
     static const char* Describe() noexcept
     {
         bool adx = Has(Bmi2 | Adx), avx2 = Has(Avx2);
+#if FULLINT_GENERIC_KERNELS
+        return "all: portable C++ (no asm kernels for this CPU yet)";
+#endif
         if (!Has(Recip)) return "all: baseline";
         if (Has(Sse2)) return Has(Bmi2 | Adx) ? "Mult: adx; And/Or/Xor, Compare: sse2; Div, ToDecString: recip; other: baseline"   // x86
                                               : "And/Or/Xor, Compare: sse2; Div, ToDecString: recip; other: baseline";

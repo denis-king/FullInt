@@ -69,7 +69,7 @@ thread_local bool FftBuffer::busy = false;
 
 bool NativeKernels() noexcept
 {
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_X64
     return Cpu::Has(Cpu::Bmi2 | Cpu::Adx);
 #else
     return false;
@@ -95,7 +95,7 @@ void LowPlusOne(Span v)
 // u, v = u + v, u - v (mod p), in place
 void AddSub(bool native, Span u, Span v)
 {
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_X64
     if (native) { Fullint64FftAddSubWIN_adx(u.data(), v.data(), (int)u.size()); return; }
 #endif
     size_t w = u.size() - 1;
@@ -141,7 +141,7 @@ inline uint64_t Sh(CSpan x, size_t w, size_t j, int bs)
 // dst = x·2^s mod p, 0 <= s < 2N; dst must not be x
 void ShlMod(bool native, CSpan x, int s, Span dst)
 {
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_X64
     if (native) { Fullint64FftShlModWIN_bmi2(x.data(), dst.data(), (int)x.size(), s); return; }
 #endif
     size_t w = x.size() - 1;

@@ -16,7 +16,7 @@ struct Karatsuba
     // fullint_kara_tune fft (Zen 3), the FFT / the Toom levels (with Toom-6): x64 (the FftAdx.asm
     // butterflies) 0.93 at 8192 words, 0.79 at 16384, 0.69 at 32768, 0.61 at 65536, 0.55 at
     // 131072, 1.14 at 4096; x86 (the portable butterflies) 1.2 at 65536, 0.95 at 131072.
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_WORD64
     static inline int FftThreshold = 8192;
 #else
     static inline int FftThreshold = 131072;
@@ -35,7 +35,7 @@ struct Karatsuba
     // 0.59, 4096-8192 0.46-0.50, 16384-131072 0.40-0.50; of GMP 0.42-0.63 from 4096. x86: from
     // 256 words, from 128 when filled (128, 192: of GMP 0.47-0.87; 96 of GMP: products from 48
     // words through the NTT 1.0-3.6, the Toom levels 0.87-1.03 there).
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_WORD64
     static inline int NttThreshold = 896;   // (and from 448 when filled: 512, 768 words)
 #else
     static inline int NttThreshold = 256;
@@ -70,7 +70,7 @@ struct Karatsuba
     // r = a·b (full: r.size() = image.words) or a·b mod β^m - 1 (cyclic: r.size() = m)
     static void NttMultiplyImage(CSpan a, const NttImage& b, Span r);
 
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_WORD64
     // Shorter operand below this many words: the basecase (column) multiply.
     // C# uses 64: there each core call costs ~10-15 ns more (interop). Here a kernel call is
     // a direct call; tuned with fullint_kara_tune (Zen 3): 28..48 are equal within noise and
@@ -108,7 +108,7 @@ struct Karatsuba
     // Squares (a·a, the same words twice) below this many words go to FullIntCore::Sqr (SqrAdx.asm),
     // from it a Karatsuba square level (C#: Karatsuba.SqrThreshold). A Multiply with an explicit
     // Karatsuba threshold other than Threshold (tests, tuning) uses that one for squares too.
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_WORD64
     // 96 with the 8-way SqrAdx.asm (64..832 words of GMP's squares: mean 1.075, with 64 1.12)
     static inline int SqrThreshold = 96;
 #else

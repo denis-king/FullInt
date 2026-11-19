@@ -29,7 +29,7 @@ Tested on Windows: .NET 8 x64 (asm and managed), .NET Framework 4.8 x64 (asm and
 | `win-x64` | x86-64 asm | NASM `-f win64` + MSVC `link.exe` | ✅ builds and runs; see ANALYSIS A1–A3 |
 | `linux-x64` | x86-64 asm (same sources, System V entries of `abi.inc`) | NASM `-f elf64` + `cc -shared -nostdlib -z defs` → `libFullIntOperations_linux_x64.so` | ✅ C# (the x64 core through a DllImport resolver) and C++ (CMake + GCC); all tests pass in Docker, see below |
 | `osx-x64` | x86-64 asm (same sources) | NASM `-f macho64 --prefix _` + `cc -dynamiclib` | ⏳ stub, same as linux-x64 |
-| `linux-arm64` | AArch64 asm | GNU `as` / `clang` | ❌ not started |
+| `linux-arm64` | AArch64 asm (`Sources/arm64`, GNU syntax) + portable C++ kernels for the rest | gcc / clang (`enable_language(ASM)`) | ⏳ C++ library: AddN / SubN / Mult in asm, the rest in C++ (`kernels_generic.cpp`); tested in Docker under QEMU. C#: the managed core |
 | `osx-arm64` (Apple Silicon) | AArch64 asm | `clang` | ❌ not started |
 | `win-arm64` | AArch64 asm | `clang --target=aarch64-pc-windows-msvc` or `armasm64` | ❌ not started |
 | `win-x86` | x86 (32-bit) asm, a port of the x64 kernels (`Sources/x86`) | NASM `-f win32 --prefix _` + MSVC `link.exe` (`Hostx64\x86`) | ✅ all kernels; built next to win-x64 |
@@ -184,6 +184,23 @@ The script mounts the repository read-only and `run-tests.sh` copies it into the
 - builds the `.so` and runs the .NET tests on the x64 asm core, in both CPU modes.
 
 CPU detection and kernel choice are the same as on Windows. First runs (Ryzen 7 7730U, WSL2): every test passed. C++ against Ubuntu's GMP (GCC, fat build) is within about 10% everywhere except short division at 4–32 words (1.14–1.58, open).
+
+### Linux ARM64 (Docker, QEMU emulation)
+
+`docker/linux-arm64` is the same Ubuntu 24.04 setup for `linux/arm64`: gcc, clang, cmake, ninja, GMP and .NET 8. On an x64 machine Docker Desktop runs it under QEMU, so the results show correctness only and the timings mean nothing.
+
+```powershell
+powershell -File docker/test-linux-arm64.ps1             # C++ (gcc) and .NET
+powershell -File docker/test-linux-arm64.ps1 -NoCSharp -Clang
+```
+
+**How the C++ library builds on AArch64:**
+- `src/kernels_generic.cpp` holds every kernel entry in portable C++, mostly a port of the C# managed core with the same contracts.
+- The asm kernels in `FullInt.Asm/Sources/arm64/*.s` replace them one at a time. The C++ version of a replaced kernel stays under the name `..._generic`. The tests compare the kernel against it word for word, and the kernel falls back to it for the cases it does not handle.
+- `-DFULLINT_ARM64_ASM=OFF` builds the C++ kernels only, as the reference for A/B timing.
+- The engine's code paths are selected with `FULLINT_X64` / `FULLINT_X86` / `FULLINT_ARM64`, `FULLINT_X86_FAMILY` (asm with cpuid dispatch) and `FULLINT_WORD64` (the 64-bit paths and thresholds) in `kernels.h`.
+
+Under QEMU, `tar` cannot extract into the container (`Cannot open: Invalid argument`), so `run-tests.sh` copies the sources with `cp`.
 
 ### Managed fallback
 

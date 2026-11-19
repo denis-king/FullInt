@@ -35,7 +35,7 @@ using CSpan = std::span<const uint64_t>;
 
 struct FullIntCore
 {
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_WORD64
     static constexpr size_t RecipWordsMin = 64;
 #else
     static constexpr size_t RecipWordsMin = 1;   // x86: the baseline's d >= 2^32 path is fi_div128 per word
@@ -103,11 +103,13 @@ struct FullIntCore
 
     static void Mult(CSpan a, CSpan b, Span r) noexcept
     {
+#if FULLINT_X86_FAMILY
         if (Cpu::Has(Cpu::Bmi2 | Cpu::Adx))   // mulx / adcx / adox (MultAdx.asm; x86: in 32-bit digits)
         {
             Fullint64MultWIN_adx(a.data(), b.data(), r.data(), (int)a.size(), (int)b.size(), (int)r.size());
             return;
         }
+#endif
         Fullint64MultWIN(a.data(), b.data(), r.data(), (int)a.size(), (int)b.size(), (int)r.size());
     }
 
@@ -116,12 +118,14 @@ struct FullIntCore
     // x86 the multiplication a·a
     static void Sqr(CSpan a, Span r) noexcept
     {
+#if FULLINT_X86_FAMILY
         if (Cpu::Has(Cpu::Bmi2 | Cpu::Adx))
         {
             Fullint64SqrWIN_adx(a.data(), r.data(), (int)a.size(), (int)r.size());
             return;
         }
-#if defined(_M_X64) || defined(__x86_64__)
+#endif
+#if FULLINT_X64
         Fullint64SqrWIN(a.data(), r.data(), (int)a.size(), (int)r.size());
 #else
         Mult(a, a, r);
@@ -130,7 +134,7 @@ struct FullIntCore
 
     static void Div(CSpan dividend, CSpan divisor, Span quotient, Span remainder) noexcept
     {
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_WORD64
         if (divisor.size() == 2 && dividend.size() > 2 && Cpu::Has(Cpu::Recip))
         {
             DivBy2(dividend, divisor, quotient, remainder);
@@ -144,7 +148,7 @@ struct FullIntCore
             size_t words = dividend.size() + divisor.size() + 2;
             uint64_t stackWork[96];   // small: no thread_local lookup (a few ns at 3 words)
             uint64_t* work = words <= std::size(stackWork) ? stackWork : DivWork(words);
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_X64
             // the multiply-subtract pass on mulx / adcx / adox: 1.06-1.10x from 64-word divisors
             // (the Burnikel–Ziegler leaves), even at 16..32, slower below (its set-up per step)
             if (divisor.size() >= 16 && Cpu::Has(Cpu::Bmi2 | Cpu::Adx))
@@ -170,7 +174,7 @@ struct FullIntCore
     // below: the guard word's extra step costs more than the shorter passes save. Kernel, 2N / N
     // against Div (the kernel keeping min(lenB, steps left + 2) words of B): x64 (Zen 3) 6 words
     // 1.0, 8 0.95, 12 0.8, 16 0.77, 32 0.67; x86 6 1.03, 8 0.93, 12 0.88, 16 0.77
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_WORD64
     static constexpr size_t QuotientWordsMin = 10;
 #else
     static constexpr size_t QuotientWordsMin = 8;
@@ -185,7 +189,7 @@ struct FullIntCore
             uint64_t stackWork[96];
             uint64_t* qa = words <= std::size(stackWork) ? stackWork : DivWork(words);
             uint64_t* work = qa + lq + 1;
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_X64
             uint64_t saturated = Cpu::Has(Cpu::Bmi2 | Cpu::Adx)
                 ? Fullint64DivQWIN_recipadx(dividend.data(), divisor.data(), qa, nullptr, (int)la, (int)lb, work)
                 : Fullint64DivQWIN_recip(dividend.data(), divisor.data(), qa, nullptr, (int)la, (int)lb, work);
@@ -247,7 +251,7 @@ struct FullIntCore
                 if (++q[i] != 0) break;
     }
 
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_WORD64
     // A two-word divisor (GMP's mpn_divrem_2): one 3-by-2 division per quotient word with the
     // reciprocal of the normalized divisor (Moller, Granlund 2011, Algorithm 5; v as invert_pi1
     // in DivRecip.asm), the dividend shifted on the fly, no kernel call (its entry, copy and
@@ -342,10 +346,10 @@ struct FullIntCore
 
     static int Compare(CSpan a, CSpan b) noexcept
     {
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_X64
         if (Cpu::Has(Cpu::Avx2))   // CompareAvx2.asm (different lengths: the baseline inside)
             return Fullint64CompareWIN_avx2(a.data(), b.data(), (int)a.size(), (int)b.size());
-#else
+#elif FULLINT_X86
         if (Cpu::Has(Cpu::Sse2))   // x86 CompareSse2.asm (different lengths: the baseline inside)
             return Fullint64CompareWIN_sse2(a.data(), b.data(), (int)a.size(), (int)b.size());
 #endif
@@ -371,10 +375,10 @@ struct FullIntCore
 
     static int And(CSpan a, bool negA, CSpan b, bool negB, Span r) noexcept
     {
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_X64
         if (Cpu::Has(Cpu::Avx2))   // LogicAvx2.asm (negative operands: it falls back to the baseline)
             return Fullint64AndWIN_avx2(a.data(), b.data(), r.data(), (int)a.size(), (int)b.size(), (int)r.size(), Signs(negA, negB));
-#else
+#elif FULLINT_X86
         if (Cpu::Has(Cpu::Sse2))   // x86 LogicSse2.asm (negative operands: the baseline inside)
             return Fullint64AndWIN_sse2(a.data(), b.data(), r.data(), (int)a.size(), (int)b.size(), (int)r.size(), Signs(negA, negB));
 #endif
@@ -383,10 +387,10 @@ struct FullIntCore
 
     static int Or(CSpan a, bool negA, CSpan b, bool negB, Span r) noexcept
     {
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_X64
         if (Cpu::Has(Cpu::Avx2))   // LogicAvx2.asm (negative operands: it falls back to the baseline)
             return Fullint64OrWIN_avx2(a.data(), b.data(), r.data(), (int)a.size(), (int)b.size(), (int)r.size(), Signs(negA, negB));
-#else
+#elif FULLINT_X86
         if (Cpu::Has(Cpu::Sse2))   // x86 LogicSse2.asm (negative operands: the baseline inside)
             return Fullint64OrWIN_sse2(a.data(), b.data(), r.data(), (int)a.size(), (int)b.size(), (int)r.size(), Signs(negA, negB));
 #endif
@@ -395,10 +399,10 @@ struct FullIntCore
 
     static int Xor(CSpan a, bool negA, CSpan b, bool negB, Span r) noexcept
     {
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_X64
         if (Cpu::Has(Cpu::Avx2))   // LogicAvx2.asm (negative operands: it falls back to the baseline)
             return Fullint64XorWIN_avx2(a.data(), b.data(), r.data(), (int)a.size(), (int)b.size(), (int)r.size(), Signs(negA, negB));
-#else
+#elif FULLINT_X86
         if (Cpu::Has(Cpu::Sse2))   // x86 LogicSse2.asm (negative operands: the baseline inside)
             return Fullint64XorWIN_sse2(a.data(), b.data(), r.data(), (int)a.size(), (int)b.size(), (int)r.size(), Signs(negA, negB));
 #endif
@@ -407,7 +411,7 @@ struct FullIntCore
 
     FULLINT_FORCEINLINE static void ShiftLeft(CSpan a, int shift, Span r) noexcept
     {
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_X64
         if (Cpu::Has(Cpu::Avx2))   // ShiftAvx2.asm
         {
             Fullint64ShlWIN_avx2(a.data(), r.data(), (int)a.size(), (int)r.size(), shift);
@@ -419,7 +423,7 @@ struct FullIntCore
 
     FULLINT_FORCEINLINE static void ShiftRight(CSpan a, int shift, Span r) noexcept
     {
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_X64
         if (Cpu::Has(Cpu::Avx2))   // ShiftAvx2.asm
         {
             Fullint64ShrWIN_avx2(a.data(), r.data(), (int)a.size(), (int)r.size(), shift);

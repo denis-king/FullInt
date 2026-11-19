@@ -184,7 +184,7 @@ FullInt64 FullInt64Engine::subMagnitudes(CSpan a, CSpan b, bool neg1, bool neg2)
 // place: it reads both words before writing, from the low end, and the operand ends where the
 // result ends. A result that is not an operand just reuses its capacity. Otherwise (aliased,
 // no room) a new number is made and moved in.
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_WORD64
 // a ± b when both are at most two words (the caller checks): plain 64-bit arithmetic, no kernel call, all words read
 // first (result may be an operand). Writes straight into result's buffer: every buffer holds at
 // least InlineWords words, so no Prepare / Grow - and no call: the function stays a leaf.
@@ -226,7 +226,7 @@ void FullInt64Engine::addIntoShort(FullInt64& result, const FullInt64& value1, c
 // decides, SubN on the words from it. Everything else: addIntoGeneral.
 void FullInt64Engine::addInto(FullInt64& result, const FullInt64& value1, const FullInt64& value2, bool negate2)
 {
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_WORD64
     // a dispatcher only: every case is a jump with the same arguments, so this saves no registers
     // (with the add and the subtract inline it saved eight on every call, the add's four too)
     uint32_t n = value1.size_;
@@ -248,7 +248,7 @@ void FullInt64Engine::addInto(FullInt64& result, const FullInt64& value1, const 
     addIntoGeneral(result, value1, value2, negate2);
 }
 
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_WORD64
 // equal lengths >= 3, same signs, room in result (n + 1 <= cap_), result neither operand
 // (the kernel writes the header too: nothing kept across the call, a jump to it)
 void FullInt64Engine::addIntoAddN(FullInt64& result, const FullInt64& value1, const FullInt64& value2) noexcept
@@ -278,7 +278,7 @@ void FullInt64Engine::addIntoGeneral(FullInt64& result, const FullInt64& value1,
     CSpan a = value1.Words(), b = value2.Words();
     bool same = neg1 == neg2;
 
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_WORD64
     if (a.size() <= 2 && b.size() <= 2)
     {
         addIntoShort(result, value1, value2, negate2);
@@ -368,7 +368,7 @@ void FullInt64Engine::addIntoGeneral(FullInt64& result, const FullInt64& value1,
         }
         else if (lx == ly)
         {
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_WORD64
             // one kernel: the compare from the top, the larger minus the smaller at the words' own
             // places, the zero words above counted (AddSubN.asm); x86 keeps the compare here (with
             // the kernel there: 16-128 words 3-7% slower, its frame and the 32-bit compare loop)
@@ -466,7 +466,7 @@ static FULLINT_FORCEINLINE bool MultShort(CSpan a, CSpan b, uint64_t* r) noexcep
         else FullHelper::Mul2x1(b.data(), a[0], r);
         return true;
     }
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_WORD64
     if (la == 2 && lb == 2)
     {
         if (Karatsuba::Same(a, b)) FullHelper::Sqr2(a.data(), r);
@@ -512,7 +512,7 @@ void FullInt64Engine::multInto(FullInt64& result, const FullInt64& value1, const
 
 // a left shift by bits != 0 inline up to this many words, then the kernel (x64 1-8 words: 4.3-7.8 ns, the
 // kernel 6.2-9.9; x86: a variable 64-bit shift is a helper call per word, the kernel from two words)
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_WORD64
 static constexpr size_t SHIFT_INLINE = 8;
 #else
 static constexpr size_t SHIFT_INLINE = 0;
@@ -524,7 +524,7 @@ static constexpr size_t SHIFT_INLINE = 0;
 // zero runs: the function stays small). Everything else: the general functions (a jump).
 void FullInt64Engine::shiftLeftInto(FullInt64& result, const FullInt64& value, int shift)
 {
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_WORD64
     uint32_t la = value.size_;
     if ((unsigned)(shift - 1) < 63u && la < result.cap_ && &result != &value)
     {
@@ -614,7 +614,7 @@ void FullInt64Engine::shiftLeftIntoGeneral(FullInt64& result, const FullInt64& v
 
 void FullInt64Engine::shiftRightInto(FullInt64& result, const FullInt64& value, int shift)
 {
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_WORD64
     uint32_t la = value.size_;
     if ((unsigned)(shift - 1) < 63u && la <= result.cap_ && &result != &value && !value.neg_)
     {
@@ -803,7 +803,7 @@ void FullInt64Engine::divRem(const FullInt64& value1, const FullInt64& value2, F
         return;
     }
 
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_WORD64
     if (lb == 2 && Cpu::Has(Cpu::Recip))   // two words: the 3-by-2 steps directly (FullIntCore::DivBy2)
     {
         uint64_t local[32], rw[4];
@@ -985,7 +985,7 @@ std::string FullInt64Engine::ToDecString(const FullInt64& value)
     {
         return ToDecStringRecursive(value);
     }
-#if defined(_M_X64) || defined(__x86_64__)
+#if FULLINT_WORD64
     if (w.size() >= (size_t)DecimalConversion::FractionFrom && w.size() <= (size_t)DecimalConversion::FractionMaxWords)
     {
         char text[19 * (DecimalConversion::FractionMaxWords + 4) + 2];

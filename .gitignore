@@ -27,6 +27,8 @@ x86/
 [Ww][Ii][Nn]32/
 [Aa][Rr][Mm]/
 [Aa][Rr][Mm]64/
+# the AArch64 kernels: sources, not a build output
+!FullInt.Asm/Sources/arm64/
 bld/
 [Bb]in/
 [Oo]bj/

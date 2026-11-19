@@ -37,11 +37,13 @@ void Karatsuba::MultiplyLow(CSpan a, CSpan b, Span r)
     size_t la = a.size(), lb = b.size();
     if (std::min(la, lb) < (size_t)MulLoThreshold || n < 8)
     {
+#if FULLINT_X86_FAMILY
         if (Cpu::Has(Cpu::Bmi2 | Cpu::Adx) && n <= la + lb)   // MulLoAdx.asm (x86: in 32-bit digits)
         {
             Fullint64MulLoWIN_adx(a.data(), b.data(), r.data(), (int)la, (int)lb, (int)n);
             return;
         }
+#endif
         std::vector<uint64_t> full(la + lb);
         Multiply(a, b, full);
         std::memset(r.data(), 0, r.size_bytes());
