@@ -53,7 +53,8 @@ The current public API is listed in [docs/OPERATIONS.md](docs/OPERATIONS.md).
 |---|---|---|
 | `win-x64` | NASM x86-64 | working, has known bugs |
 | `win-x86` | NASM x86 (32-bit port of the x64 kernels) | ✅ working, built next to win-x64 |
-| `linux-x64`, `osx-x64` | NASM x86-64 (System V ABI) | sources exist, build scripts are not functional |
+| `linux-x64` | NASM x86-64 (System V ABI) | ✅ working (C# and C++), tested in Docker |
+| `osx-x64` | NASM x86-64 (System V ABI) | sources exist, build script is a stub |
 | `win-arm64`, `linux-arm64`, `osx-arm64` | AArch64 assembly | planned |
 | anything else (incl. ARM32) | managed C# | ✅ complete, slower than asm |
 
@@ -117,6 +118,8 @@ docs/                documentation
 2. **Core 2.0:** binary-only little-endian limbs, small native primitive layer (GMP `mpn`-style), complete managed fallback, immutable public type with generic math.
 3. **NuGet preview:** `win-x64`, `linux-x64`, `osx-x64` native assets plus the managed fallback.
 4. **ARM64 and speed:** AArch64 kernels, FFT/NTT multiplication, divide-and-conquer base conversion.
+   Per-CPU tuning: a defaults table by CPU family, a one-time tuner (`FullInt.Tune()` / `fullint_tune`) that
+   measures the thresholds and kernel variants and writes a profile keyed by the CPU model, loaded at startup.
 5. **Extensions:** GCD, ModPow, roots, primality tests, `BigDecimal`, `BigFloat`.
 
 ## License

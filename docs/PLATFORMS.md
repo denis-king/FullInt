@@ -27,7 +27,7 @@ Tested on Windows: .NET 8 x64 (asm and managed), .NET Framework 4.8 x64 (asm and
 | RID | Native backend | Toolchain | Status |
 |---|---|---|---|
 | `win-x64` | x86-64 asm | NASM `-f win64` + MSVC `link.exe` | ✅ builds and runs; see ANALYSIS A1–A3 |
-| `linux-x64` | x86-64 asm (same sources) | NASM `-f elf64` + `cc -shared` | ⏳ stub in `build-native.sh`: needs PIC-safe calls, wrapper guards, a C# core class |
+| `linux-x64` | x86-64 asm (same sources, System V entries of `abi.inc`) | NASM `-f elf64` + `cc -shared -nostdlib -z defs` → `libFullIntOperations_linux_x64.so` | ✅ C# (the x64 core through a DllImport resolver) and C++ (CMake + GCC); all tests pass in Docker, see below |
 | `osx-x64` | x86-64 asm (same sources) | NASM `-f macho64 --prefix _` + `cc -dynamiclib` | ⏳ stub, same as linux-x64 |
 | `linux-arm64` | AArch64 asm | GNU `as` / `clang` | ❌ not started |
 | `osx-arm64` (Apple Silicon) | AArch64 asm | `clang` | ❌ not started |
@@ -162,7 +162,23 @@ On .NET 8+ the managed kernels typically reach 30–60% of the speed of good asm
 
 ## Testing on other platforms
 
-> **TODO** — not done yet. So far the fallback has only been tested on Windows x64 with `FULLINT_FORCE_MANAGED=1`.
+### Linux x64 (Docker)
+
+`docker/linux-x64` is an Ubuntu 24.04 image (gcc, cmake, ninja, nasm, libgmp-dev, .NET 8 SDK). From Windows:
+
+```powershell
+powershell -File docker/test-linux-x64.ps1                    # C++ and .NET tests
+powershell -File docker/test-linux-x64.ps1 -NoCSharp -Bench   # + the C++ benchmark against GMP (CSV in out/linux-x64)
+```
+
+The script mounts the repository read-only and `run-tests.sh` copies it into the container. It then:
+- builds the C++ library and tests (NASM elf64, GCC -O3);
+- runs the tests with the CPU's kernels and with `FULLINT_CPU=baseline`;
+- builds the `.so` and runs the .NET tests on the x64 asm core, in both CPU modes.
+
+CPU detection and kernel choice are the same as on Windows. First runs (Ryzen 7 7730U, WSL2): every test passed. C++ against Ubuntu's GMP (GCC, fat build) is within about 10% everywhere except short division at 4–32 words (1.14–1.58, open).
+
+### Managed fallback
 
 `FULLINT_FORCE_MANAGED=1` forces the managed core on any machine:
 
@@ -170,13 +186,9 @@ On .NET 8+ the managed kernels typically reach 30–60% of the speed of good asm
 $env:FULLINT_FORCE_MANAGED = "1"; dotnet test FullInt.Tests -c Release --filter "FullyQualifiedName!~BigTestDec"
 ```
 
-On Linux the factory picks the fallback by itself, and the native build only emits warning `FULLINT001`. Planned Docker runs from the repository root:
+Planned for ARM64:
 
 ```powershell
-# linux x64 (native speed)
-docker run --rm -v "${PWD}:/src" -w /src mcr.microsoft.com/dotnet/sdk:8.0 `
-  dotnet test FullInt.Tests -c Release --filter "FullyQualifiedName!~BigTestDec"
-
 # linux arm64 (QEMU emulation in Docker Desktop, slow)
 docker run --rm --platform linux/arm64 -v "${PWD}:/src" -w /src mcr.microsoft.com/dotnet/sdk:8.0 `
   dotnet test FullInt.Tests -c Release --filter "FullyQualifiedName!~BigTestDec"
