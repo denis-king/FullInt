@@ -26,6 +26,22 @@
 %include "abi86.inc"
 CODE_SECTION
 
+; eax = the value of the 4 decimal digits in eax (as loaded: the first char the low byte, the most
+; significant digit); edx scratch
+%macro DIGITS4 0
+	sub eax, 30303030h
+	mov edx, eax
+	shr edx, 8
+	imul eax, eax, 10
+	add eax, edx
+	and eax, 00FF00FFh            ; pairs
+	mov edx, eax
+	shr edx, 16
+	imul eax, eax, 100
+	add eax, edx
+	and eax, 0FFFFh               ; four
+%endmacro
+
 %define CNT    esp
 %define CLO    esp+4
 %define CHI    esp+8
@@ -62,6 +78,8 @@ ENTRY Fullint64FromDecStringWin
 	mov [BLK], edx
 
 .readLoop:
+	cmp dword [BLK], 19
+	je .full
 	xor ebx, ebx                  ; chunk = 0 (ecx:ebx)
 	xor ecx, ecx
 .parseBloch:
@@ -80,6 +98,47 @@ ENTRY Fullint64FromDecStringWin
 	adc ecx, 0
 	dec dword [BLK]
 	jnz .parseBloch
+	jmp .parseBlockDone
+.full:                            ; a full chunk, 19 digits = 8 + 8 + 3: four at once (SWAR, as x64's
+	mov eax, [esi]                ; eight), chunk = (A * 10^8 + B) * 1000 + C
+	DIGITS4
+	mov ebx, eax
+	mov eax, [esi + 4]
+	DIGITS4
+	imul ebx, ebx, 10000
+	add ebx, eax                  ; A: the first eight
+	mov eax, [esi + 8]
+	DIGITS4
+	mov ecx, eax
+	mov eax, [esi + 12]
+	DIGITS4
+	imul ecx, ecx, 10000
+	add ecx, eax                  ; B: the next eight
+	mov eax, ebx
+	mov edx, 100000000
+	mul edx
+	add eax, ecx
+	adc edx, 0                    ; A * 10^8 + B (< 10^16)
+	imul ecx, edx, 1000
+	mov edx, 1000
+	mul edx
+	add edx, ecx                  ; * 1000
+	mov ebx, eax
+	mov ecx, edx
+	movzx eax, byte [esi + 16]    ; C: the last three
+	sub eax, 30h
+	movzx edx, byte [esi + 17]
+	sub edx, 30h
+	lea eax, [eax + eax * 4]
+	lea eax, [edx + eax * 2]
+	movzx edx, byte [esi + 18]
+	sub edx, 30h
+	lea eax, [eax + eax * 4]
+	lea eax, [edx + eax * 2]
+	add ebx, eax
+	adc ecx, 0
+	add esi, 19
+	sub ebp, 19
 .parseBlockDone:
 	mov eax, [CNT]
 	mov [edi + eax*8], ebx

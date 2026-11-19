@@ -681,6 +681,37 @@ void ToStringShapes()
         }
 }
 
+// Parse against GMP on every decimal length 1-400 (every place in the 19-digit chunks and the
+// 8-character groups), random digits / all nines / 1 and zeros, both signs; and a non-digit at
+// every place of the shorter texts is refused (the bytes around '0'-'9' and the high ones)
+void ParseShapes()
+{
+    for (int len = 1; len <= 400; len++)
+        for (int shape = 0; shape < 3; shape++)
+        {
+            std::string t(len, '0');
+            for (int i = 0; i < len; i++)
+                t[i] = shape == 1 ? '9' : shape == 2 ? (i == 0 ? '1' : '0') : (char)('0' + rng() % 10);
+            if (t[0] == '0' && len > 1) t[0] = '7';   // no octal prefix
+            bool neg = rng() & 1;
+            std::string s = (neg ? "-" : "") + t;
+            Mpz e;
+            mpz_set_str(e.v, s.c_str(), 10);
+            CHECK(Same(FullInt64::Parse(s), e.v), "Parse " + std::to_string(len) + " shape " + std::to_string(shape));
+        }
+    const unsigned char badBytes[] = { '/', ':', 0x00, 0x20, 0x7F, 0xFA, 0xFF, 'a' };
+    for (int len = 2; len <= 40; len++)
+        for (int pos = 1; pos < len; pos++)
+            for (unsigned char b : badBytes)
+            {
+                std::string t(len, '5');
+                t[pos] = (char)b;
+                bool threw = false;
+                try { (void)FullInt64::Parse(t); } catch (const std::invalid_argument&) { threw = true; }
+                CHECK(threw, "Parse refuses a non-digit at " + std::to_string(pos) + " of " + std::to_string(len));
+            }
+}
+
 // ShiftLeft into a reused result: every shift 1-140 (bits below and from 32, whole words), lengths
 // 1-12, small top words (the result's top word zero) and full ones, both signs - against GMP
 void ShiftLeftIntoAll()
@@ -1006,6 +1037,7 @@ int main()
     AndLeadingZeros();
     AddSubIntoShapes();
     ShiftLeftIntoAll();
+    ParseShapes();
     ToStringShapes();
     DecimalByHalves();
 

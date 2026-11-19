@@ -1092,9 +1092,23 @@ FullInt64 FullInt64Engine::ToFullInt64(std::string_view value)
         return 99;
     };
     bool bad = false;
-    if (base == 10)   // one compare per character, no early exit: the compiler vectorizes it
+    if (base == 10)
     {
-        for (char c : value) bad |= (unsigned char)(c - '0') > 9;
+        // eight characters at a time (SWAR): a digit's byte is 30h-39h - its high nibble 3, and still
+        // 3 after + 6 (a carry into the next byte only from a byte >= FAh, rejected by the first test).
+        // MSVC vectorized the per-character compare, GCC did not: 5-17x slower on Linux.
+        const char* p = value.data();
+        size_t n = value.size(), i = 0;
+        uint64_t acc = 0;
+        for (; i + 8 <= n; i += 8)
+        {
+            uint64_t x;
+            std::memcpy(&x, p + i, 8);
+            acc |= ((x & 0xF0F0F0F0F0F0F0F0ull) ^ 0x3030303030303030ull)
+                 | (((x + 0x0606060606060606ull) & 0xF0F0F0F0F0F0F0F0ull) ^ 0x3030303030303030ull);
+        }
+        bad = acc != 0;
+        for (; i < n; i++) bad |= (unsigned char)(p[i] - '0') > 9;
     }
     else
     {
