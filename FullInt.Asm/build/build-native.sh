@@ -4,9 +4,11 @@
 #
 #  Usage: build-native.sh <Debug|Release> <linux|osx> <x64|arm64> <objDir> <binDir>
 #
-#  Status: skeleton. No Unix target is enabled yet; FullInt.AsmForNet.csproj
-#  only calls this script for RIDs listed in FullIntNativeSupportedRids.
-#  Each target below documents what is missing before it can be enabled.
+#  linux-x64: the x64 sources with NASM -f elf64 (abi.inc gives every entry the System V
+#  arguments: the same names and contracts as Windows), linked into
+#  libFullIntOperations_linux_x64.so. The others: not yet (each documents what is missing).
+#  FullInt.AsmForNet.csproj calls this script for the RIDs in FullIntNativeSupportedRids.
+#  FULLINT_NASM / CC override the tools.
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
@@ -31,13 +33,19 @@ not_implemented() {
 
 case "$OS-$ARCH" in
     linux-x64)
-        # TODO(linux-x64):
-        #   - guard the *WIN wrappers with %ifidn __OUTPUT_FORMAT__, win64
-        #   - make internal calls PIC-safe (call sym wrt ..plt) or drop the wrappers
-        #   - preserve rbx/rbp/r12-r15 (System V callee-saved)
-        #   - nasm -f elf64 [-g -F dwarf]  →  cc -shared -o libFullIntOperations_linux_x64.so
-        #   - C#: FullIntCoreLinuxX64 bound to the SysV entry points
-        not_implemented "see TODO(linux-x64) in FullInt.Asm/build/build-native.sh" ;;
+        NASM="${FULLINT_NASM:-nasm}"
+        DBG=()
+        [[ "$CONFIG" == "Debug" ]] && DBG=(-g -F dwarf)
+        mkdir -p "$OBJ" "$BIN"
+        echo "=== Compiling asm files (elf64) $CONFIG ==="
+        for f in "$ASM_ROOT/Sources/x64/"*.asm; do
+            name="$(basename "$f" .asm)"
+            "$NASM" -f elf64 "${DBG[@]}" -I "$ASM_ROOT/Sources/x64/" "$f" -o "$OBJ/$name.o"
+        done
+        # the kernels' entries are their global symbols (the calls between kernels go to hidden
+        # aliases, abi.inc: no PLT); no C runtime is needed
+        "${CC:-cc}" -shared -nostdlib -Wl,-z,noexecstack -Wl,-z,defs             -o "$BIN/libFullIntOperations_linux_x64.so" "$OBJ"/*.o
+        echo "=== Build finished: $BIN/libFullIntOperations_linux_x64.so ===" ;;
     osx-x64)
         # TODO(osx-x64): same as linux-x64 with `nasm -f macho64` (the sources add the underscore, abi.inc)
         #   and `cc -dynamiclib -o libFullIntOperations_osx_x64.dylib`

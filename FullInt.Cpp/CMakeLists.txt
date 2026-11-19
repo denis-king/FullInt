@@ -88,11 +88,9 @@ if(FULLINT_WITH_GMP)
     target_link_libraries(fullint_tests PRIVATE FullInt::fullint "${GMP_LIBRARY}")
     add_test(NAME fullint_tests COMMAND fullint_tests)
 
-    if(WIN32)   # the benchmarks: Windows so far (windows.h: the process priority, the timers)
     add_executable(fullint_bench_api bench/api_vs_gmp.cpp)
     target_include_directories(fullint_bench_api PRIVATE "${GMP_INCLUDE_DIR}")
     target_link_libraries(fullint_bench_api PRIVATE FullInt::fullint "${GMP_LIBRARY}")
-    endif()
 
     if(WIN32 AND FULLINT_ARCH STREQUAL "x64")   # the kernel benchmark compares 64-bit limbs with GMP's
         add_executable(fullint_bench_kernels bench/kernels_vs_gmp.cpp)

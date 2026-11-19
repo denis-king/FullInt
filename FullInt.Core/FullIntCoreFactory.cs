@@ -40,7 +40,15 @@ namespace FullInt.Core
 				{
 					if (arch == Architecture.X64)
 					{
-						
+#if NET5_0_OR_GREATER
+						// the same x64 kernels (their entries take the System V arguments on Linux,
+						// abi.inc): the x64 core, its library name resolved to the .so
+						return NativeOrManaged(() =>
+						{
+							LinuxX64Library.Register();
+							return new FullIntCoreWindowsX64();
+						});
+#endif
 					}
 					else if (arch == Architecture.Arm64)
 					{

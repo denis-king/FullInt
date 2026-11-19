@@ -26,7 +26,12 @@ namespace FullInt.Tests
             bool forced = Environment.GetEnvironmentVariable(FullIntCoreFactory.ForceManagedEnvVar) == "1";
             bool windows = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows);
             var arch = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture;
-            var expected = forced || !windows ? typeof(FullInt64CoreDefault)
+            bool linux = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Linux);
+            // Linux x64 (.NET 5+): the same x64 asm core, its library resolved to the .so
+            bool linuxX64 = linux && arch == System.Runtime.InteropServices.Architecture.X64 && Environment.Version.Major >= 5;
+            var expected = forced ? typeof(FullInt64CoreDefault)
+                : linuxX64 ? typeof(FullIntCoreWindowsX64)
+                : !windows ? typeof(FullInt64CoreDefault)
                 : arch == System.Runtime.InteropServices.Architecture.X64 ? typeof(FullIntCoreWindowsX64)
                 : arch == System.Runtime.InteropServices.Architecture.X86 ? typeof(FullIntCoreWindowsX86)
                 : typeof(FullInt64CoreDefault);

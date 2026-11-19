@@ -25,7 +25,7 @@
 
   <!-- ===================== target platform ===================== -->
   <PropertyGroup>
-    <FullIntNativeSupportedRids>win-x64;win-x86</FullIntNativeSupportedRids>
+    <FullIntNativeSupportedRids>win-x64;win-x86;linux-x64</FullIntNativeSupportedRids>
 
     <FullIntNativeRid Condition="'$(FullIntNativeRid)' == ''">$(RuntimeIdentifier)</FullIntNativeRid>
   </PropertyGroup>

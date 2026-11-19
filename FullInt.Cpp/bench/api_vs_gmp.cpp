@@ -29,8 +29,13 @@
 #include <utility>
 #include <vector>
 
+#if defined(_WIN32)
 #define NOMINMAX
 #include <windows.h>
+#else
+#include <pthread.h>
+#include <sched.h>
+#endif
 
 using fullint::FullInt64;
 
@@ -62,7 +67,7 @@ long long Now()
 // (inlined, no std::function's indirect call), and the call keeps the compiler from moving the
 // work out of the loop - the same for both libraries
 template <class F>
-__declspec(noinline) void Call(const F& f) { f(); }
+FULLINT_NOINLINE void Call(const F& f) { f(); }
 
 template <class F>
 double Batch(const F& f, long long iters)
@@ -152,8 +157,15 @@ int main(int argc, char** argv)
     if (csv) std::fprintf(csv, "op,n,fullint_cpp_ns,gmp_ns\n");
     bool withNet = !netRows.empty();
 
+#if defined(_WIN32)
     SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
     SetThreadAffinityMask(GetCurrentThread(), 1ull << 2);
+#else
+    cpu_set_t cpus;   // one core, as on Windows (the priority: the container's default)
+    CPU_ZERO(&cpus);
+    CPU_SET(2, &cpus);
+    pthread_setaffinity_np(pthread_self(), sizeof cpus, &cpus);
+#endif
 
     const int sizes[] = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 1024, 4096, 16384, 65536 };
 
