@@ -72,7 +72,7 @@ END Fullint64Div2longWIN_recip
 //  v = floor((β^3 - 1) / (d1·β + d0)) - β: RECIP of d1, then RECIP_3BY2 for d0.
 //
 //  Registers (all the long divisions): x1 B, x2 Q (moving up), x4 steps left, x5 n = lenB,
-//  x6 W (its top word), x7 d1, x8 d0, x9 v, x10 sh, x11 = -sh, x12 the mask, x13-x15 and
+//  x6 W (its top word), x7 d1, x8 d0, x9 v, x10 sh, x11 = -sh, x12 the mask, x13-x17 and
 //  x19-x24 scratch (x19-x24 saved at the entry). x0 / x3 the kernel's own (A, R).
 // =============================================================================
 
@@ -159,19 +159,33 @@ END Fullint64Div2longWIN_recip
     add x19, x1, x15, lsl #3            // past B's kept words
     add x20, x6, x15, lsl #3
     add x20, x20, #8                    // past W's word against B's lowest one
-    mov x21, xzr                        // the carry
-16: ldr x22, [x19, #-8]!                // W -= q^·B, from the low end
-    ldr x23, [x20, #-8]!
-    mul x13, x22, x14
-    umulh x15, x22, x14
-    adds x13, x13, x21
-    adc x15, x15, xzr
-    subs x23, x23, x13
-    cinc x21, x15, lo                   // + the borrow
-    str x23, [x20]
-    subs x24, x24, #1
-    b.ne 16b
-    ldr x23, [x6]
+    mov x21, xzr                        // the carry (the amount owed to the next word up)
+    tbz x24, #0, 37f                    // W -= q^·B from the low end: an odd word first,
+    ldr x13, [x19, #-8]!                // then two a step
+    ldr x15, [x20, #-8]!
+    mul x16, x13, x14
+    umulh x21, x13, x14
+    subs x15, x15, x16
+    cinc x21, x21, lo                   // + the borrow
+    str x15, [x20]
+37: lsr x24, x24, #1
+    cbz x24, 39f
+38: ldp x15, x13, [x19, #-16]!          // b1, b0 (b0 the lower)
+    mul x16, x13, x14
+    umulh x22, x13, x14
+    mul x17, x15, x14
+    umulh x23, x15, x14
+    ldp x15, x13, [x20, #-16]!          // w1, w0
+    subs x13, x13, x16                  // the low halves first (not on the carry)
+    sbcs x15, x15, x17
+    cinc x23, x23, lo
+    subs x13, x13, x21                  // then the carry and b0's high half: the only chain
+    sbcs x15, x15, x22                  // from step to step (h1 + both borrows < β: the
+    cinc x21, x23, lo                   // step's q^·b + carry < β^3)
+    stp x15, x13, [x20]
+    sub x24, x24, #1
+    cbnz x24, 38b
+39: ldr x23, [x6]
     subs x23, x23, x21
     str x23, [x6]
     b.lo 17f                            // a borrow out of the top: W < 0
