@@ -9,8 +9,10 @@
 //    void Fullint64ShrWIN(A, R, int lenA, int lenR, int shift)    lenR >= max(lenA - ws, 1)
 //         R = [lead zeros][A[0 .. lenA - ws - 1] shifted right by s]; R may be A (with ws >= 1
 //         and an overlap: from the low end)
-//  From the top, two words a pass (ldp / stp post-increment); s = 0 a plain copy (a shift by
-//  64 - 0 would be by 0 on AArch64: the register shifts take the count mod 64).
+//  From the top: an odd word, two words, then four a step on NEON (ld1 / st1 of two vectors;
+//  the neighbouring words by ext; ushl by s and by s - 64, a negative count shifting right);
+//  s = 0 a plain copy (a shift by 64 - 0 would be by 0 on AArch64: the register shifts take the
+//  count mod 64). v0-v6, v16, v17 scratch (v8-v15 untouched: callee-saved).
 //
 //  Registers: x0 A, x1 R (moving up), x2 lenA (then the words left), x3 lenR, x4 s, x5 ws,
 //  x6 the lead, x7 the previous (upper) word, x8 = -s (64 - s mod 64), x9-x14 the words.
@@ -37,9 +39,8 @@ ENTRY Fullint64ShlWIN
     lsr x10, x9, x8                     // (prev << s = 0)
     str x10, [x1], #8
     mov x7, x9
-3:  lsr x2, x2, #1
-    cbz x2, 8f
-4:  ldp x9, x10, [x0], #16              // two a pass: out = prev << s | cur >> (64 - s)
+3:  tbz x2, #1, 4f
+    ldp x9, x10, [x0], #16              // two words: out = prev << s | cur >> (64 - s)
     lsl x11, x7, x4
     lsr x12, x9, x8
     orr x11, x11, x12
@@ -48,8 +49,26 @@ ENTRY Fullint64ShlWIN
     orr x12, x12, x13
     stp x11, x12, [x1], #16
     mov x7, x10
+4:  lsr x2, x2, #2                      // four a step (NEON): lane 0 the upper word
+    cbz x2, 8f
+    dup v16.2d, x4                      // ushl by s: << s
+    sub x9, x4, #64
+    dup v17.2d, x9                      // ushl by s - 64 (negative): >> (64 - s)
+    mov v0.d[1], x7                     // the previous word in lane 1
+5:  ld1 {v1.2d, v2.2d}, [x0], #32       // cur: A[i] .. A[i+3]
+    ext v3.16b, v0.16b, v1.16b, #8      // prev: A[i-1], A[i]
+    ext v4.16b, v1.16b, v2.16b, #8      //       A[i+1], A[i+2]
+    ushl v3.2d, v3.2d, v16.2d
+    ushl v5.2d, v1.2d, v17.2d
+    orr v3.16b, v3.16b, v5.16b
+    ushl v4.2d, v4.2d, v16.2d
+    ushl v6.2d, v2.2d, v17.2d
+    orr v4.16b, v4.16b, v6.16b
+    st1 {v3.2d, v4.2d}, [x1], #32
+    mov v0.16b, v2.16b
     sub x2, x2, #1
-    cbnz x2, 4b
+    cbnz x2, 5b
+    mov x7, v0.d[1]                     // the last word read
     b 8f
 6:  ldr x9, [x0], #8                    // s = 0: out = prev
     str x7, [x1], #8
@@ -96,9 +115,8 @@ ENTRY Fullint64ShrWIN
     lsr x10, x9, x4                     // (prev << (64 - s) = 0)
     str x10, [x1], #8
     mov x7, x9
-4:  lsr x2, x2, #1
-    cbz x2, 10f
-5:  ldp x9, x10, [x0], #16              // two a pass (both read before written: R may be A)
+4:  tbz x2, #1, 5f
+    ldp x9, x10, [x0], #16              // two words (both read before written: R may be A)
     lsr x11, x9, x4                     // out = cur >> s | prev << (64 - s)
     lsl x12, x7, x8
     orr x11, x11, x12
@@ -107,8 +125,26 @@ ENTRY Fullint64ShrWIN
     orr x12, x12, x13
     stp x11, x12, [x1], #16
     mov x7, x10
+5:  lsr x2, x2, #2                      // four a step (NEON; read before written)
+    cbz x2, 10f
+    dup v16.2d, x8                      // ushl by -s: >> s
+    mov x9, #64
+    sub x9, x9, x4
+    dup v17.2d, x9                      // ushl by 64 - s: << (64 - s)
+    mov v0.d[1], x7                     // the previous (upper) word in lane 1
+6:  ld1 {v1.2d, v2.2d}, [x0], #32       // cur: A[i] .. A[i+3]
+    ext v3.16b, v0.16b, v1.16b, #8      // prev: A[i-1], A[i]
+    ext v4.16b, v1.16b, v2.16b, #8      //       A[i+1], A[i+2]
+    ushl v5.2d, v1.2d, v16.2d
+    ushl v3.2d, v3.2d, v17.2d
+    orr v3.16b, v3.16b, v5.16b
+    ushl v6.2d, v2.2d, v16.2d
+    ushl v4.2d, v4.2d, v17.2d
+    orr v4.16b, v4.16b, v6.16b
+    st1 {v3.2d, v4.2d}, [x1], #32
+    mov v0.16b, v2.16b
     sub x2, x2, #1
-    cbnz x2, 5b
+    cbnz x2, 6b
     ret
 8:  ldr x9, [x0], #8                    // s = 0: a copy
     str x9, [x1], #8

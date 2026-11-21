@@ -70,7 +70,18 @@ struct Karatsuba
     // r = a·b (full: r.size() = image.words) or a·b mod β^m - 1 (cyclic: r.size() = m)
     static void NttMultiplyImage(CSpan a, const NttImage& b, Span r);
 
-#if FULLINT_WORD64
+#if FULLINT_ARM64
+    // AArch64, fullint_kara_tune on a Cortex-X1 (Galaxy S21+, 2026-11-21; the 4-way rows of
+    // arith.inc): the basecase ~1.9 cycles a word product, a Karatsuba level pays off from 24
+    // words (32: 0.89 of the basecase, 48: 0.80, 64: 0.72, 128: 0.57; 48 was 0.08-0.10 worse
+    // from 64 words). Toom-3 from 192 (of Karatsuba alone: 192 0.96, 768 0.90, 2048 0.83, 4096
+    // 0.78; from 128 it loses 5% at 128). Toom-4 from 256 (512 0.94, 1024-4096 0.90, 8192 0.83).
+    // Toom-6 from 512, as on x64 (768 0.92, 1024-1536 0.95, 3072-8192 0.86-0.91).
+    static inline int Threshold = 24;
+    static inline int Toom3Threshold = 192;
+    static inline int Toom4Threshold = 256;
+    static inline int Toom6Threshold = 512;
+#elif FULLINT_WORD64
     // Shorter operand below this many words: the basecase (column) multiply.
     // C# uses 64: there each core call costs ~10-15 ns more (interop). Here a kernel call is
     // a direct call; tuned with fullint_kara_tune (Zen 3): 28..48 are equal within noise and

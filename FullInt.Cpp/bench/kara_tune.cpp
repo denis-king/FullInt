@@ -7,6 +7,7 @@
 //   fullint_kara_tune toom       Toom-3 threshold: base = Karatsuba alone (at --kara T)
 //   fullint_kara_tune toom4      Toom-4 threshold: base = Karatsuba + Toom-3 (--kara, default Toom-3)
 //   fullint_kara_tune fft        FFT threshold: base = the Toom levels (default thresholds)
+//   --cpu K: the core to pin to (default 2; the S21+'s big core: 7)
 #include <fullint/Karatsuba.h>
 
 #include <algorithm>
@@ -19,8 +20,12 @@
 #include <string>
 #include <vector>
 
+#if defined(_WIN32)
 #define NOMINMAX
 #include <windows.h>
+#else
+#include <sched.h>
+#endif
 
 using namespace fullint;
 
@@ -48,14 +53,22 @@ int main(int argc, char** argv)
     bool toom4 = argc > 1 && std::strcmp(argv[1], "toom4") == 0;
     bool toom6 = argc > 1 && std::strcmp(argv[1], "toom6") == 0;
     bool toom = fft || toom4 || toom6 || (argc > 1 && std::strcmp(argv[1], "toom") == 0);
-    int kara = Karatsuba::Threshold, rounds = 7;
+    int kara = Karatsuba::Threshold, rounds = 7, cpu = 2;
     for (int i = 1; i < argc; i++)
     {
         if (std::strcmp(argv[i], "--kara") == 0 && i + 1 < argc) kara = std::atoi(argv[++i]);
         if (std::strcmp(argv[i], "--rounds") == 0 && i + 1 < argc) rounds = std::atoi(argv[++i]);
+        if (std::strcmp(argv[i], "--cpu") == 0 && i + 1 < argc) cpu = std::atoi(argv[++i]);
     }
+#if defined(_WIN32)
     SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
-    SetThreadAffinityMask(GetCurrentThread(), 1ull << 2);
+    SetThreadAffinityMask(GetCurrentThread(), 1ull << cpu);
+#else
+    cpu_set_t cpus;
+    CPU_ZERO(&cpus);
+    CPU_SET(cpu, &cpus);
+    sched_setaffinity(0, sizeof cpus, &cpus);
+#endif
 
     std::vector<int> sizes = fft ? std::vector<int>{ 2048, 4096, 8192, 16384, 32768, 65536, 131072 }
                            : toom6 ? std::vector<int>{ 512, 768, 1024, 1536, 2048, 3072, 4096, 6144, 8192 }
