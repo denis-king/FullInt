@@ -11,7 +11,7 @@
 //
 // Each cell: a batch of >= 3 ms, the minimum over rounds, the two sides interleaved.
 //
-// usage: fullint_bench_api [--ops add,mul,...] [--max N] [--quick] [--net file.csv] [--csv file]
+// usage: fullint_bench_api [--ops add,mul,...] [--max N] [--cpu K (the core to pin to; default 2)] [--quick] [--net file.csv] [--csv file]
 //   --quick: 1 ms batches and 3 rounds - a fast "did it help" check, noisier than the full run
 #include <fullint/FullInt64.h>
 #include <gmp.h>
@@ -144,27 +144,29 @@ std::string ops;   // ",add,mul," or empty for all
 int main(int argc, char** argv)
 {
     int maxN = 4096;
+    int benchCpu = 2;
     for (int i = 1; i < argc; i++)
     {
         std::string a = argv[i];
         if (a == "--max" && i + 1 < argc) maxN = std::atoi(argv[++i]);
+        else if (a == "--cpu" && i + 1 < argc) benchCpu = std::atoi(argv[++i]);
         else if (a == "--net" && i + 1 < argc) LoadNet(argv[++i]);
         else if (a == "--quick") { batchTarget = 1e6; quickRounds = 3; }
         else if (a == "--ops" && i + 1 < argc) ops = std::string(",") + argv[++i] + ",";
         else if (a == "--csv" && i + 1 < argc) csv = std::fopen(argv[++i], "w");
-        else { std::printf("usage: %s [--max N] [--net file.csv] [--csv file]\n", argv[0]); return 2; }
+        else { std::printf("usage: %s [--max N] [--cpu K] [--net file.csv] [--csv file]\n", argv[0]); return 2; }
     }
     if (csv) std::fprintf(csv, "op,n,fullint_cpp_ns,gmp_ns\n");
     bool withNet = !netRows.empty();
 
 #if defined(_WIN32)
     SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
-    SetThreadAffinityMask(GetCurrentThread(), 1ull << 2);
+    SetThreadAffinityMask(GetCurrentThread(), 1ull << benchCpu);
 #else
-    cpu_set_t cpus;   // one core, as on Windows (the priority: the container's default)
+    cpu_set_t cpus;   // one core, as on Windows (the priority: the default)
     CPU_ZERO(&cpus);
-    CPU_SET(2, &cpus);
-    pthread_setaffinity_np(pthread_self(), sizeof cpus, &cpus);
+    CPU_SET(benchCpu, &cpus);
+    sched_setaffinity(0, sizeof cpus, &cpus);   // (0: this thread; Android's libc has no pthread_setaffinity_np)
 #endif
 
     const int sizes[] = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 1024, 4096, 16384, 65536 };
