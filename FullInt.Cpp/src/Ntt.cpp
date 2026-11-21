@@ -26,7 +26,23 @@ namespace {
 
 constexpr int MaxLog = 22;
 
-bool Available() { return Cpu::Has(Cpu::Avx2); }   // NttAvx2.asm (x64 and x86)
+// the kernels: NttAvx2.asm on x64 / x86 (with AVX2), the portable C++ ones on AArch64
+// (ntt_portable.cpp)
+#if FULLINT_X86_FAMILY
+bool Available() { return Cpu::Has(Cpu::Avx2); }
+#define NTT(name) Fullint64Ntt##name##WIN_avx2
+#define NTT_CRT Fullint64NttCrtWIN
+#define NTT_V(name) Fullint64Ntt##name##WIN_avx2
+#else
+bool Available() { return true; }
+#define NTT(name) Fullint64Ntt##name##WIN_portable
+#define NTT_CRT Fullint64NttCrtWIN_portable
+#if FULLINT_ARM64_ASM
+#define NTT_V(name) Fullint64Ntt##name##WIN_neon   // the radix-2 levels, Point, Scale: NttNeon.s
+#else
+#define NTT_V(name) Fullint64Ntt##name##WIN_portable
+#endif
+#endif
 
 constexpr size_t Block = size_t(1) << 12;
 constexpr uint32_t Primes[3] = { 943718401u, 918552577u, 880803841u };
@@ -61,7 +77,11 @@ struct Tables
         // the top level h = n/2 by multiplication, the others every other entry of the next
         size_t h = n / 2;
         uint64_t w = PowMod(Generators[k], (p - 1) / n, p);
+#if FULLINT_X86_FAMILY
         uint64_t cur = (uint64_t(1) << 32) % p;   // w^0 in Montgomery form
+#else
+        uint64_t cur = 1;                         // AArch64: w^0 itself (Shoup's form, below)
+#endif
         for (size_t j = 0; j < h; j++)
         {
             W[h + j] = (uint32_t)cur;
@@ -78,8 +98,16 @@ struct Tables
             }
         for (size_t i = 1; i < n; i++)
         {
+#if FULLINT_X86_FAMILY
             Wq[i] = W[i] * inv;
             IWq[i] = IW[i] * inv;
+#else
+            // AArch64: the twiddles by Shoup's method, wq = floor(w·2^32 / p): a·w mod p as
+            // a·w - hi(a·wq)·p in [0, 2p) for any a < 2^32 - five NEON instructions against
+            // Montgomery's nine (ntt_portable.cpp, NttNeon.s)
+            Wq[i] = (uint32_t)(((uint64_t)W[i] << 32) / p);
+            IWq[i] = (uint32_t)(((uint64_t)IW[i] << 32) / p);
+#endif
         }
     }
 };
@@ -128,15 +156,15 @@ void Forward(uint32_t* x, size_t L, const uint32_t* w, const uint32_t* wq, uint3
 {
     if (L > Block)
     {
-        Fullint64NttDif2WIN_avx2(x, (int64_t)L, (int64_t)(L / 2), w, wq, p);
+        NTT_V(Dif2)(x, (int64_t)L, (int64_t)(L / 2), w, wq, p);
         size_t q = L / 4;
         for (int i = 0; i < 4; i++) Forward(x + i * q, q, w, wq, p);
         return;
     }
     size_t h = L / 2;
-    for (; h >= 16; h /= 4) Fullint64NttDif2WIN_avx2(x, (int64_t)L, (int64_t)h, w, wq, p);
-    if (h == 8) Fullint64NttDif1WIN_avx2(x, (int64_t)L, 8, w, wq, p);
-    Fullint64NttDif3WIN_avx2(x, (int64_t)L, w, wq, p);
+    for (; h >= 16; h /= 4) NTT_V(Dif2)(x, (int64_t)L, (int64_t)h, w, wq, p);
+    if (h == 8) NTT_V(Dif1)(x, (int64_t)L, 8, w, wq, p);
+    NTT_V(Dif3)(x, (int64_t)L, w, wq, p);
 }
 
 // decimation in time with the inverse twiddles: Forward backwards (without the L^-1)
@@ -146,21 +174,21 @@ void Inverse(uint32_t* x, size_t L, const uint32_t* w, const uint32_t* wq, uint3
     {
         size_t q = L / 4;
         for (int i = 0; i < 4; i++) Inverse(x + i * q, q, w, wq, p);
-        Fullint64NttDit2WIN_avx2(x, (int64_t)L, (int64_t)(L / 2), w, wq, p);
+        NTT_V(Dit2)(x, (int64_t)L, (int64_t)(L / 2), w, wq, p);
         return;
     }
-    Fullint64NttDit3WIN_avx2(x, (int64_t)L, w, wq, p);
+    NTT_V(Dit3)(x, (int64_t)L, w, wq, p);
     size_t h = 8;
     while (h < L)
     {
         if (2 * h < L)
         {
-            Fullint64NttDit2WIN_avx2(x, (int64_t)L, (int64_t)(2 * h), w, wq, p);
+            NTT_V(Dit2)(x, (int64_t)L, (int64_t)(2 * h), w, wq, p);
             h *= 4;
         }
         else
         {
-            Fullint64NttDit1WIN_avx2(x, (int64_t)L, (int64_t)h, w, wq, p);
+            NTT_V(Dit1)(x, (int64_t)L, (int64_t)h, w, wq, p);
             h *= 2;
         }
     }
@@ -214,7 +242,7 @@ void Forward3(uint32_t* x, size_t M, const R3Constants* k, const Tables& t)
         Forward(x, M, t.W.data(), t.Wq.data(), t.p);
         return;
     }
-    Fullint64NttR3DifWIN_avx2(x, (int64_t)M, k->c, t.p);
+    NTT(R3Dif)(x, (int64_t)M, k->c, t.p);
     for (int i = 0; i < 3; i++) Forward(x + i * M, M, t.W.data(), t.Wq.data(), t.p);
 }
 
@@ -226,7 +254,7 @@ void Inverse3(uint32_t* x, size_t M, const R3Constants* k, const Tables& t)
         return;
     }
     for (int i = 0; i < 3; i++) Inverse(x + i * M, M, t.IW.data(), t.IWq.data(), t.p);
-    Fullint64NttR3DitWIN_avx2(x, (int64_t)M, k->c, t.p);
+    NTT(R3Dit)(x, (int64_t)M, k->c, t.p);
 }
 
 // the cyclic convolution of a and b in L 32-bit digits (L = 2^k or 3·2^k, at least the digits
@@ -258,29 +286,29 @@ uint64_t NttConvolve(CSpan a, CSpan b, Span r, size_t L, const uint32_t* image =
             fk = std::make_unique<R3Constants>(k, t, L, false);
             ik = std::make_unique<R3Constants>(k, t, L, true);
         }
-        Fullint64NttLoadWIN_avx2(a.data(), (int64_t)a.size(), x, (int64_t)L, t.p);
+        NTT(Load)(a.data(), (int64_t)a.size(), x, (int64_t)L, t.p);
         Forward3(x, M, fk.get(), t);
         if (image)
         {
-            Fullint64NttPointWIN_avx2(x, image + k * L, (int64_t)L, t.p, t.pinv);   // b's transform kept
+            NTT_V(Point)(x, image + k * L, (int64_t)L, t.p, t.pinv);   // b's transform kept
         }
         else if (square)
         {
-            Fullint64NttPointWIN_avx2(x, x, (int64_t)L, t.p, t.pinv);
+            NTT_V(Point)(x, x, (int64_t)L, t.p, t.pinv);
         }
         else
         {
-            Fullint64NttLoadWIN_avx2(b.data(), (int64_t)b.size(), y, (int64_t)L, t.p);
+            NTT(Load)(b.data(), (int64_t)b.size(), y, (int64_t)L, t.p);
             Forward3(y, M, fk.get(), t);
-            Fullint64NttPointWIN_avx2(x, y, (int64_t)L, t.p, t.pinv);
+            NTT_V(Point)(x, y, (int64_t)L, t.p, t.pinv);
         }
         Inverse3(x, M, ik.get(), t);
         // × 2^32·L^-1 (a Montgomery product by 2^64·L^-1): the pointwise products left one 2^-32
         uint64_t c = (uint64_t(1) << 32) % t.p;
         c = c * c % t.p * PowMod(L, t.p - 2, t.p) % t.p;
-        Fullint64NttScaleWIN_avx2(x, (int64_t)((nd + 7) & ~size_t(7)), t.p, (uint32_t)c, (uint32_t)c * t.pinv);
+        NTT_V(Scale)(x, (int64_t)((nd + 7) & ~size_t(7)), t.p, (uint32_t)c, (uint32_t)c * t.pinv);
     }
-    return Fullint64NttCrtWIN(buf, buf + L, buf + 2 * L, (int64_t)nd, r.data(), (int64_t)len, crt.k);
+    return NTT_CRT(buf, buf + L, buf + 2 * L, (int64_t)nd, r.data(), (int64_t)len, crt.k);
 }
 
 bool Fits(size_t len) { return 2 * len <= (size_t(1) << MaxLog); }
@@ -352,7 +380,7 @@ Karatsuba::NttImage Karatsuba::NttPrepare(CSpan b, size_t words, bool cyclic)
         uint32_t* y = img.data.data() + k * L;
         std::unique_ptr<R3Constants> fk;
         if (r3) fk = std::make_unique<R3Constants>(k, t, L, false);
-        Fullint64NttLoadWIN_avx2(b.data(), (int64_t)b.size(), y, (int64_t)L, t.p);
+        NTT(Load)(b.data(), (int64_t)b.size(), y, (int64_t)L, t.p);
         Forward3(y, M, fk.get(), t);
     }
     return img;

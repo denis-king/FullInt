@@ -39,7 +39,12 @@ struct Karatsuba
     // 0.59, 4096-8192 0.46-0.50, 16384-131072 0.40-0.50; of GMP 0.42-0.63 from 4096. x86: from
     // 256 words, from 128 when filled (128, 192: of GMP 0.47-0.87; 96 of GMP: products from 48
     // words through the NTT 1.0-3.6, the Toom levels 0.87-1.03 there).
-#if FULLINT_WORD64
+    // AArch64 (Cortex-X1; NttNeon.s, Shoup's twiddles, 4 lanes): 4096 x 4096 words 0.98 of the
+    // Toom levels (1.09 of GMP); 1024 still 1.16-1.22 of them, and the divisions / Parse with
+    // the NTT on their products from 448 words 1.15-1.25 of without: from 4096.
+#if FULLINT_ARM64
+    static inline int NttThreshold = 4096;
+#elif FULLINT_WORD64
     static inline int NttThreshold = 896;   // (and from 448 when filled: 512, 768 words)
 #else
     static inline int NttThreshold = 256;

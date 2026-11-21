@@ -397,8 +397,10 @@ private:
 public:
 
     // equal lengths up to this many words: a plain loop instead of the kernel call (x86 2-16 words:
-    // 0.66-0.78 of the call; x64 from 8 words the AVX2 kernel is ahead, 2 words still 0.6 for % )
-#if FULLINT_X64
+    // 0.66-0.78 of the call; x64 from 8 words the AVX2 kernel is ahead, 2 words still 0.6 for % ;
+    // AArch64: the loop up to 16 was 1.17-1.25 of GMP at 8-16 words, the CmpN kernel (ldp pairs)
+    // 0.77 at 32)
+#if FULLINT_X64 || FULLINT_ARM64
     static constexpr size_t ShortLoopCompareWords = 2;
 #else
     static constexpr size_t ShortLoopCompareWords = 16;

@@ -43,7 +43,7 @@ if(FULLINT_ARCH STREQUAL "arm64")
         enable_language(ASM)
         file(GLOB FULLINT_ASM_SOURCES CONFIGURE_DEPENDS "${FULLINT_ASM_DIR}/*.s")
     endif()
-    add_library(fullint_kernels STATIC src/kernels_generic.cpp ${FULLINT_ASM_SOURCES})
+    add_library(fullint_kernels STATIC src/kernels_generic.cpp src/ntt_portable.cpp ${FULLINT_ASM_SOURCES})
     target_include_directories(fullint_kernels PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
     target_compile_definitions(fullint_kernels PUBLIC FULLINT_ARM64_ASM=$<BOOL:${FULLINT_ARM64_ASM}>)
     # .include "abi.inc" (from the sources' directory); the object format for the macros there
@@ -111,6 +111,8 @@ if(FULLINT_ARCH STREQUAL "arm64" AND FULLINT_ARM64_ASM)
     add_executable(fullint_arm64_kernels tests/arm64_kernels.cpp)
     find_package(Threads REQUIRED)   # (the test's watchdog)
     target_link_libraries(fullint_arm64_kernels PRIVATE FullInt::kernels Threads::Threads)
+    add_executable(fullint_ntt_parts EXCLUDE_FROM_ALL bench/ntt_parts.cpp)   # the NTT kernels one by one
+    target_link_libraries(fullint_ntt_parts PRIVATE FullInt::kernels)
 endif()
 
 add_executable(fullint_kara_tune EXCLUDE_FROM_ALL bench/kara_tune.cpp)
