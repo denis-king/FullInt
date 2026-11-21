@@ -78,6 +78,17 @@
     mov \u\().16b, \d\().16b
 .endm
 
+// the twiddle 1 (the level h = 1: W[1] = w_2^0, Shoup's form keeps it 1): (u, v) -> (u + v,
+// u - v), no product - DIF and DIT alike
+.macro BFLY1 u, v, s=v4, t=v6
+    add \s\().4s, \u\().4s, \v\().4s
+    sub \v\().4s, \u\().4s, \v\().4s
+    add \v\().4s, \v\().4s, v30.4s
+    RED \s, \t
+    RED \v, \t
+    mov \u\().16b, \s\().16b
+.endm
+
 .macro SETUP_P p
     dup v31.4s, \p
     add v30.4s, v31.4s, v31.4s
@@ -118,7 +129,7 @@
 // the levels 4, 2, 1 inside the registers, two blocks of 8 a step (x0 x, x1 L, x2 W, x3 Wq):
 //   A, B = a0..a3, a4..a7       level 4: (A, B) with W[4..7]
 //   U = a0 a1 a4 a5, V = a2 a3 a6 a7 (zip of 64-bit halves)    level 2: W[2], W[3] twice
-//   P = a0 a4 a2 a6, Q = a1 a5 a3 a7 (uzp of 32-bit lanes)     level 1: W[1]
+//   P = a0 a4 a2 a6, Q = a1 a5 a3 a7 (uzp of 32-bit lanes)     level 1: W[1] = 1, no product
 // stored as P, Q: the inverse (dif = 0) loads them so, runs the levels 1, 2, 4 and undoes the
 // shuffles on the way (zip of lanes, zip of halves), storing in natural order.
 .macro TWIDDLES_LAST3
@@ -128,10 +139,6 @@
     mov v22.d[1], v22.d[0]
     ldr d23, [x3, #8]
     mov v23.d[1], v23.d[0]
-    add x9, x2, #4                      // W[1]
-    ld1r {v24.4s}, [x9]
-    add x9, x3, #4
-    ld1r {v25.4s}, [x9]
 .endm
 
 .macro LAST3 dif
@@ -154,11 +161,11 @@
     uzp1 v19.4s, v2.4s, v3.4s
     uzp2 v3.4s, v2.4s, v3.4s
     mov v2.16b, v19.16b
-    DIF_BFLY v0, v1, v24, v25           // level 1
-    DIF_BFLY v2, v3, v24, v25
+    BFLY1 v0, v1                        // level 1 (w = 1)
+    BFLY1 v2, v3
 .else
-    DIT_BFLY v0, v1, v24, v25           // level 1 on P, Q
-    DIT_BFLY v2, v3, v24, v25
+    BFLY1 v0, v1                        // level 1 on P, Q (w = 1)
+    BFLY1 v2, v3
     zip1 v19.4s, v0.4s, v1.4s           // U, V
     zip2 v1.4s, v0.4s, v1.4s
     mov v0.16b, v19.16b
@@ -250,3 +257,109 @@ ENTRY Fullint64NttScaleWIN_neon
     b.ne 6b
     ret
 END Fullint64NttScaleWIN_neon
+
+// -----------------------------------------------------------------------------
+// The radix-3 level of a transform of N = 3M values (x64 NttAvx2.asm has the formulas), four j
+// a step. k (Montgomery form): [0..7] w^0..7, [8..15] w^0,2,..,14, [16] w^8, [24] its q,
+// [48] ω, [56] its q, [64] p^-1. The twiddles w^j, w^2j made as the loop goes: times w^4 and
+// w^8 a step, kept below p; their q (·p^-1) computed a step. x0 x, x1 M, x2 k, w3 p.
+// Registers: v29 p^-1, v28 / v27 ω and its q, v26 / v25 w^4 and its q, v24 / v23 w^8 and its
+// q, v22 w^j, v21 w^2j; v0-v7, v16-v20 scratch.
+.macro R3_SETUP
+    SETUP_P w3
+    ldr q29, [x2, #256]                 // p^-1
+    ldr q28, [x2, #192]                 // ω
+    ldr q27, [x2, #224]
+    ldr q22, [x2]                       // w^0..3
+    ldr q21, [x2, #32]                  // w^0,2,4,6
+    add x9, x2, #16
+    ld1r {v26.4s}, [x9]                 // w^4
+    mul v25.4s, v26.4s, v29.4s
+    ldr q24, [x2, #64]                  // w^8
+    ldr q23, [x2, #96]
+    add x4, x0, x1, lsl #2              // x + M
+    add x5, x4, x1, lsl #2              // x + 2M
+.endm
+
+// the twiddles four j on: w^j·w^4, w^2j·w^8, below p
+.macro R3_STEP
+    MULW v3, v22, v26, v25, v16, v17, v18
+    sub v6.4s, v3.4s, v31.4s
+    umin v22.4s, v3.4s, v6.4s
+    MULW v3, v21, v24, v23, v16, v17, v18
+    sub v6.4s, v3.4s, v31.4s
+    umin v21.4s, v3.4s, v6.4s
+.endm
+
+// y0 = x0 + x1 + x2, y1 = (x0 - x2 + ω·(x1 - x2))·w^j, y2 = (x0 - x1 - ω·(x1 - x2))·w^2j
+ENTRY Fullint64NttR3DifWIN_neon
+    R3_SETUP
+7:  ldr q0, [x0]
+    ldr q1, [x4]
+    ldr q2, [x5]
+    sub v3.4s, v1.4s, v2.4s
+    add v3.4s, v3.4s, v30.4s
+    MULW v4, v3, v28, v27, v16, v17, v18    // u = ω·(x1 - x2)
+    add v5.4s, v0.4s, v1.4s                 // y0
+    RED v5, v6
+    add v5.4s, v5.4s, v2.4s
+    RED v5, v6
+    sub v3.4s, v0.4s, v2.4s                 // y1
+    add v3.4s, v3.4s, v30.4s
+    RED v3, v6
+    add v3.4s, v3.4s, v4.4s
+    mul v19.4s, v22.4s, v29.4s
+    MULW v7, v3, v22, v19, v16, v17, v18
+    sub v3.4s, v0.4s, v1.4s                 // y2
+    add v3.4s, v3.4s, v30.4s
+    RED v3, v6
+    sub v3.4s, v3.4s, v4.4s
+    add v3.4s, v3.4s, v30.4s
+    mul v19.4s, v21.4s, v29.4s
+    MULW v20, v3, v21, v19, v16, v17, v18
+    str q5, [x0], #16
+    str q7, [x4], #16
+    str q20, [x5], #16
+    R3_STEP
+    subs x1, x1, #4
+    b.ne 7b
+    ret
+END Fullint64NttR3DifWIN_neon
+
+// y1' = y1·w^j, y2' = y2·w^2j (w and ω inverted); x0 = y0 + y1' + y2',
+// x1 = y0 - y2' + ω·(y1' - y2'), x2 = y0 - y1' - ω·(y1' - y2')
+ENTRY Fullint64NttR3DitWIN_neon
+    R3_SETUP
+8:  ldr q0, [x0]
+    ldr q1, [x4]
+    ldr q2, [x5]
+    mul v19.4s, v22.4s, v29.4s
+    MULW v3, v1, v22, v19, v16, v17, v18    // y1'
+    mul v19.4s, v21.4s, v29.4s
+    MULW v7, v2, v21, v19, v16, v17, v18    // y2'
+    sub v4.4s, v3.4s, v7.4s
+    add v4.4s, v4.4s, v30.4s
+    MULW v20, v4, v28, v27, v16, v17, v18   // u = ω·(y1' - y2')
+    add v5.4s, v0.4s, v3.4s                 // x0
+    RED v5, v16
+    add v5.4s, v5.4s, v7.4s
+    RED v5, v16
+    sub v4.4s, v0.4s, v7.4s                 // x1
+    add v4.4s, v4.4s, v30.4s
+    RED v4, v16
+    add v4.4s, v4.4s, v20.4s
+    RED v4, v16
+    sub v6.4s, v0.4s, v3.4s                 // x2
+    add v6.4s, v6.4s, v30.4s
+    RED v6, v16
+    sub v6.4s, v6.4s, v20.4s
+    add v6.4s, v6.4s, v30.4s
+    RED v6, v16
+    str q5, [x0], #16
+    str q4, [x4], #16
+    str q6, [x5], #16
+    R3_STEP
+    subs x1, x1, #4
+    b.ne 8b
+    ret
+END Fullint64NttR3DitWIN_neon

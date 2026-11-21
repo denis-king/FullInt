@@ -72,7 +72,8 @@ int main(int argc, char** argv)
     row("Dit3 (levels 1, 2, 4)", Time([&] { Fullint64NttDit3WIN_neon(x.data(), L, W.data(), Wq.data(), p); }));
     row("Point", Time([&] { Fullint64NttPointWIN_neon(x.data(), y.data(), L, p, pinv); }));
     row("Scale", Time([&] { Fullint64NttScaleWIN_neon(x.data(), L, p, 12345, 12345 * pinv); }));
-    row("R3Dif (M = L/3 of L)", Time([&] { Fullint64NttR3DifWIN_portable(x.data(), L / 3 / 8 * 8, k.data(), p); }));
+    row("R3Dif (M = L/3 of L)", Time([&] { Fullint64NttR3DifWIN_neon(x.data(), L / 3 / 8 * 8, k.data(), p); }));
+    row("R3Dit (M = L/3 of L)", Time([&] { Fullint64NttR3DitWIN_neon(x.data(), L / 3 / 8 * 8, k.data(), p); }));
     row("Load (L/4 words, zeros to L)", Time([&] { Fullint64NttLoadWIN_portable(a.data(), L / 4, x.data(), L, p); }));
     row("Crt (L/2 digits)", Time([&] { Fullint64NttCrtWIN_portable(x.data(), x1.data(), x2.data(), L / 2, r.data(), L / 4, crt); }));
     row("Dif1 portable (h = 8)", Time([&] { Fullint64NttDif1WIN_portable(x.data(), L, 8, W.data(), Wq.data(), p); }));

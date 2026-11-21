@@ -38,7 +38,7 @@ bool Available() { return true; }
 #define NTT(name) Fullint64Ntt##name##WIN_portable
 #define NTT_CRT Fullint64NttCrtWIN_portable
 #if FULLINT_ARM64_ASM
-#define NTT_V(name) Fullint64Ntt##name##WIN_neon   // the radix-2 levels, Point, Scale: NttNeon.s
+#define NTT_V(name) Fullint64Ntt##name##WIN_neon   // the levels, Point, Scale: NttNeon.s
 #else
 #define NTT_V(name) Fullint64Ntt##name##WIN_portable
 #endif
@@ -242,7 +242,7 @@ void Forward3(uint32_t* x, size_t M, const R3Constants* k, const Tables& t)
         Forward(x, M, t.W.data(), t.Wq.data(), t.p);
         return;
     }
-    NTT(R3Dif)(x, (int64_t)M, k->c, t.p);
+    NTT_V(R3Dif)(x, (int64_t)M, k->c, t.p);
     for (int i = 0; i < 3; i++) Forward(x + i * M, M, t.W.data(), t.Wq.data(), t.p);
 }
 
@@ -254,7 +254,7 @@ void Inverse3(uint32_t* x, size_t M, const R3Constants* k, const Tables& t)
         return;
     }
     for (int i = 0; i < 3; i++) Inverse(x + i * M, M, t.IW.data(), t.IWq.data(), t.p);
-    NTT(R3Dit)(x, (int64_t)M, k->c, t.p);
+    NTT_V(R3Dit)(x, (int64_t)M, k->c, t.p);
 }
 
 // the cyclic convolution of a and b in L 32-bit digits (L = 2^k or 3·2^k, at least the digits

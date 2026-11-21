@@ -185,12 +185,11 @@ inline uint64_t MulShoup(uint64_t a, uint64_t b, uint64_t bs, uint64_t p)
 uint64_t Fullint64NttCrtWIN_portable(const uint32_t* x0, const uint32_t* x1, const uint32_t* x2, int64_t nd,
                                      uint64_t* r, int64_t len, const uint64_t* k)
 {
-    uint64_t p1 = k[0], p2 = k[1], p3 = k[2], inv12 = k[3], inv12s = k[4], p1m3 = k[5], p1m3s = k[6];
-    uint64_t inv123 = k[7], inv123s = k[8], p1p2 = k[9];
-    unsigned __int128 acc = 0;
-    uint64_t low = 0;
-    for (int64_t i = 0; i < nd; i++)
-    {
+    const uint64_t p1 = k[0], p2 = k[1], p3 = k[2], inv12 = k[3], inv12s = k[4], p1m3 = k[5], p1m3s = k[6];
+    const uint64_t inv123 = k[7], inv123s = k[8], p1p2 = k[9];
+    (void)nd;   // = 2·len
+    // the digit's value v1 + p1·v2 + p1p2·v3 (< 2^90): independent from digit to digit
+    auto value = [&](int64_t i) {
         uint64_t v1 = x0[i];
         uint64_t v1m2 = v1 >= p2 ? v1 - p2 : v1;
         uint64_t d = x1[i] + p2 - v1m2;                       // (0, 2·p2)
@@ -201,12 +200,18 @@ uint64_t Fullint64NttCrtWIN_portable(const uint32_t* x0, const uint32_t* x1, con
         t = t >= p3 ? t - p3 : t;
         t = t >= p3 ? t - p3 : t;
         uint64_t v3 = MulShoup(t, inv123, inv123s, p3);
-        acc += v1 + p1 * v2 + (unsigned __int128)p1p2 * v3;
-        uint64_t digit = (uint32_t)acc;
-        acc >>= 32;
-        if (i & 1) r[len - 1 - i / 2] = digit << 32 | low;
-        else low = digit;
+        return v1 + p1 * v2 + (unsigned __int128)p1p2 * v3;
+    };
+    // two digits a word: acc += value(2w) + value(2w + 1)·2^32 (< 2^123), the word out, acc >>= 64
+    // - one 128-bit carry chain a word
+    unsigned __int128 acc = 0;
+    for (int64_t w = 0; w < len; w++)
+    {
+        acc += value(2 * w) + (value(2 * w + 1) << 32);
+        r[len - 1 - w] = (uint64_t)acc;
+        acc >>= 64;
     }
+    // (nd = 2·len) the carry out of the top word: below 2^64 for the products here
     return (uint64_t)acc;
 }
 
