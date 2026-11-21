@@ -204,18 +204,6 @@ END Fullint64Div2longWIN_recip
 19: str x14, [x2], #8
 .endm
 
-.macro SAVE_X19_X24
-    stp x19, x20, [sp, #-48]!
-    stp x21, x22, [sp, #16]
-    stp x23, x24, [sp, #32]
-.endm
-
-.macro RESTORE_X19_X24
-    ldp x21, x22, [sp, #16]
-    ldp x23, x24, [sp, #32]
-    ldp x19, x20, [sp], #48
-.endm
-
 // =============================================================================
 //  uint64 Fullint64DivWin(A, B, Q, R, int lenA, int lenB)
 //  B without leading zero words. R: lenB + 2 words - R[0] = R[1] = 0, the remainder right-

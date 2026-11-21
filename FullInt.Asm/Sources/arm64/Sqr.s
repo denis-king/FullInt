@@ -14,10 +14,11 @@
 //
 //  Registers: x0 A, x1 R, x2 n, x3 lenR, x4 a_i's address, x5 r_(2i)'s end, x6 the row's
 //  length, x7 a_i, x8 / x9 / x10 the row's A / R pointers and count, x11 the carry, x12-x15
-//  the words.
+//  the words; the rows' scratch x12-x17, x19-x24 (saved at the entry).
 // =============================================================================
 
 ENTRY Fullint64SqrWIN
+    SAVE_X19_X24
     sxtw x2, w2
     sxtw x3, w3
     mov x8, x1                          // R cleared: the rows add into it
@@ -37,7 +38,7 @@ ENTRY Fullint64SqrWIN
     mov x8, x4
     mov x9, x5
     mov x10, x6
-    ADDMUL_1 x8, x9, x10, x7, x11, x12, x13, x14, x15
+    ADDMUL_1 x8, x9, x10, x7, x11, x12, x13, x14, x15, x16, x17, x19, x20, x21, x22, x23, x24
     str x11, [x9, #-8]                  // r_(i+n)
 3:  sub x4, x4, #8
     sub x5, x5, #8
@@ -67,6 +68,7 @@ ENTRY Fullint64SqrWIN
     stp x12, x13, [x8]
     subs x2, x2, #1
     b.ne 6b
+    RESTORE_X19_X24
     ret
 END Fullint64SqrWIN
 
@@ -79,9 +81,11 @@ END Fullint64SqrWIN
 //  otherwise its carry is dropped. Rows j < min(lenB, n).
 //
 //  Registers: x0 A's end, x1 b_j's end, x2 R's end (past r_0), x3 lenA, x4 rows left, x5 n - j,
-//  x6 b_j, x7 / x8 / x9 the row's A / R pointers and count, x10 the carry, x11-x14 the words.
+//  x6 b_j, x7 / x8 / x9 the row's A / R pointers and count, x10 the carry; the rows' scratch
+//  x11-x17, x19-x23 (x19-x24 saved at the entry).
 // =============================================================================
 ENTRY Fullint64MulLoWIN
+    SAVE_X19_X24
     sxtw x3, w3
     sxtw x4, w4
     sxtw x5, w5
@@ -101,7 +105,7 @@ ENTRY Fullint64MulLoWIN
     mov x8, x2
     cmp x3, x5
     csel x9, x3, x5, ls                 // min(lenA, n - j)
-    ADDMUL_1 x7, x8, x9, x6, x10, x11, x12, x13, x14
+    ADDMUL_1 x7, x8, x9, x6, x10, x11, x12, x13, x14, x15, x16, x17, x19, x20, x21, x22, x23
     cmp x3, x5
     b.hs 4f                             // lenA >= n - j: the top word is at n or above
     str x10, [x8, #-8]                  // r_(lenA+j)
@@ -109,5 +113,6 @@ ENTRY Fullint64MulLoWIN
     sub x5, x5, #1
     subs x4, x4, #1
     b.ne 2b
+    RESTORE_X19_X24
     ret
 END Fullint64MulLoWIN

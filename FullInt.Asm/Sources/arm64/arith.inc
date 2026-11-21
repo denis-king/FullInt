@@ -62,32 +62,122 @@
 // rp[-1 .. -n] = ap[-1 .. -n] * b; ap / rp move down n words (rp at the last word written),
 // n (>= 1) -> 0, c the carry out (the row's next word up). A word product: mul (the low half)
 // and umulh (the high half) - AArch64 has no 64 x 64 -> 128 in one instruction.
-.macro MUL_1 ap, rp, n, b, c, t, lo, hi
+// An odd word first, then two, then four a step: the four products of a step first (ldp, the
+// multiplier busy back to back), then one carry chain over them (adds / adcs: the carry in C).
+// a0-a3, l0-l3, h0-h3: scratch.
+.macro MUL_1 ap, rp, n, b, c, a0, a1, a2, a3, l0, l1, l2, l3, h0, h1, h2, h3
     mov \c, xzr
-81: ldr \t, [\ap, #-8]!
-    mul \lo, \t, \b
-    umulh \hi, \t, \b
-    adds \lo, \lo, \c
-    adc \c, \hi, xzr
-    str \lo, [\rp, #-8]!
-    subs \n, \n, #1
-    b.ne 81b
+    tbz \n, #0, 83f
+    ldr \a0, [\ap, #-8]!
+    mul \l0, \a0, \b
+    umulh \c, \a0, \b
+    str \l0, [\rp, #-8]!
+83: tbz \n, #1, 84f
+    ldp \a1, \a0, [\ap, #-16]!          // a0 the lower word
+    mul \l0, \a0, \b
+    umulh \h0, \a0, \b
+    mul \l1, \a1, \b
+    umulh \h1, \a1, \b
+    adds \l0, \l0, \c
+    adcs \l1, \l1, \h0
+    adc \c, \h1, xzr
+    stp \l1, \l0, [\rp, #-16]!
+84: lsr \n, \n, #2
+    cbz \n, 86f
+85: ldp \a1, \a0, [\ap, #-16]
+    ldp \a3, \a2, [\ap, #-32]!
+    mul \l0, \a0, \b
+    umulh \h0, \a0, \b
+    mul \l1, \a1, \b
+    umulh \h1, \a1, \b
+    mul \l2, \a2, \b
+    umulh \h2, \a2, \b
+    mul \l3, \a3, \b
+    umulh \h3, \a3, \b
+    adds \l0, \l0, \c
+    adcs \l1, \l1, \h0
+    adcs \l2, \l2, \h1
+    adcs \l3, \l3, \h2
+    adc \c, \h3, xzr
+    stp \l1, \l0, [\rp, #-16]
+    stp \l3, \l2, [\rp, #-32]!
+    sub \n, \n, #1
+    cbnz \n, 85b
+86:
 .endm
 
-// rp[-1 .. -n] += ap[-1 .. -n] * b; the same moves, c the carry out
-.macro ADDMUL_1 ap, rp, n, b, c, t, lo, hi, w
+// rp[-1 .. -n] += ap[-1 .. -n] * b; the same moves, c the carry out.
+// Two carry chains a step: R's words onto the products' low halves first (not on c), then the
+// high halves and c - only the second chain carries c to the next step, the first one of the
+// next step runs alongside it (the flags renamed). The top high half takes both chains' carries
+// without overflow: the step's sum is below β^5.
+.macro ADDMUL_1 ap, rp, n, b, c, a0, a1, a2, a3, l0, l1, l2, l3, h0, h1, h2, h3
     mov \c, xzr
-82: ldr \t, [\ap, #-8]!
-    ldr \w, [\rp, #-8]!
-    mul \lo, \t, \b
-    umulh \hi, \t, \b
-    adds \lo, \lo, \c
-    adc \hi, \hi, xzr
-    adds \lo, \lo, \w
-    adc \c, \hi, xzr
-    str \lo, [\rp]
-    subs \n, \n, #1
-    b.ne 82b
+    tbz \n, #0, 87f
+    ldr \a0, [\ap, #-8]!
+    ldr \a1, [\rp, #-8]!
+    mul \l0, \a0, \b
+    umulh \c, \a0, \b
+    adds \l0, \l0, \a1
+    adc \c, \c, xzr
+    str \l0, [\rp]
+87: tbz \n, #1, 88f
+    ldp \a1, \a0, [\ap, #-16]!
+    mul \l0, \a0, \b
+    umulh \h0, \a0, \b
+    mul \l1, \a1, \b
+    umulh \h1, \a1, \b
+    ldp \a1, \a0, [\rp, #-16]           // R's words
+    adds \l0, \l0, \a0
+    adcs \l1, \l1, \a1
+    adc \h1, \h1, xzr
+    adds \l0, \l0, \c
+    adcs \l1, \l1, \h0
+    adc \c, \h1, xzr
+    stp \l1, \l0, [\rp, #-16]!
+88: lsr \n, \n, #2
+    cbz \n, 90f
+89: ldp \a1, \a0, [\ap, #-16]
+    ldp \a3, \a2, [\ap, #-32]!
+    mul \l0, \a0, \b
+    umulh \h0, \a0, \b
+    mul \l1, \a1, \b
+    umulh \h1, \a1, \b
+    mul \l2, \a2, \b
+    umulh \h2, \a2, \b
+    mul \l3, \a3, \b
+    umulh \h3, \a3, \b
+    ldp \a1, \a0, [\rp, #-16]           // R's words
+    ldp \a3, \a2, [\rp, #-32]
+    adds \l0, \l0, \a0
+    adcs \l1, \l1, \a1
+    adcs \l2, \l2, \a2
+    adcs \l3, \l3, \a3
+    adc \h3, \h3, xzr
+    adds \l0, \l0, \c
+    adcs \l1, \l1, \h0
+    adcs \l2, \l2, \h1
+    adcs \l3, \l3, \h2
+    adc \c, \h3, xzr
+    stp \l1, \l0, [\rp, #-16]
+    stp \l3, \l2, [\rp, #-32]!
+    sub \n, \n, #1
+    cbnz \n, 89b
+90:
+.endm
+
+// x19-x24 (callee-saved) for the kernels that need more than x0-x17: saved at the entry,
+// restored at the exit
+.macro SAVE_X19_X24
+    stp x19, x20, [sp, #-48]!
+    stp x21, x22, [sp, #16]
+    stp x23, x24, [sp, #32]
+.endm
+
+.macro RESTORE_X19_X24
+    ldp x21, x22, [sp, #16]
+    ldp x23, x24, [sp, #32]
+    ldp x19, x20, [sp], #48
 .endm
 
 // q = floor((u1 : u0) / d) for a normalized d (top bit set) and u1 < d, without a 128 / 64

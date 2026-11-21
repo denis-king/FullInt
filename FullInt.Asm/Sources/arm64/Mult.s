@@ -12,9 +12,9 @@
 //
 //  mul_1 / addmul_1: the macros of arith.inc (Sqr and MulLo take them too).
 //
-//  Registers: x0 A, x1 B, x2 R, x3 lenA, x4 rows left, x5 the R word (addmul_1), x6 / x7 the
-//  product's halves, x8 the row's end in R, x9 B's next word (from below), x10 the B word,
-//  x11 / x12 / x13 the row's A / R pointers and count, x14 the carry, x15 the A word.
+//  Registers: x0 A, x1 B, x2 R, x3 lenA, x4 rows left, x8 the row's end in R, x9 B's next word
+//  (from below), x10 the B word, x11 / x12 / x13 the row's A / R pointers and count, x14 the
+//  carry; the rows' scratch x5-x7, x15-x17, x19-x24 (saved at the entry).
 // =============================================================================
 
 ENTRY Fullint64MultWIN
@@ -32,6 +32,7 @@ ENTRY Fullint64MultWIN
 10: sub x6, x5, x3
     subs x6, x6, x4                 // the words above the product
     b.lt 15f
+    SAVE_X19_X24
     mov x7, x2
     b.eq 12f
 11: str xzr, [x7], #8
@@ -43,7 +44,7 @@ ENTRY Fullint64MultWIN
     add x11, x0, x3, lsl #3
     mov x12, x8
     mov x13, x3
-    MUL_1 x11, x12, x13, x10, x14, x15, x6, x7
+    MUL_1 x11, x12, x13, x10, x14, x5, x6, x7, x15, x16, x17, x19, x20, x21, x22, x23, x24
     str x14, [x12, #-8]             // the row's top word
     subs x4, x4, #1
     b.eq 14f
@@ -52,11 +53,12 @@ ENTRY Fullint64MultWIN
     add x11, x0, x3, lsl #3
     mov x12, x8
     mov x13, x3
-    ADDMUL_1 x11, x12, x13, x10, x14, x15, x6, x7, x5
+    ADDMUL_1 x11, x12, x13, x10, x14, x5, x6, x7, x15, x16, x17, x19, x20, x21, x22, x23, x24
     str x14, [x12, #-8]
     subs x4, x4, #1
     b.ne 13b
-14: mov x0, xzr
+14: RESTORE_X19_X24
+    mov x0, xzr
     ret
 15: TAILCALL Fullint64MultWIN_generic   // R shorter than the product (the arguments as they came,
                                         // A / B possibly swapped: the product is the same)
