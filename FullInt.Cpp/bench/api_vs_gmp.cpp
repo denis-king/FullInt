@@ -11,9 +11,12 @@
 //
 // Each cell: a batch of >= 3 ms, the minimum over rounds, the two sides interleaved.
 //
-// usage: fullint_bench_api [--ops add,mul,...] [--max N] [--cpu K (the core to pin to; default 2)] [--quick] [--net file.csv] [--csv file]
+// usage: fullint_bench_api [--ops add,mul,...] [--max N] [--cpu K (the core to pin to; default 2)] [--set name=value ...] [--quick] [--net file.csv] [--csv file]
 //   --quick: 1 ms batches and 3 rounds - a fast "did it help" check, noisier than the full run
+#include <fullint/BurnikelZiegler.h>
 #include <fullint/FullInt64.h>
+#include <fullint/Karatsuba.h>
+#include <fullint/NewtonDivision.h>
 #include <gmp.h>
 
 #include <algorithm>
@@ -48,6 +51,36 @@ uint64_t Next()   // splitmix64 (the .NET side has the same)
     z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull;
     z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
     return z ^ (z >> 31);
+}
+
+// --set name=value: a threshold changed before the run (A/B of the thresholds without a
+// rebuild); false on an unknown name
+bool SetThreshold(const std::string& kv)
+{
+    using namespace fullint;
+    const std::map<std::string, int*> names = {
+        { "kara", &Karatsuba::Threshold }, { "toom3", &Karatsuba::Toom3Threshold },
+        { "toom4", &Karatsuba::Toom4Threshold }, { "toom6", &Karatsuba::Toom6Threshold },
+        { "fft", &Karatsuba::FftThreshold }, { "ntt", &Karatsuba::NttThreshold },
+        { "sqr", &Karatsuba::SqrThreshold }, { "mullo", &Karatsuba::MulLoThreshold },
+        { "bz", &BurnikelZiegler::Threshold }, { "bzquotient", &BurnikelZiegler::QuotientFrom },
+        { "bzsplit", &BurnikelZiegler::QuotientSplitFrom }, { "newton", &NewtonDivision::Threshold },
+        { "newtonlong", &NewtonDivision::LongQuotientThreshold }, { "cyclic", &NewtonDivision::CyclicFrom },
+        { "tostring", &DecimalConversion::ToStringThreshold }, { "parse", &DecimalConversion::ParseThreshold },
+        { "prepared", &DecimalConversion::PreparedFrom }, { "fraction", &DecimalConversion::FractionFrom },
+    };
+    size_t eq = kv.find('=');
+    auto it = names.find(kv.substr(0, eq));
+    if (eq == std::string::npos || it == names.end())
+    {
+        std::printf("--set: unknown threshold '%s'; known:", kv.c_str());
+        for (auto& [name, p] : names) std::printf(" %s", name.c_str());
+        std::printf("\n");
+        return false;
+    }
+    *it->second = std::atoi(kv.c_str() + eq + 1);
+    std::printf("# %s = %d\n", it->first.c_str(), *it->second);
+    return true;
 }
 
 std::vector<uint64_t> Words(int n)   // index 0 = most significant, top word nonzero
@@ -150,11 +183,12 @@ int main(int argc, char** argv)
         std::string a = argv[i];
         if (a == "--max" && i + 1 < argc) maxN = std::atoi(argv[++i]);
         else if (a == "--cpu" && i + 1 < argc) benchCpu = std::atoi(argv[++i]);
+        else if (a == "--set" && i + 1 < argc) { if (!SetThreshold(argv[++i])) return 2; }
         else if (a == "--net" && i + 1 < argc) LoadNet(argv[++i]);
         else if (a == "--quick") { batchTarget = 1e6; quickRounds = 3; }
         else if (a == "--ops" && i + 1 < argc) ops = std::string(",") + argv[++i] + ",";
         else if (a == "--csv" && i + 1 < argc) csv = std::fopen(argv[++i], "w");
-        else { std::printf("usage: %s [--max N] [--cpu K] [--net file.csv] [--csv file]\n", argv[0]); return 2; }
+        else { std::printf("usage: %s [--max N] [--cpu K] [--set name=value] [--net file.csv] [--csv file]\n", argv[0]); return 2; }
     }
     if (csv) std::fprintf(csv, "op,n,fullint_cpp_ns,gmp_ns\n");
     bool withNet = !netRows.empty();

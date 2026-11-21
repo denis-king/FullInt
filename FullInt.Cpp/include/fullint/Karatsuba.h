@@ -16,7 +16,11 @@ struct Karatsuba
     // fullint_kara_tune fft (Zen 3), the FFT / the Toom levels (with Toom-6): x64 (the FftAdx.asm
     // butterflies) 0.93 at 8192 words, 0.79 at 16384, 0.69 at 32768, 0.61 at 65536, 0.55 at
     // 131072, 1.14 at 4096; x86 (the portable butterflies) 1.2 at 65536, 0.95 at 131072.
-#if FULLINT_WORD64
+    // AArch64 (Cortex-X1, the portable butterflies, Toom at the ARM thresholds): 1.34 at 8192
+    // words, 1.07 at 16384, 0.88 at 32768, 0.84 at 65536, 0.71 at 131072.
+#if FULLINT_ARM64
+    static inline int FftThreshold = 32768;
+#elif FULLINT_WORD64
     static inline int FftThreshold = 8192;
 #else
     static inline int FftThreshold = 131072;
