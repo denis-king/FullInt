@@ -1,4 +1,4 @@
-using System.Numerics;
+﻿using System.Numerics;
 using System.Text;
 using FullInt.Core;
 
@@ -17,7 +17,8 @@ namespace FullInt.Tests
         /// <summary>
         /// The factory falls back to the managed core when the native library cannot be loaded.
         /// That must not hide a broken native build: in a 64-bit or 32-bit Windows process the
-        /// matching asm core is expected (unless FULLINT_FORCE_MANAGED=1); elsewhere the managed one.
+        /// matching asm core is expected (unless FULLINT_FORCE_MANAGED=1); on Linux x64 and arm64
+        /// (.NET 5+) the 64-bit core with the .so; elsewhere the managed one.
         /// </summary>
         [TestMethod]
         public void Factory_PicksTheExpectedCore()
@@ -27,8 +28,9 @@ namespace FullInt.Tests
             bool windows = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows);
             var arch = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture;
             bool linux = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Linux);
-            // Linux x64 (.NET 5+): the same x64 asm core, its library resolved to the .so
-            bool linuxX64 = linux && arch == System.Runtime.InteropServices.Architecture.X64 && Environment.Version.Major >= 5;
+            // Linux x64 / arm64 (.NET 5+): the 64-bit asm core, its library resolved to the .so
+            bool linuxX64 = linux && (arch == System.Runtime.InteropServices.Architecture.X64
+                || arch == System.Runtime.InteropServices.Architecture.Arm64) && Environment.Version.Major >= 5;
             var expected = forced ? typeof(FullInt64CoreDefault)
                 : linuxX64 ? typeof(FullIntCoreWindowsX64)
                 : !windows ? typeof(FullInt64CoreDefault)

@@ -582,7 +582,7 @@ void FULLINT_GENERIC(Fullint64MulLoWIN)(const uint64_t* a, const uint64_t* b, ui
     std::memcpy(r, full.data() + full.size() - n, (size_t)n * 8);
 }
 
-int Fullint64CpuFeatures(void) { return 0; }
+int FULLINT_GENERIC(Fullint64CpuFeatures)(void) { return 0; }   // (AArch64 asm: Cpu.s, for the .NET core)
 
 // the FullInt64-object kernels: not this case (the C++ paths take every case)
 int Fullint64AndObjWIN(void*, const void*, const void*) { return 1; }
