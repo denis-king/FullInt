@@ -6,7 +6,9 @@
 #
 #  linux-x64: the x64 sources with NASM -f elf64 (abi.inc gives every entry the System V
 #  arguments: the same names and contracts as Windows), linked into
-#  libFullIntOperations_linux_x64.so. The others: not yet (each documents what is missing).
+#  libFullIntOperations_linux_x64.so. linux-arm64: the AArch64 sources (Sources/arm64) with cc,
+#  linked into libFullIntOperations_linux_arm64.so. The others: not yet (each documents what is
+#  missing).
 #  FullInt.AsmForNet.csproj calls this script for the RIDs in FullIntNativeSupportedRids.
 #  FULLINT_NASM / CC override the tools.
 # ---------------------------------------------------------------------------
@@ -50,9 +52,26 @@ case "$OS-$ARCH" in
         # TODO(osx-x64): same as linux-x64 with `nasm -f macho64` (the sources add the underscore, abi.inc)
         #   and `cc -dynamiclib -o libFullIntOperations_osx_x64.dylib`
         not_implemented "see TODO(osx-x64) in FullInt.Asm/build/build-native.sh" ;;
-    linux-arm64|osx-arm64)
-        # TODO(arm64): AArch64 kernels in Sources/arm64 (GNU .S), built with cc -shared / -dynamiclib
-        not_implemented "AArch64 kernels do not exist yet (Sources/arm64)" ;;
+    linux-arm64)
+        # the AArch64 sources (GNU syntax, directives only: clang or GNU as through cc), linked into
+        # libFullIntOperations_linux_arm64.so: the same entry names and contracts as x64, the
+        # AAPCS64 arguments; the .NET core takes it for FullIntOperations_win_x64.dll
+        # (LinuxNativeLibrary.cs). No C runtime is needed.
+        DBG=()
+        [[ "$CONFIG" == "Debug" ]] && DBG=(-g)
+        mkdir -p "$OBJ" "$BIN"
+        echo "=== Compiling asm files (AArch64 ELF) $CONFIG ==="
+        for f in "$ASM_ROOT/Sources/arm64/"*.s; do
+            name="$(basename "$f" .s)"
+            "${CC:-cc}" -c "${DBG[@]}" -Wa,-I"$ASM_ROOT/Sources/arm64" "$f" -o "$OBJ/$name.o"
+        done
+        "${CC:-cc}" -shared -nostdlib -Wl,-z,noexecstack -Wl,-z,defs \
+            -o "$BIN/libFullIntOperations_linux_arm64.so" "$OBJ"/*.o
+        echo "=== Build finished: $BIN/libFullIntOperations_linux_arm64.so ===" ;;
+    osx-arm64)
+        # TODO(osx-arm64): the same sources with -Wa,--defsym,FULLINT_MACHO=1 (abi.inc adds the
+        #   underscore), cc -dynamiclib -o libFullIntOperations_osx_arm64.dylib; untested (no Mac)
+        not_implemented "see TODO(osx-arm64) in FullInt.Asm/build/build-native.sh" ;;
     *)
         echo "build-native: error: unknown target $OS-$ARCH" >&2
         exit 1 ;;

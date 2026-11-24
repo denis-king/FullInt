@@ -25,7 +25,7 @@
 
   <!-- ===================== target platform ===================== -->
   <PropertyGroup>
-    <FullIntNativeSupportedRids>win-x64;win-x86;linux-x64</FullIntNativeSupportedRids>
+    <FullIntNativeSupportedRids>win-x64;win-x86;linux-x64;linux-arm64</FullIntNativeSupportedRids>
 
     <FullIntNativeRid Condition="'$(FullIntNativeRid)' == ''">$(RuntimeIdentifier)</FullIntNativeRid>
   </PropertyGroup>
@@ -70,7 +70,7 @@
 
   <!-- ===================== build ===================== -->
   <ItemGroup>
-    <FullIntNativeInput Include="$(FullIntAsmDir)Sources\**\*.asm;$(FullIntAsmDir)Sources\**\*.inc;$(FullIntAsmDir)Sources\**\*.S" />
+    <FullIntNativeInput Include="$(FullIntAsmDir)Sources\**\*.asm;$(FullIntAsmDir)Sources\**\*.inc;$(FullIntAsmDir)Sources\**\*.s" />
     <FullIntNativeInput Include="$(FullIntAsmDir)exports.def;$(FullIntAsmDir)build\*" />
   </ItemGroup>
 

@@ -5,7 +5,7 @@
 //  Schoolbook multiplication (AArch64), the contract of x64 Mult.asm:
 //    uint64 Fullint64MultWIN(const uint64* A, const uint64* B, uint64* R, int lenA, int lenB, int lenR)
 //         R = A * B, lenR >= lenA + lenB (the words above the product zeroed; a shorter R - the
-//         product's low words - goes to the portable C++ kernel); returns 0
+//         product's low words - goes to MulLo, Sqr.s); returns 0
 //  Row by row (operand scanning): the longer operand A times one word of B a row, from B's low
 //  end. The first row is mul_1 (R = A * b + carry), the others addmul_1 (R += A * b); each row's
 //  top word is the carry, a word no row before has written.
@@ -60,6 +60,10 @@ ENTRY Fullint64MultWIN
 14: RESTORE_X19_X24
     mov x0, xzr
     ret
-15: TAILCALL Fullint64MultWIN_generic   // R shorter than the product (the arguments as they came,
-                                        // A / B possibly swapped: the product is the same)
+15: stp x29, x30, [sp, #-16]!          // R shorter than the product: its low words, MulLo (Sqr.s:
+    mov x29, sp                         // the same arguments; A / B possibly swapped - the
+    CALL Fullint64MulLoWIN              // product is the same), then 0
+    ldp x29, x30, [sp], #16
+    mov x0, xzr
+    ret
 END Fullint64MultWIN

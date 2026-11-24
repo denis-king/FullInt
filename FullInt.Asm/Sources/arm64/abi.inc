@@ -59,4 +59,13 @@
 .endif
 .endm
 
+// a call to another entry (the caller saves x29 / x30 around it)
+.macro CALL name
+.ifdef FULLINT_MACHO
+    bl _\name
+.else
+    bl \name
+.endif
+.endm
+
     .text

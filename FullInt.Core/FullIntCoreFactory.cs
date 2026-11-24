@@ -45,14 +45,23 @@ namespace FullInt.Core
 						// abi.inc): the x64 core, its library name resolved to the .so
 						return NativeOrManaged(() =>
 						{
-							LinuxX64Library.Register();
+							LinuxNativeLibrary.Register();
 							return new FullIntCoreWindowsX64();
 						});
 #endif
 					}
 					else if (arch == Architecture.Arm64)
 					{
-						
+#if NET5_0_OR_GREATER
+						// the AArch64 kernels (Sources/arm64: the x64 entries' names and contracts,
+						// libFullIntOperations_linux_arm64.so); no x86 feature bits, so the 64-bit
+						// core takes the baseline entries and the division by reciprocal
+						return NativeOrManaged(() =>
+						{
+							LinuxNativeLibrary.Register();
+							return new FullIntCoreWindowsX64();
+						});
+#endif
 					}
 				}
 				else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
