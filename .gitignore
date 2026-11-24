@@ -364,3 +364,7 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# the cloud ARM64 benchmark runs (docker/cloud-arm64/run.sh): builds and results on that machine
+/build-cloud-*/
+/results/
