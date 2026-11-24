@@ -63,7 +63,8 @@ done
 
 if [[ "${NET:-0}" == 1 ]]; then
     # the .NET half (writable homes for the SDK and the packages inside the container)
-    export DOTNET_CLI_HOME=/src/build-cloud-dotnet/home NUGET_PACKAGES=/src/build-cloud-dotnet/nuget
+    export HOME=/src/build-cloud-dotnet/home DOTNET_CLI_HOME=/src/build-cloud-dotnet/home NUGET_PACKAGES=/src/build-cloud-dotnet/nuget
+    mkdir -p "$HOME" "$NUGET_PACKAGES"
     export DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
     echo "== .NET: $(dotnet --version), the cross benchmark"
     dotnet build /src/FullInt.Benchmarks -c Release -f net8.0 > "$OUT/net-build.log" 2>&1 \
