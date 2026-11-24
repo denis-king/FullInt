@@ -13,6 +13,10 @@
 #   OPS=add,mul,...    the benchmark's operations (default: all of them)
 #   CPU=1              the core the benchmark pins itself to (the container's only one)
 #   TESTS=0            skip the tests
+#   SET="kara=12 ..."  thresholds for the C++ benchmark (fullint_bench_api --set, no rebuild)
+#   MAX=4096           the largest size (words)
+#   NET=1              also the .NET half (FullInt.Benchmarks cross: FullInt .NET and BigInteger on
+#                      the same numbers) and one table of GMP / C++ / .NET / BigInteger (table.txt)
 set -euo pipefail
 
 CXX=${CXX:-g++}
@@ -46,11 +50,29 @@ if [[ "${TESTS:-1}" == 1 ]]; then
     FULLINT_CPU=baseline "$BUILD/fullint_tests" | tail -1 | tee -a "$OUT/tests.txt"
 fi
 
+MAX=${MAX:-4096}
+SETS=()
+for kv in ${SET:-}; do SETS+=(--set "$kv"); done
+[[ -n "${SET:-}" ]] && echo "== thresholds: $SET" | tee -a "$OUT/info.txt"
+
 echo "== benchmark: $ROUNDS rounds, core $CPU"
 for r in $(seq 1 "$ROUNDS"); do
-    "$BUILD/fullint_bench_api" --cpu "$CPU" --ops "$OPS" --csv "$OUT/bench$r.csv" > "$OUT/bench$r.txt"
+    "$BUILD/fullint_bench_api" --cpu "$CPU" --ops "$OPS" --max "$MAX" "${SETS[@]}" --csv "$OUT/bench$r.csv" > "$OUT/bench$r.txt"
     echo "   round $r done"
 done
+
+if [[ "${NET:-0}" == 1 ]]; then
+    # the .NET half (writable homes for the SDK and the packages inside the container)
+    export DOTNET_CLI_HOME=/src/build-cloud-dotnet/home NUGET_PACKAGES=/src/build-cloud-dotnet/nuget
+    export DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
+    echo "== .NET: $(dotnet --version), the cross benchmark"
+    dotnet build /src/FullInt.Benchmarks -c Release -f net8.0 > "$OUT/net-build.log" 2>&1 \
+        || { tail -30 "$OUT/net-build.log"; exit 1; }
+    dotnet run --no-build -c Release -f net8.0 --project /src/FullInt.Benchmarks -- cross --ops "$OPS" --max "$MAX" \
+        --csv "$OUT/net.csv" > "$OUT/net.txt"
+    echo "== GMP / C++ / .NET / BigInteger"
+    "$BUILD/fullint_bench_api" --cpu "$CPU" --ops "$OPS" --max "$MAX" "${SETS[@]}" --net "$OUT/net.csv" | tee "$OUT/table.txt"
+fi
 
 # the minimum over the rounds of both columns; x = FullInt C++ / GMP (< 1: faster than GMP)
 awk -F, 'FNR == 1 { next }
