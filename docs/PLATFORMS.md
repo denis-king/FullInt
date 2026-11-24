@@ -29,7 +29,7 @@ Tested on Windows: .NET 8 x64 (asm and managed), .NET Framework 4.8 x64 (asm and
 | `win-x64` | x86-64 asm | NASM `-f win64` + MSVC `link.exe` | ✅ builds and runs; see ANALYSIS A1–A3 |
 | `linux-x64` | x86-64 asm (same sources, System V entries of `abi.inc`) | NASM `-f elf64` + `cc -shared -nostdlib -z defs` → `libFullIntOperations_linux_x64.so` | ✅ C# (the x64 core through a DllImport resolver) and C++ (CMake + GCC); all tests pass in Docker, see below |
 | `osx-x64` | x86-64 asm (same sources) | NASM `-f macho64 --prefix _` + `cc -dynamiclib` | ⏳ stub, same as linux-x64 |
-| `linux-arm64` | AArch64 asm (`Sources/arm64`, GNU syntax) + portable C++ kernels for the rest | gcc / clang (`enable_language(ASM)`) | ⏳ C++ library: every baseline kernel in AArch64 asm (the x64 set without the x86 vector ones); tested in Docker under QEMU against the C++ kernels and GMP. Speed on real hardware: next. C#: the managed core |
+| `linux-arm64` | AArch64 asm (`Sources/arm64`, GNU syntax) + portable C++ kernels for the rest | gcc / clang (`enable_language(ASM)`) | ✅ C++ library: every baseline kernel in AArch64 asm plus the NTT on NEON; tested natively (Galaxy S21+ Cortex-X1, Oracle Ampere A1 Neoverse-N1) against the C++ kernels and GMP. C#: the 64-bit core through `libFullIntOperations_linux_arm64.so` (the same entry names; `Fullint64CpuFeatures` 0, so the baseline entries; `X86Names.s` gives the x86 versions' names) |
 | `osx-arm64` (Apple Silicon) | AArch64 asm | `clang` | ❌ not started |
 | `win-arm64` | AArch64 asm | `clang --target=aarch64-pc-windows-msvc` or `armasm64` | ❌ not started |
 | `win-x86` | x86 (32-bit) asm, a port of the x64 kernels (`Sources/x86`) | NASM `-f win32 --prefix _` + MSVC `link.exe` (`Hostx64\x86`) | ✅ all kernels; built next to win-x64 |
@@ -184,6 +184,15 @@ The script mounts the repository read-only and `run-tests.sh` copies it into the
 - builds the `.so` and runs the .NET tests on the x64 asm core, in both CPU modes.
 
 CPU detection and kernel choice are the same as on Windows. First runs (Ryzen 7 7730U, WSL2): every test passed. C++ against Ubuntu's GMP (GCC, fat build) is within about 10% everywhere except short division at 4–32 words (1.14–1.58, open).
+
+### Linux ARM64 on a cloud machine (native)
+
+`docker/cloud-arm64/run.sh` runs the C++ tests and the API benchmark against GMP (and with `NET=1` the .NET half: one table of GMP / C++ / .NET / BigInteger) inside a container on a native ARM64 machine, e.g. an Oracle Ampere A1 (Neoverse-N1). The script's header has the `docker run` line (one core, `--user`); `SET="kara=12 toom3=96"` sets thresholds without a rebuild. The image needs a user with the host's uid: the .NET SDK's named mutexes fail for an unknown uid.
+
+What the two ARM64 cores showed:
+- **Cortex-X1** (the phone). A 64 x 64 -> 128 product (`mul` + `umulh`) costs about 2 cycles, and the thresholds are Karatsuba 24 and Toom-3 192.
+- **Neoverse-N1** (a Cortex-A76 relative). The scalar multiplier takes 3 cycles for `mul` and 4 for `umulh`, so 7 a word product (`fullint_mul_probe`). Karatsuba pays from 12 words and Toom-3 from 96; NEON `umull` does two 32 x 32 products a cycle.
+- So the ARM64 thresholds should go by the core type: a table by MIDR plus the planned one-time tuner. N1-class cores also want a NEON basecase and decimal conversion.
 
 ### Linux ARM64 (Docker, QEMU emulation)
 
