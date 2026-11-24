@@ -113,6 +113,7 @@ if(FULLINT_ARCH STREQUAL "arm64" AND FULLINT_ARM64_ASM)
     target_link_libraries(fullint_arm64_kernels PRIVATE FullInt::kernels Threads::Threads)
     add_executable(fullint_ntt_parts EXCLUDE_FROM_ALL bench/ntt_parts.cpp)   # the NTT kernels one by one
     target_link_libraries(fullint_ntt_parts PRIVATE FullInt::kernels)
+    add_executable(fullint_mul_probe EXCLUDE_FROM_ALL bench/mul_probe.cpp)   # the multipliers' latency / throughput
 endif()
 
 add_executable(fullint_kara_tune EXCLUDE_FROM_ALL bench/kara_tune.cpp)
