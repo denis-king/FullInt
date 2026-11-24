@@ -4,8 +4,11 @@
 # benchmark against GMP; logs and CSVs go to /src/results/<stamp>-<compiler>/.
 #
 # On the machine (everything on core 1, the other core is not ours):
-#   docker run --rm --cpuset-cpus=1 --memory=6g -v ~/projects/fullint:/src -w /src \
-#       fullint-arm64-bench bash docker/cloud-arm64/run.sh
+#   docker run --rm --cpuset-cpus=1 --memory=6g --user $(id -u):$(id -g) \
+#       -v ~/projects/fullint:/src -w /src fullint-arm64-bench bash docker/cloud-arm64/run.sh
+#   (--user: the builds and results stay the user's. The image needs a user with that uid in its
+#   /etc/passwd - the .NET SDK's named mutexes fail for an unknown uid - fullint-arm64-bench has
+#   one: bench, 1001, the host's ubuntu)
 #
 #   CXX=clang++        the compiler (default g++; the C compiler follows)
 #   MCPU=neoverse-n1   -mcpu for the C++ code (default; MCPU= for none)
@@ -63,10 +66,9 @@ done
 
 if [[ "${NET:-0}" == 1 ]]; then
     # the .NET half (writable homes for the SDK and the packages inside the container)
-    # (TMPDIR: the SDK's named mutexes live there; the image's /tmp/.dotnet belongs to root)
-    export HOME=/src/build-cloud-dotnet/home DOTNET_CLI_HOME=/src/build-cloud-dotnet/home NUGET_PACKAGES=/src/build-cloud-dotnet/nuget
-    export TMPDIR=/src/build-cloud-dotnet/tmp
-    mkdir -p "$HOME" "$NUGET_PACKAGES" "$TMPDIR"
+    # (the packages kept between runs, in the project)
+    export DOTNET_CLI_HOME=/src/build-cloud-dotnet/home NUGET_PACKAGES=/src/build-cloud-dotnet/nuget
+    mkdir -p "$DOTNET_CLI_HOME" "$NUGET_PACKAGES"
     export DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
     echo "== .NET: $(dotnet --version), the cross benchmark"
     dotnet build /src/FullInt.Benchmarks -c Release -f net8.0 > "$OUT/net-build.log" 2>&1 \
