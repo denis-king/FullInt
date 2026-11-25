@@ -114,6 +114,8 @@ if(FULLINT_ARCH STREQUAL "arm64" AND FULLINT_ARM64_ASM)
     add_executable(fullint_ntt_parts EXCLUDE_FROM_ALL bench/ntt_parts.cpp)   # the NTT kernels one by one
     target_link_libraries(fullint_ntt_parts PRIVATE FullInt::kernels)
     add_executable(fullint_mul_probe EXCLUDE_FROM_ALL bench/mul_probe.cpp)   # the multipliers' latency / throughput
+    add_executable(fullint_neon_mul_probe EXCLUDE_FROM_ALL bench/neon_mul_probe.cpp)   # a NEON product prototype
+    target_link_libraries(fullint_neon_mul_probe PRIVATE FullInt::kernels)
 endif()
 
 add_executable(fullint_kara_tune EXCLUDE_FROM_ALL bench/kara_tune.cpp)

@@ -40,7 +40,11 @@ struct DecimalConversion
     // words (16: no gain - the 32 / 16 division ate the smaller kernel's). x64 with the fraction
     // leaves (2026-11-19): 48 - 32-256 words 0.61-0.80 of the division leaves at 24, 1024-4096
     // 0.93 (64: the same, 96: worse from 256)
-#if FULLINT_WORD64
+    // AArch64 narrow-multiplier cores (Cpu::ArmNarrow; Neoverse-N1, --set tostring=): 24 -
+    // 0.92-0.96 of 48 at 32-1024 words.
+#if FULLINT_ARM64
+    static inline int ToStringThreshold = Cpu::ArmNarrow() ? 24 : 48;
+#elif FULLINT_WORD64
     static inline int ToStringThreshold = 48;
 #else
     static inline int ToStringThreshold = 24;
@@ -53,7 +57,13 @@ struct DecimalConversion
     // x64: from this many words a leaf (and a short ToString) by Knuth's fraction method - one
     // product by a cached reciprocal, then one-word multiplications (ToDecStringFrac.asm) instead
     // of a division by 10^19 per word per 19 digits
+    // (AArch64 narrow cores: 16 - at 8 words the division kernel is 0.88 of the fraction method
+    // there, its products by the cached reciprocal dearer on the slow multiplier)
+#if FULLINT_ARM64
+    static inline int FractionFrom = Cpu::ArmNarrow() ? 16 : 8;
+#else
     static inline int FractionFrom = 8;
+#endif
     static constexpr int FractionMaxWords = 128;
 };
 
