@@ -50,6 +50,8 @@ namespace FullInt.Core
     /// </summary>
     public partial class FullInt64Engine
     {
+        private const ulong Pow10_19 = 10_000_000_000_000_000_000UL;   // 19 decimal digits a word
+
         private static FullInt64[] _decimalPowers = Array.Empty<FullInt64>();   // [k] = P_k
         // P_k = 10^(19·2^k) = 2^(19·2^k)·5^(19·2^k): its low 19·2^k bits are zero, about 30% of its
         // words. ToString divides by P_k without its zero low words (P'), the dividend's low words go
@@ -103,7 +105,7 @@ namespace FullInt.Core
                 for (int i = powers.Length; i <= k; i++)
                 {
                     grown[i] = i == 0
-                        ? new FullInt64(false, new ulong[] { FullInt64.maxDecCapasity })
+                        ? new FullInt64(false, new ulong[] { Pow10_19 })
                         : mult(grown[i - 1], grown[i - 1]);
                 }
                 Volatile.Write(ref _decimalPowers, grown);
@@ -192,7 +194,7 @@ namespace FullInt.Core
             if (e != null) return e;
             int m = (int)(n * 64 * 0.30102999566398120 / 19) + 1;
             var d = new FullInt64(1UL);
-            var p19 = new FullInt64(false, new ulong[] { FullInt64.maxDecCapasity });
+            var p19 = new FullInt64(false, new ulong[] { Pow10_19 });
             for (int i = 0; i < m; i++) d = mult(d, p19);
             var num = shiftLeft(new FullInt64(1UL), 64 * (m + 1 + n));
             var q = div(sub(add(num, d), new FullInt64(1UL)), d);

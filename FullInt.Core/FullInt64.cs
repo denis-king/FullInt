@@ -8,11 +8,6 @@ namespace FullInt.Core
     
     public class FullInt64 : IEquatable<FullInt64>
     {
-        public bool IsDec { get; private set; } = false;
-
-        public const ulong maxDecCapasity = 10_000_000_000_000_000_000;
-        public const ulong maxDecValue = maxDecCapasity - 1;
-
         private ulong[] _value = null!;
         public ulong[] value
         {
@@ -36,11 +31,10 @@ namespace FullInt.Core
             return fresh;
         }
 
-        // after a binary-mode result was written into WritableBuffer
+        // after a result was written into WritableBuffer
         internal void SetResult(bool negative)
         {
             _sing = negative;
-            IsDec = false;
         }
 
         // result = other, sharing other's array (the in-place API's fallback paths)
@@ -48,7 +42,6 @@ namespace FullInt.Core
         {
             value = other.value;
             _sing = other.Sing;
-            IsDec = other.IsDec;
             other._owned = false;
         }
 
@@ -68,27 +61,22 @@ namespace FullInt.Core
             Sing = false;
         }
 
-        public FullInt64(bool s, ulong[] value, toBase Base = toBase.hex)
+        public FullInt64(bool s, ulong[] value)
         {
             _value = value;   // the field: a new object owns nothing yet (no setter work)
             this.Sing = s;
-            this.IsDec = Base == toBase.dec;
         }
         public FullInt64(FullInt64 value) : this(value.Sing, value.value)
         {
-            this.IsDec = value.IsDec;
             value._owned = false;   // the array is shared now
         }
 
-        public FullInt64(ulong value, toBase Base = toBase.hex)
+        public FullInt64(ulong value)
         {
-            this.IsDec = Base == toBase.dec;
             _value = new ulong[] { (ulong)value };
         }
-        public FullInt64(long value, toBase Base = toBase.hex)
+        public FullInt64(long value)
         {
-            this.IsDec = Base == toBase.dec;
-
             if (value < 0)
             {
                 this.Sing = true;
@@ -96,10 +84,10 @@ namespace FullInt.Core
             }
             _value = new ulong[] { (ulong)value };
         }
-        public FullInt64(byte value, toBase Base = toBase.hex) : this((long)value, Base)
+        public FullInt64(byte value) : this((long)value)
         {
         }
-        public FullInt64(int value, toBase Base = toBase.hex) : this((long)value, Base)
+        public FullInt64(int value) : this((long)value)
         {
         }
 
@@ -127,7 +115,7 @@ namespace FullInt.Core
         
         public override String ToString()
         {
-            return _engine.ToString(this, (byte)(IsDec ? 10 : 16));
+            return _engine.ToString(this, 16);
         }
 		public String ToString(byte Base)
         {
@@ -165,10 +153,10 @@ namespace FullInt.Core
         }
 
         // Consistent with Equals: same numeric value → same hash, regardless of
-        // leading zero words or decimal/binary storage.
+        // leading zero words.
         public override int GetHashCode()
         {
-            var words = IsDec ? _engine.ConvertToBase(this, toBase.hex).value : value;
+            var words = value;
             int start = 0;
             while (start < words.Length - 1 && words[start] == 0) start++;
 
@@ -318,7 +306,7 @@ namespace FullInt.Core
         // explicit: use ToString()/ToString(base); an implicit conversion silently allocated a string
         public static explicit operator string(FullInt64 value)
         {
-            return _engine.ToString(value, (byte)(value.IsDec ? 10 : 16));
+            return _engine.ToString(value, 16);
         }
         // explicit: an implicit string → number conversion made e.g. x.Equals("5") compile and
         // return true, and turns any string into a number silently

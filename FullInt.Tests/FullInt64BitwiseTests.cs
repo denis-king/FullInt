@@ -38,7 +38,7 @@ namespace FullInt.Tests
             return BigCompat.FromUnsignedLittleEndian(bytes);
         }
 
-        private static FullInt64 ToFull(BigInteger v) => new FullInt64(v.Sign < 0, ToLimbs(BigInteger.Abs(v)), toBase.hex);
+        private static FullInt64 ToFull(BigInteger v) => new FullInt64(v.Sign < 0, ToLimbs(BigInteger.Abs(v)));
 
         private static BigInteger NextValue(Random rnd)
         {

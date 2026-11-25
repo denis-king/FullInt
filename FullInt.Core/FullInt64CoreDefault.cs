@@ -4,28 +4,18 @@ namespace FullInt.Core
 {
     public class FullInt64CoreDefault : IFullIntCore
     {
-        private static toBase Base = toBase.hex;
 
 
         // 64 x 64 -> 128: FullHelper.BigMul (.NET 5+: Math.BigMul, one mul / mulx in the JIT's code;
         // netstandard2.0: the 32-bit split)
-        protected virtual void Mult128(ulong x, ulong y, bool isDec, out ulong lo, out ulong hi)
+        protected virtual void Mult128(ulong x, ulong y, out ulong lo, out ulong hi)
         {
             hi = FullHelper.BigMul(x, y, out lo);
         }
 		
-        public void Multiply(ulong a, ulong b, bool isDec, out ulong low, out ulong high)
+        public void Multiply(ulong a, ulong b, out ulong low, out ulong high)
         {
-            high = 0;
-            low = 0;
-           
-			Mult128(a, b, isDec, out low, out high);
-
-            
-            if (isDec)
-            {
-                high = Div128(high, low, FullInt64.maxDecCapasity, out low);
-            }
+            Mult128(a, b, out low, out high);
         }
 
         // (hi:lo) / divisor, requires hi < divisor (quotient fits 64 bits) — same contract as x64 `div r64`.
@@ -85,10 +75,9 @@ namespace FullInt.Core
         protected virtual ulong Sbb64(ulong a, ulong b, ref byte borrow) 
         {
             ulong sum = 0;
-            ulong baseMaxValue = Base == toBase.dec ? FullInt64.maxDecValue : ulong.MaxValue;
             if (a < b || a - b < borrow) // not `a < b + borrow`: b + borrow overflows for b = MaxValue
             {
-                sum = baseMaxValue - b - borrow + a + 1;
+                sum = ulong.MaxValue - b - borrow + a + 1;
                 borrow = 1;
             }
             else
@@ -487,7 +476,6 @@ namespace FullInt.Core
 		public int Compare(Span<ulong> value1, Span<ulong> value2)
 		{
 			int result = 0;
-            //toEqualBase(ref value1, ref value2);
 
             var zeros1 = FullHelper.CountZeros(value1);
             var zeros2 = FullHelper.CountZeros(value2);

@@ -63,58 +63,34 @@ namespace FullInt.Tests
         [TestMethod]
         public void BigTestHex_128Bit_Add_with_random_Longs() 
         {
-            BigTest_Add_with_random_Longs(16, false);
+            BigTest_Add_with_random_Longs(16);
         }
 
         [TestMethod]
         public void BigTestHex_256Bit_Add_with_random_Longs()
         {
-            BigTest_Add_with_random_Longs(32, false);
+            BigTest_Add_with_random_Longs(32);
         }
 
         [TestMethod]
         public void BigTestHex_512Bit_Add_with_random_Longs()
         {
-            BigTest_Add_with_random_Longs(64, false);
+            BigTest_Add_with_random_Longs(64);
         }
 
         [TestMethod]
         public void BigTestHex_1024Bit_Add_with_random_Longs()
         {
-            BigTest_Add_with_random_Longs(128, false);
+            BigTest_Add_with_random_Longs(128);
         }
 
         [TestMethod]
         public void BigTestHex_2048Bit_Add_with_random_Longs()
         {
-            BigTest_Add_with_random_Longs(256, false);
+            BigTest_Add_with_random_Longs(256);
         }
 
-        [TestMethod]
-        [TestCategory("DecimalMode")]
-        [Ignore("Decimal storage mode (toBase.dec) is not supported by the asm core yet; see docs/ANALYSIS.md A4, 4.2")]
-        public void BigTestDec_128Bit_Add_with_random_Longs()
-        {
-            BigTest_Add_with_random_Longs(16, true);
-        }
-
-        [TestMethod]
-        [TestCategory("DecimalMode")]
-        [Ignore("Decimal storage mode (toBase.dec) is not supported by the asm core yet; see docs/ANALYSIS.md A4, 4.2")]
-        public void BigTestDec_256Bit_Add_with_random_Longs()
-        {
-            BigTest_Add_with_random_Longs(32, true);
-        }
-
-        [TestMethod]
-        [TestCategory("DecimalMode")]
-        [Ignore("Decimal storage mode (toBase.dec) is not supported by the asm core yet; see docs/ANALYSIS.md A4, 4.2")]
-        public void BigTestDec_512Bit_Add_with_random_Longs()
-        {
-            BigTest_Add_with_random_Longs(64, true);
-        }
-
-        public void BigTest_Add_with_random_Longs(int byteLength, bool isDec)
+        public void BigTest_Add_with_random_Longs(int byteLength)
         {
             Stopwatch bigStopwatch = new Stopwatch();
             Stopwatch fullStopwatch = new Stopwatch();
@@ -128,21 +104,13 @@ namespace FullInt.Tests
 
                     rng.GetBytes(buf);
                     var (longBuf, sign) = ParseBytesWithSingToUnsingUlongs(buf);
-                    var fa = new FullIntCore(sign, longBuf, toBase.hex);
-                    if (isDec)
-                    {
-                        fa = _engine.ConvertToBase(fa, toBase.dec);
-                    }
+                    var fa = new FullIntCore(sign, longBuf);
                     var ba = new BigInteger(buf);
                     Assert.AreEqual(ba.ToString(), fa.ToString(10), $"Fullint A and Bigint A");
 
                     rng.GetBytes(buf);
                     (longBuf, sign) = ParseBytesWithSingToUnsingUlongs(buf);
-                    var fb = new FullIntCore(sign, longBuf, toBase.hex);
-                    if (isDec)
-                    {
-                        fb = _engine.ConvertToBase(fb, toBase.dec);
-                    }
+                    var fb = new FullIntCore(sign, longBuf);
                     var bb = new BigInteger(buf);
                     Assert.AreEqual(bb.ToString(), fb.ToString(10), $"Fullint B and Bigint B");
 
@@ -170,59 +138,35 @@ namespace FullInt.Tests
         [TestMethod]
         public void BigTestHex_128Bit_Mult_with_random_Longs()
         {
-            BigTest_Mult_with_random_Longs(16, false);
+            BigTest_Mult_with_random_Longs(16);
         }
 
         [TestMethod]
         public void BigTestHex_256Bit_Mult_with_random_Longs()
         {
-            BigTest_Mult_with_random_Longs(32, false);
+            BigTest_Mult_with_random_Longs(32);
         }
 
         [TestMethod]
         public void BigTestHex_512it_Mult_with_random_Longs()
         {
-            BigTest_Mult_with_random_Longs(64, false);
+            BigTest_Mult_with_random_Longs(64);
         }
 
         [TestMethod]
         public void BigTestHex_1024Bit_Mult_with_random_Longs()
         {
-            BigTest_Mult_with_random_Longs(128, false);
+            BigTest_Mult_with_random_Longs(128);
         }
 
         [TestMethod]
         public void BigTestHex_2048Bit_Mult_with_random_Longs()
         {
-            BigTest_Mult_with_random_Longs(256, false);
-        }
-
-        [TestMethod]
-        [TestCategory("DecimalMode")]
-        [Ignore("Decimal storage mode (toBase.dec) is not supported by the asm core yet; see docs/ANALYSIS.md A4, 4.2")]
-        public void BigTestDec_128Bit_Mult_with_random_Longs()
-        {
-            BigTest_Mult_with_random_Longs(16, true);
-        }
-
-        [TestMethod]
-        [TestCategory("DecimalMode")]
-        [Ignore("Decimal storage mode (toBase.dec) is not supported by the asm core yet; see docs/ANALYSIS.md A4, 4.2")]
-        public void BigTestDec_256it_Mult_with_random_Longs()
-        {
-            BigTest_Mult_with_random_Longs(32, true);
-        }
-
-        [TestMethod]
-        [TestCategory("DecimalMode")]
-        [Ignore("Decimal storage mode (toBase.dec) is not supported by the asm core yet; see docs/ANALYSIS.md A4, 4.2")]
-        public void BigTestDec_512Bit_Mult_with_random_Longs()
-        {
-            BigTest_Mult_with_random_Longs(64, true);
+            BigTest_Mult_with_random_Longs(256);
         }
 
        
-        public void BigTest_Mult_with_random_Longs(int byteLength, bool isDec)
+        public void BigTest_Mult_with_random_Longs(int byteLength)
         {
             Stopwatch bigStopwatch = new Stopwatch();
             Stopwatch fullStopwatch = new Stopwatch();
@@ -236,21 +180,13 @@ namespace FullInt.Tests
                     
                     rng.GetBytes(buf);
                     var (longBuf, sign) = ParseBytesWithSingToUnsingUlongs(buf);
-                    var fa = new FullIntCore(sign, longBuf, toBase.hex);
-                    if (isDec)
-                    {
-                        fa = _engine.ConvertToBase(fa, toBase.dec);
-                    }
+                    var fa = new FullIntCore(sign, longBuf);
                     var ba = new BigInteger(buf);
                     Assert.AreEqual(ba.ToString(), fa.ToString(10), $"Fullint A and Bigint A");
 
                     rng.GetBytes(buf);
                     (longBuf, sign) = ParseBytesWithSingToUnsingUlongs(buf);
-                    var fb = new FullIntCore(sign, longBuf, toBase.hex);
-                    if (isDec)
-                    {
-                        fb = _engine.ConvertToBase(fb, toBase.dec);
-                    }
+                    var fb = new FullIntCore(sign, longBuf);
                     var bb = new BigInteger(buf);
                     Assert.AreEqual(bb.ToString(), fb.ToString(10), $"Fullint B and Bigint B");
 
@@ -263,7 +199,6 @@ namespace FullInt.Tests
                     bigStopwatch.Stop();
 
                     FullIntCore expectedFull = (FullIntCore)expected.ToString();
-                   // expectedFull = _engine.ConvertToBase(expectedFull, isDec ? toBase.dec : toBase.hex);
 
                    
                     Assert.AreEqual(expectedFull.ToString(10), multFull.ToString(10), $"Mismatch for a={ba}, b={bb}");
@@ -280,57 +215,34 @@ namespace FullInt.Tests
         [TestMethod]
         public void BigTestHex_128Bit_Div_with_random_Longs()
         {
-            BigTest_Div_with_random_Longs(16, false);
+            BigTest_Div_with_random_Longs(16);
         }
 
         [TestMethod]
         public void BigTestHex_256Bit_Div_with_random_Longs()
         {
-            BigTest_Div_with_random_Longs(32, false);
+            BigTest_Div_with_random_Longs(32);
         }
 
         [TestMethod]
         public void BigTestHex_512Bit_Div_with_random_Longs()
         {
-            BigTest_Div_with_random_Longs(64, false);
+            BigTest_Div_with_random_Longs(64);
         }
 
         [TestMethod]
         public void BigTestHex_1024Bit_Div_with_random_Longs()
         {
-            BigTest_Div_with_random_Longs(128, false);
+            BigTest_Div_with_random_Longs(128);
         }
 
         [TestMethod]
         public void BigTestHex_2048Bit_Div_with_random_Longs()
         {
-            BigTest_Div_with_random_Longs(256, false);
-        }
-        [TestMethod]
-        [TestCategory("DecimalMode")]
-        [Ignore("Decimal storage mode (toBase.dec) is not supported by the asm core yet; see docs/ANALYSIS.md A4, 4.2")]
-        public void BigTestDec_128Bit_Div_with_random_Longs()
-        {
-            BigTest_Div_with_random_Longs(16, true);
+            BigTest_Div_with_random_Longs(256);
         }
 
-        [TestMethod]
-        [TestCategory("DecimalMode")]
-        [Ignore("Decimal storage mode (toBase.dec) is not supported by the asm core yet; see docs/ANALYSIS.md A4, 4.2")]
-        public void BigTestDec_256Bit_Div_with_random_Longs()
-        {
-            BigTest_Div_with_random_Longs(32, true);
-        }
-
-        [TestMethod]
-        [TestCategory("DecimalMode")]
-        [Ignore("Decimal storage mode (toBase.dec) is not supported by the asm core yet; see docs/ANALYSIS.md A4, 4.2")]
-        public void BigTestDec_512Bit_Div_with_random_Longs()
-        {
-            BigTest_Div_with_random_Longs(32, true);
-        }
-
-        public void BigTest_Div_with_random_Longs(int byteLength, bool isDec)
+        public void BigTest_Div_with_random_Longs(int byteLength)
         {
             Stopwatch bigStopwatch = new Stopwatch();
             Stopwatch fullStopwatch = new Stopwatch();
@@ -352,11 +264,7 @@ namespace FullInt.Tests
 
                     rng.GetBytes(buf);
                     var (longBuf, sign) = ParseBytesWithSingToUnsingUlongs(buf);
-                    var fa = new FullIntCore(sign, longBuf, toBase.hex);
-                    if (isDec)
-                    {
-                        fa = _engine.ConvertToBase(fa, toBase.dec);
-                    }
+                    var fa = new FullIntCore(sign, longBuf);
                     var ba = new BigInteger(buf);
                     Assert.AreEqual(ba.ToString(), fa.ToString(10), $"Fullint A and Bigint A");
 
@@ -366,11 +274,7 @@ namespace FullInt.Tests
                     buf[buf.Length - 3] = 0;
                     buf[buf.Length - 4] = 0;
                     (longBuf, sign) = ParseBytesWithSingToUnsingUlongs(buf);
-                    var fb = new FullIntCore(sign, longBuf, toBase.hex);
-                    if (isDec)
-                    {
-                        fb = _engine.ConvertToBase(fb, toBase.dec);
-                    }
+                    var fb = new FullIntCore(sign, longBuf);
                     var bb = new BigInteger(buf);
                     Assert.AreEqual(bb.ToString(), fb.ToString(10), $"Fullint B and Bigint B");
 
@@ -401,7 +305,7 @@ namespace FullInt.Tests
                
                   
 
-                _engine.div_internal(fullintA[i].value, fullintB[i].value, resultBuf, remainderBuf, isDec ? toBase.dec : toBase.hex);
+                _engine.div_internal(fullintA[i].value, fullintB[i].value, resultBuf, remainderBuf);
                 var sign = fullintA[i].Sing != fullintB[i].Sing;
 
                 //propably ussless if value1 >= value2. remove when uncommented the optimalization above
@@ -409,7 +313,7 @@ namespace FullInt.Tests
                 {
                     sign = false;
                 }
-                fullintC[i] = new FullInt64(sign, FullHelper.DeleteZeros(resultBuf).ToArray(), isDec ? toBase.dec : toBase.hex);
+                fullintC[i] = new FullInt64(sign, FullHelper.DeleteZeros(resultBuf).ToArray());
                 for (int j = 0; j < remainderBuf.Length; j++) remainderBuf[j] = 0;
                 //remainder = new FullInt64(value1.Sing, deleteZeros(remainderBuf).ToArray(), Base);
 
@@ -437,57 +341,34 @@ namespace FullInt.Tests
         [TestMethod]
         public void BigTestHex_128Bit_Mod_with_random_Longs() 
         {
-            BigTest_Mod_with_random_Longs(16, false);
+            BigTest_Mod_with_random_Longs(16);
         }
 
         [TestMethod]
         public void BigTestHex_256Bit_Mod_with_random_Longs()
         {
-            BigTest_Mod_with_random_Longs(32, false);
+            BigTest_Mod_with_random_Longs(32);
         }
 
         [TestMethod]
         public void BigTestHex_512Bit_Mod_with_random_Longs()
         {
-            BigTest_Mod_with_random_Longs(64, false);
+            BigTest_Mod_with_random_Longs(64);
         }
 
         [TestMethod]
         public void BigTestHex_1024Bit_Mod_with_random_Longs()
         {
-            BigTest_Mod_with_random_Longs(128, false);
+            BigTest_Mod_with_random_Longs(128);
         }
 
         [TestMethod]
         public void BigTestHex_2048Bit_Mod_with_random_Longs()
         {
-            BigTest_Mod_with_random_Longs(256, false);
-        }
-        [TestMethod]
-        [TestCategory("DecimalMode")]
-        [Ignore("Decimal storage mode (toBase.dec) is not supported by the asm core yet; see docs/ANALYSIS.md A4, 4.2")]
-        public void BigTestDec_128Bit_Mod_with_random_Longs()
-        {
-            BigTest_Mod_with_random_Longs(16, true);
+            BigTest_Mod_with_random_Longs(256);
         }
 
-        [TestMethod]
-        [TestCategory("DecimalMode")]
-        [Ignore("Decimal storage mode (toBase.dec) is not supported by the asm core yet; see docs/ANALYSIS.md A4, 4.2")]
-        public void BigTestDec_256Bit_Mod_with_random_Longs()
-        {
-            BigTest_Mod_with_random_Longs(32, true);
-        }
-
-        [TestMethod]
-        [TestCategory("DecimalMode")]
-        [Ignore("Decimal storage mode (toBase.dec) is not supported by the asm core yet; see docs/ANALYSIS.md A4, 4.2")]
-        public void BigTestDec_512Bit_Mod_with_random_Longs()
-        {
-            BigTest_Mod_with_random_Longs(64, true);
-        }
-
-        public void BigTest_Mod_with_random_Longs(int byteLength, bool isDec)
+        public void BigTest_Mod_with_random_Longs(int byteLength)
         {
             Stopwatch bigStopwatch = new Stopwatch();
             Stopwatch fullStopwatch = new Stopwatch();
@@ -501,21 +382,13 @@ namespace FullInt.Tests
 
                     rng.GetBytes(buf);
                     var (longBuf, sign) = ParseBytesWithSingToUnsingUlongs(buf);
-                    var fa = new FullIntCore(sign, longBuf, toBase.hex);
-                    if (isDec)
-                    {
-                        fa = _engine.ConvertToBase(fa, toBase.dec);
-                    }
+                    var fa = new FullIntCore(sign, longBuf);
                     var ba = new BigInteger(buf);
                     Assert.AreEqual(ba.ToString(), fa.ToString(10), $"Fullint A and Bigint A");
 
                     rng.GetBytes(buf);
                     (longBuf, sign) = ParseBytesWithSingToUnsingUlongs(buf);
-                    var fb = new FullIntCore(sign, longBuf, toBase.hex);
-                    if (isDec)
-                    {
-                        fb = _engine.ConvertToBase(fb, toBase.dec);
-                    }
+                    var fb = new FullIntCore(sign, longBuf);
                     var bb = new BigInteger(buf);
                     Assert.AreEqual(bb.ToString(), fb.ToString(10), $"Fullint B and Bigint B");
 

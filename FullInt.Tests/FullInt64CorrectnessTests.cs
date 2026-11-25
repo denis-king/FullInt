@@ -96,15 +96,6 @@ namespace FullInt.Tests
         }
 
         [TestMethod]
-        public void GetHashCode_DecimalAndBinaryRepresentations_Match()
-        {
-            var bin = new FullInt64(123456789L);
-            var dec = new FullInt64(123456789L, toBase.dec);
-            Assert.IsTrue(bin == dec);
-            Assert.AreEqual(bin.GetHashCode(), dec.GetHashCode());
-        }
-
-        [TestMethod]
         public void Equals_WithBoxedPrimitives_DoesNotThrow()
         {
             FullInt64 five = 5;

@@ -8,9 +8,8 @@
 //   - the magnitude is always normalized (no leading zero words, zero is never negative);
 //     leading zeros of a result are dropped by moving the start offset, not by copying;
 //   - the one-word paths are inline here, so the compiler builds them into the caller.
-// Not ported: the decimal storage mode (C# IsDec) - this build is binary only.
 // Differences in the API, C++ conventions: ^ is XOR (C#: power, see Pow); ToString() is
-// decimal (C#: the storage base).
+// decimal (C#: hex) - to be aligned in the API review before v1.
 //
 // Limbs: 64-bit words, index 0 = most significant word (as in C# and the asm kernels).
 #pragma once

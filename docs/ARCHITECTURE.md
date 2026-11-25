@@ -97,7 +97,7 @@ Build in `Debug`. NASM then emits CodeView symbols (`-g`) and `link /DEBUG` prod
 | `FullInt.Core/FullInt.cs`, `FullIntMath.cs`, `FullIntConvertor.cs` | First version: one byte per limb, radix 256 or 100 | Removed 2026-11-25 (in git history) |
 | `FullInt.Net/` | Duplicate of the byte-based version | Removed 2026-11-25 |
 | `FullInt/SQL_FullInt.cs` | SQL Server CLR procedures (commented out), .NET Framework 3.5 | Removed 2026-11-25; a SQL Server integration on the new engine is an idea for later |
-| `toBase` / `IsDec` in `FullInt64`, `FullInt64Engine` | The decimal mode (10^19 a word) of the first versions | `toBase` moved to `ToBase.cs`; the mode itself to be removed before v1 |
+| `toBase` / `IsDec` in `FullInt64`, `FullInt64Engine` | The decimal mode (10^19 a word) of the first versions; its add / sub never used the base (the core adds binary words), so it held only for one-word values | Removed 2026-11-25: FullInt64 is binary only; fast decimal text through ToString(10) / Parse |
 
 ## Target architecture
 
