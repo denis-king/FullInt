@@ -95,8 +95,6 @@ FullInt.Asm/         native kernels (NASM: Sources/x64, Sources/x86) and build s
 FullInt.AsmForNet/   MSBuild glue that builds the native DLL and copies it next to managed outputs
 FullInt.Tests/       MSTest suite; randomized differential tests against System.Numerics.BigInteger
 FullInt.Benchmarks/  asm regression check (ab.ps1) and BenchmarkDotNet suites, see its README
-FullInt.Net/         legacy byte-based implementation (to be removed)
-FullInt/             legacy SQL CLR wrapper, .NET Framework 3.5 (to be removed)
 Tools/nasm/          bundled NASM assembler
 docs/                documentation
 ```
