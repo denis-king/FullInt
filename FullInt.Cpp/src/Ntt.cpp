@@ -35,12 +35,14 @@ bool Available() { return Cpu::Has(Cpu::Avx2); }
 #define NTT_V(name) Fullint64Ntt##name##WIN_avx2
 #else
 bool Available() { return true; }
-#define NTT(name) Fullint64Ntt##name##WIN_portable
-#define NTT_CRT Fullint64NttCrtWIN_portable
 #if FULLINT_ARM64_ASM
-#define NTT_V(name) Fullint64Ntt##name##WIN_neon   // the levels, Point, Scale: NttNeon.s
+#define NTT(name) Fullint64Ntt##name##WIN_neon     // NttNeon.s: every kernel
+#define NTT_V(name) Fullint64Ntt##name##WIN_neon
+#define NTT_CRT Fullint64NttCrtWIN_neon
 #else
+#define NTT(name) Fullint64Ntt##name##WIN_portable
 #define NTT_V(name) Fullint64Ntt##name##WIN_portable
+#define NTT_CRT Fullint64NttCrtWIN_portable
 #endif
 #endif
 

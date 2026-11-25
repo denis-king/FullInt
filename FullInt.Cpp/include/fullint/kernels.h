@@ -130,7 +130,7 @@ void Fullint64NttLoadWIN_portable(const uint64_t* a, int64_t la, uint32_t* x, in
 uint64_t Fullint64NttCrtWIN_portable(const uint32_t* x0, const uint32_t* x1, const uint32_t* x2, int64_t nd,
                                      uint64_t* r, int64_t len, const uint64_t* k);
 #if FULLINT_ARM64_ASM
-// the radix-2 and radix-3 levels, the pointwise product and the scaling on NEON (AArch64 NttNeon.s)
+// every NTT kernel in AArch64 asm (NttNeon.s: the levels, Point, Scale on NEON; Load, the CRT scalar)
 void Fullint64NttDif1WIN_neon(uint32_t* x, int64_t L, int64_t h, const uint32_t* w, const uint32_t* wq, uint32_t p);
 void Fullint64NttDif2WIN_neon(uint32_t* x, int64_t L, int64_t h, const uint32_t* w, const uint32_t* wq, uint32_t p);
 void Fullint64NttDif3WIN_neon(uint32_t* x, int64_t L, const uint32_t* w, const uint32_t* wq, uint32_t p);
@@ -141,6 +141,9 @@ void Fullint64NttPointWIN_neon(uint32_t* x, const uint32_t* y, int64_t n, uint32
 void Fullint64NttScaleWIN_neon(uint32_t* x, int64_t n, uint32_t p, uint32_t c, uint32_t cq);
 void Fullint64NttR3DifWIN_neon(uint32_t* x, int64_t M, const uint32_t* k, uint32_t p);
 void Fullint64NttR3DitWIN_neon(uint32_t* x, int64_t M, const uint32_t* k, uint32_t p);
+void Fullint64NttLoadWIN_neon(const uint64_t* a, int64_t la, uint32_t* x, int64_t L, uint32_t p);
+uint64_t Fullint64NttCrtWIN_neon(const uint32_t* x0, const uint32_t* x1, const uint32_t* x2, int64_t nd,
+                                 uint64_t* r, int64_t len, const uint64_t* k);
 #endif
 #endif
 

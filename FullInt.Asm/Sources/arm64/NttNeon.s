@@ -1,9 +1,9 @@
     .include "abi.inc"
 
 // =============================================================================
-//  Number-theoretic transform kernels on NEON (AArch64), 4 lanes of 32 bits: the contracts of
-//  x64 NttAvx2.asm (the radix-2 levels, the pointwise product, the scaling); the radix-3
-//  level, the load and the CRT stay in C++ (FullInt.Cpp/src/ntt_portable.cpp).
+//  Number-theoretic transform kernels (AArch64): the contracts of x64 NttAvx2.asm. On NEON,
+//  4 lanes of 32 bits: the radix-2 and radix-3 levels, the pointwise product, the scaling;
+//  scalar: the load and the CRT (the reference: FullInt.Cpp/src/ntt_portable.cpp).
 //
 //  Three primes p < 2^30 (4p < 2^32); the values lazy in [0, 2p). The radix-2 levels' twiddles
 //  in Shoup's form (Ntt.cpp's AArch64 tables: w itself, wq = floor(w·2^32 / p); MULS, five
@@ -363,3 +363,128 @@ ENTRY Fullint64NttR3DitWIN_neon
     b.ne 8b
     ret
 END Fullint64NttR3DitWIN_neon
+
+// -----------------------------------------------------------------------------
+// void Fullint64NttLoadWIN_neon(const uint64* a, int64 la, uint32* x, int64 L, uint32 p)
+// big-endian words -> little-endian 32-bit digits in [0, 2p) (a digit < 2^32 < 5p: minus 2p
+// twice at most), then zeros up to L. x0 a, x1 la, x2 x, x3 L, w4 p.
+ENTRY Fullint64NttLoadWIN_neon
+    lsl w5, w4, #1                      // 2p
+    add x6, x0, x1, lsl #3              // past a's lowest word
+    mov x7, x1
+    cbz x7, 2f
+1:  ldr x8, [x6, #-8]!
+    lsr x9, x8, #32
+    mov w8, w8
+    subs w10, w8, w5
+    csel w8, w10, w8, hs
+    subs w10, w8, w5
+    csel w8, w10, w8, hs
+    subs w10, w9, w5
+    csel w9, w10, w9, hs
+    subs w10, w9, w5
+    csel w9, w10, w9, hs
+    stp w8, w9, [x2], #8
+    subs x7, x7, #1
+    b.ne 1b
+2:  sub x3, x3, x1, lsl #1              // the zeros
+    cbz x3, 4f
+3:  str wzr, [x2], #4
+    subs x3, x3, #1
+    b.ne 3b
+4:  ret
+END Fullint64NttLoadWIN_neon
+
+// -----------------------------------------------------------------------------
+// uint64 Fullint64NttCrtWIN_neon(const uint32* x0, const uint32* x1, const uint32* x2, int64 nd,
+//                                uint64* r, int64 len, const uint64* k)
+// Garner over the three residues (each in [0, p)) of nd = 2·len digits: v1 = x0,
+// v2 = (x1 - v1)·p1^-1 mod p2, v3 = (x2 - v1 - v2·p1)·(p1p2)^-1 mod p3; the products by the
+// constants by Shoup's method (k: p1, p2, p3, inv12, inv12s, p1m3, p1m3s, inv123, inv123s, p1p2;
+// s = floor(c·2^32 / p): q = hi32(a·s), a·c - q·p in [0, 2p)), the reductions by subtraction
+// (p1 < 2·p2, p1 < 2·p3). Two digits a step: acc += value(2w) + value(2w + 1)·2^32 (each value
+// v1 + p1·v2 + p1p2·v3 < 2^90; acc < 2^123), the low word out to r from its low end up, acc >>= 64.
+// Returns the carry out of the top word.
+// Registers: x9-x17, x19 the constants (p1 p2 p3 inv12 inv12s p1m3 p1m3s inv123 inv123s, p1p2),
+// x20 / x21 acc, x22-x26 scratch, x27 / x28 a value; x19-x28 saved.
+.macro CRT_VALUE lo, hi
+    ldr w22, [x0], #4                   // v1
+    ldr w23, [x1], #4
+    ldr w24, [x2], #4
+    subs x25, x22, x10
+    csel x25, x25, x22, hs              // v1 mod p2
+    add x23, x23, x10
+    sub x23, x23, x25                   // d = x1 - v1 + p2 in (0, 2·p2)
+    subs x25, x23, x10
+    csel x23, x25, x23, hs
+    mul x25, x23, x13                   // v2 = d·inv12 mod p2
+    lsr x25, x25, #32
+    mul x23, x23, x12
+    msub x23, x25, x10, x23
+    subs x25, x23, x10
+    csel x23, x25, x23, hs
+    mul x25, x23, x15                   // v2·p1 mod p3
+    lsr x25, x25, #32
+    mul x26, x23, x14
+    msub x26, x25, x11, x26
+    subs x25, x26, x11
+    csel x26, x25, x26, hs
+    subs x25, x22, x11
+    csel x25, x25, x22, hs              // v1 mod p3
+    add x24, x24, x11, lsl #1
+    sub x24, x24, x25
+    sub x24, x24, x26                   // t = x2 - v1 - v2·p1 + 2·p3 in (0, 3·p3)
+    subs x25, x24, x11
+    csel x24, x25, x24, hs
+    subs x25, x24, x11
+    csel x24, x25, x24, hs
+    mul x25, x24, x17                   // v3 = t·inv123 mod p3
+    lsr x25, x25, #32
+    mul x24, x24, x16
+    msub x24, x25, x11, x24
+    subs x25, x24, x11
+    csel x24, x25, x24, hs
+    mul \lo, x9, x23                    // p1·v2 (< 2^60) + v1
+    add \lo, \lo, x22
+    mul x25, x19, x24                   // + p1p2·v3 (< 2^90)
+    umulh \hi, x19, x24
+    adds \lo, \lo, x25
+    adc \hi, \hi, xzr
+.endm
+
+ENTRY Fullint64NttCrtWIN_neon
+    stp x19, x20, [sp, #-80]!
+    stp x21, x22, [sp, #16]
+    stp x23, x24, [sp, #32]
+    stp x25, x26, [sp, #48]
+    stp x27, x28, [sp, #64]
+    ldp x9, x10, [x6]
+    ldp x11, x12, [x6, #16]
+    ldp x13, x14, [x6, #32]
+    ldp x15, x16, [x6, #48]
+    ldp x17, x19, [x6, #64]
+    mov x20, xzr
+    mov x21, xzr
+    add x4, x4, x5, lsl #3              // past r's end (its low word)
+    cbz x5, 2f
+1:  CRT_VALUE x27, x28                  // digit 2w
+    adds x20, x20, x27
+    adc x21, x21, x28
+    CRT_VALUE x27, x28                  // digit 2w + 1, times 2^32
+    lsl x26, x27, #32
+    extr x28, x28, x27, #32
+    adds x20, x20, x26
+    adc x21, x21, x28
+    str x20, [x4, #-8]!
+    mov x20, x21
+    mov x21, xzr
+    subs x5, x5, #1
+    b.ne 1b
+2:  mov x0, x20
+    ldp x21, x22, [sp, #16]
+    ldp x23, x24, [sp, #32]
+    ldp x25, x26, [sp, #48]
+    ldp x27, x28, [sp, #64]
+    ldp x19, x20, [sp], #80
+    ret
+END Fullint64NttCrtWIN_neon

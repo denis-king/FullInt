@@ -81,8 +81,10 @@ namespace FullInt.Core
         private static readonly bool FftKernels = (CpuFeatures & 3) == 3;
         internal bool HasFftKernels => FftKernels;
 
-        // the number-theoretic transforms (NttAvx2.asm): AVX2
-        private static readonly bool NttKernels = (CpuFeatures & 4) == 4;
+        // the number-theoretic transforms (NttAvx2.asm): AVX2; AArch64 (the same core over the .so):
+        // arm64/NttNeon.s, NEON is always there (FULLINT_CPU=baseline: off, as the baseline set)
+        private static readonly bool NttKernels = (CpuFeatures & 4) == 4
+            || (RuntimeInformation.ProcessArchitecture == Architecture.Arm64 && CpuFeatures != 0);
         internal bool HasNttKernels => NttKernels;
 
 

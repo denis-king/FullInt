@@ -42,8 +42,10 @@ struct Karatsuba
     // AArch64 (Cortex-X1; NttNeon.s, Shoup's twiddles, 4 lanes): 4096 x 4096 words 0.98 of the
     // Toom levels (1.09 of GMP); 1024 still 1.16-1.22 of them, and the divisions / Parse with
     // the NTT on their products from 448 words 1.15-1.25 of without: from 4096.
+    // A narrow-multiplier core (Cpu::ArmNarrow; Neoverse-N1, the Toom levels there cost more):
+    // from 1024 - of from 4096: mul 1024 0.83, todec 4096 0.87, parse 4096 0.90 (768..2048 equal).
 #if FULLINT_ARM64
-    static inline int NttThreshold = 4096;
+    static inline int NttThreshold = Cpu::ArmNarrow() ? 1024 : 4096;
 #elif FULLINT_WORD64
     static inline int NttThreshold = 896;   // (and from 448 when filled: 512, 768 words)
 #else

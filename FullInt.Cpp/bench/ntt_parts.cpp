@@ -76,6 +76,8 @@ int main(int argc, char** argv)
     row("R3Dit (M = L/3 of L)", Time([&] { Fullint64NttR3DitWIN_neon(x.data(), L / 3 / 8 * 8, k.data(), p); }));
     row("Load (L/4 words, zeros to L)", Time([&] { Fullint64NttLoadWIN_portable(a.data(), L / 4, x.data(), L, p); }));
     row("Crt (L/2 digits)", Time([&] { Fullint64NttCrtWIN_portable(x.data(), x1.data(), x2.data(), L / 2, r.data(), L / 4, crt); }));
+    row("Load asm", Time([&] { Fullint64NttLoadWIN_neon(a.data(), L / 4, x.data(), L, p); }));
+    row("Crt asm", Time([&] { Fullint64NttCrtWIN_neon(x.data(), x1.data(), x2.data(), L / 2, r.data(), L / 4, crt); }));
     row("Dif1 portable (h = 8)", Time([&] { Fullint64NttDif1WIN_portable(x.data(), L, 8, W.data(), Wq.data(), p); }));
     return 0;
 }

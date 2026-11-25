@@ -22,6 +22,13 @@ struct NewtonDivision
     static inline int Threshold = 2048;
     static inline int LongQuotientThreshold = 2048;
     static inline int CyclicFrom = 2048;
+#elif FULLINT_ARM64
+    // AArch64: a narrow-multiplier core (Cpu::ArmNarrow, the NTT from 1024 there): from 2048, as
+    // on x64 (Neoverse-N1, of Burnikel–Ziegler: a / b 0.79 at 4096 words, a % b 0.82; from 1024
+    // 1.12 / 1.17 at 1024). A wide one (Cortex-X1, the NTT from 4096): Burnikel–Ziegler up to 16384.
+    static inline int Threshold = Cpu::ArmNarrow() ? 2048 : 16384;
+    static inline int LongQuotientThreshold = Cpu::ArmNarrow() ? 2048 : 8192;
+    static inline int CyclicFrom = Cpu::ArmNarrow() ? 2048 : 4096;
 #else
     // x86: with the NTT (AVX2) Newton pays off from 1024 words (C#, x86: a % b 0.78 of
     // Burnikel–Ziegler, a / b 0.70); without it from 16384

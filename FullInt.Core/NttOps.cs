@@ -6,7 +6,8 @@ using System.Threading;
 namespace FullInt.Core
 {
     /// <summary>
-    /// Multiplication through number-theoretic transforms with the AVX2 kernels (NttAvx2.asm, x64 and x86).
+    /// Multiplication through number-theoretic transforms with the AVX2 kernels (NttAvx2.asm, x64 and x86)
+    /// or the NEON ones (arm64/NttNeon.s, AArch64; the twiddles there in Shoup's form).
     /// The operands are cut into 32-bit digits; their cyclic convolution of length L (2^k or
     /// 3·2^k, the shortest at least the product's digits: the transform is never more than 1.5
     /// times the product) is computed modulo three primes p &lt; 2^30 with 3·2^22 | p - 1
@@ -50,7 +51,10 @@ namespace FullInt.Core
                 // the top level h = size/2 by multiplication, the others every other entry of the next
                 int h = size / 2;
                 ulong w = PowMod(Generators[k], (p - 1) / (ulong)size, p);
-                ulong cur = (1UL << 32) % p;                 // w^0 in Montgomery form
+                // w^0: in Montgomery form for the x86 kernels; AArch64 (NttNeon.s) takes the twiddles
+                // in Shoup's form - w itself and floor(w·2^32 / p): a·w - hi(a·wq)·p in [0, 2p),
+                // five NEON instructions against Montgomery's nine (the result is the same)
+                ulong cur = Arm ? 1UL : (1UL << 32) % p;
                 for (int j = 0; j < h; j++)
                 {
                     W[h + j] = (uint)cur;
@@ -69,8 +73,8 @@ namespace FullInt.Core
                 }
                 for (int i = 1; i < size; i++)
                 {
-                    Wq[i] = W[i] * inv;
-                    IWq[i] = IW[i] * inv;
+                    Wq[i] = Arm ? (uint)(((ulong)W[i] << 32) / p) : W[i] * inv;
+                    IWq[i] = Arm ? (uint)(((ulong)IW[i] << 32) / p) : IW[i] * inv;
                 }
             }
         }
@@ -399,21 +403,23 @@ namespace FullInt.Core
             }
         }
 
-        // the kernels of the process's DLL (x64/NttAvx2.asm, x86/NttAvx2.asm: the same functions);
-        // reached only through Multiply, which the dispatcher calls for a core with the kernels
+        // the kernels of the process's library (x64/NttAvx2.asm, x86/NttAvx2.asm: the same functions;
+        // AArch64: arm64/NttNeon.s, the same contracts, the twiddles in Shoup's form); reached only
+        // through Multiply, which the dispatcher calls for a core with the kernels
         private static readonly bool X64 = Environment.Is64BitProcess;
-        private static unsafe void Dif1(uint* x, long L, long h, uint* w, uint* wq, uint p) { if (X64) Native64.Fullint64NttDif1WIN_avx2(x, L, h, w, wq, p); else Native86.Fullint64NttDif1WIN_avx2(x, L, h, w, wq, p); }
-        private static unsafe void Dif2(uint* x, long L, long h, uint* w, uint* wq, uint p) { if (X64) Native64.Fullint64NttDif2WIN_avx2(x, L, h, w, wq, p); else Native86.Fullint64NttDif2WIN_avx2(x, L, h, w, wq, p); }
-        private static unsafe void Dif3(uint* x, long L, uint* w, uint* wq, uint p) { if (X64) Native64.Fullint64NttDif3WIN_avx2(x, L, w, wq, p); else Native86.Fullint64NttDif3WIN_avx2(x, L, w, wq, p); }
-        private static unsafe void Dit1(uint* x, long L, long h, uint* w, uint* wq, uint p) { if (X64) Native64.Fullint64NttDit1WIN_avx2(x, L, h, w, wq, p); else Native86.Fullint64NttDit1WIN_avx2(x, L, h, w, wq, p); }
-        private static unsafe void Dit2(uint* x, long L, long h, uint* w, uint* wq, uint p) { if (X64) Native64.Fullint64NttDit2WIN_avx2(x, L, h, w, wq, p); else Native86.Fullint64NttDit2WIN_avx2(x, L, h, w, wq, p); }
-        private static unsafe void Dit3(uint* x, long L, uint* w, uint* wq, uint p) { if (X64) Native64.Fullint64NttDit3WIN_avx2(x, L, w, wq, p); else Native86.Fullint64NttDit3WIN_avx2(x, L, w, wq, p); }
-        private static unsafe void R3Dif(uint* x, long M, uint* k, uint p) { if (X64) Native64.Fullint64NttR3DifWIN_avx2(x, M, k, p); else Native86.Fullint64NttR3DifWIN_avx2(x, M, k, p); }
-        private static unsafe void R3Dit(uint* x, long M, uint* k, uint p) { if (X64) Native64.Fullint64NttR3DitWIN_avx2(x, M, k, p); else Native86.Fullint64NttR3DitWIN_avx2(x, M, k, p); }
-        private static unsafe void Point(uint* x, uint* y, long n, uint p, uint pinv) { if (X64) Native64.Fullint64NttPointWIN_avx2(x, y, n, p, pinv); else Native86.Fullint64NttPointWIN_avx2(x, y, n, p, pinv); }
-        private static unsafe void Scale(uint* x, long n, uint p, uint c, uint cq) { if (X64) Native64.Fullint64NttScaleWIN_avx2(x, n, p, c, cq); else Native86.Fullint64NttScaleWIN_avx2(x, n, p, c, cq); }
-        private static unsafe void Load(ulong* a, long la, uint* x, long L, uint p) { if (X64) Native64.Fullint64NttLoadWIN_avx2(a, la, x, L, p); else Native86.Fullint64NttLoadWIN_avx2(a, la, x, L, p); }
-        private static unsafe ulong Crt(uint* x0, uint* x1, uint* x2, long nd, ulong* r, long len, ulong* k) { if (X64) return Native64.Fullint64NttCrtWIN(x0, x1, x2, nd, r, len, k); else return Native86.Fullint64NttCrtWIN(x0, x1, x2, nd, r, len, k); }
+        private static readonly bool Arm = RuntimeInformation.ProcessArchitecture == Architecture.Arm64;
+        private static unsafe void Dif1(uint* x, long L, long h, uint* w, uint* wq, uint p) { if (Arm) NativeArm.Fullint64NttDif1WIN_neon(x, L, h, w, wq, p); else if (X64) Native64.Fullint64NttDif1WIN_avx2(x, L, h, w, wq, p); else Native86.Fullint64NttDif1WIN_avx2(x, L, h, w, wq, p); }
+        private static unsafe void Dif2(uint* x, long L, long h, uint* w, uint* wq, uint p) { if (Arm) NativeArm.Fullint64NttDif2WIN_neon(x, L, h, w, wq, p); else if (X64) Native64.Fullint64NttDif2WIN_avx2(x, L, h, w, wq, p); else Native86.Fullint64NttDif2WIN_avx2(x, L, h, w, wq, p); }
+        private static unsafe void Dif3(uint* x, long L, uint* w, uint* wq, uint p) { if (Arm) NativeArm.Fullint64NttDif3WIN_neon(x, L, w, wq, p); else if (X64) Native64.Fullint64NttDif3WIN_avx2(x, L, w, wq, p); else Native86.Fullint64NttDif3WIN_avx2(x, L, w, wq, p); }
+        private static unsafe void Dit1(uint* x, long L, long h, uint* w, uint* wq, uint p) { if (Arm) NativeArm.Fullint64NttDit1WIN_neon(x, L, h, w, wq, p); else if (X64) Native64.Fullint64NttDit1WIN_avx2(x, L, h, w, wq, p); else Native86.Fullint64NttDit1WIN_avx2(x, L, h, w, wq, p); }
+        private static unsafe void Dit2(uint* x, long L, long h, uint* w, uint* wq, uint p) { if (Arm) NativeArm.Fullint64NttDit2WIN_neon(x, L, h, w, wq, p); else if (X64) Native64.Fullint64NttDit2WIN_avx2(x, L, h, w, wq, p); else Native86.Fullint64NttDit2WIN_avx2(x, L, h, w, wq, p); }
+        private static unsafe void Dit3(uint* x, long L, uint* w, uint* wq, uint p) { if (Arm) NativeArm.Fullint64NttDit3WIN_neon(x, L, w, wq, p); else if (X64) Native64.Fullint64NttDit3WIN_avx2(x, L, w, wq, p); else Native86.Fullint64NttDit3WIN_avx2(x, L, w, wq, p); }
+        private static unsafe void R3Dif(uint* x, long M, uint* k, uint p) { if (Arm) NativeArm.Fullint64NttR3DifWIN_neon(x, M, k, p); else if (X64) Native64.Fullint64NttR3DifWIN_avx2(x, M, k, p); else Native86.Fullint64NttR3DifWIN_avx2(x, M, k, p); }
+        private static unsafe void R3Dit(uint* x, long M, uint* k, uint p) { if (Arm) NativeArm.Fullint64NttR3DitWIN_neon(x, M, k, p); else if (X64) Native64.Fullint64NttR3DitWIN_avx2(x, M, k, p); else Native86.Fullint64NttR3DitWIN_avx2(x, M, k, p); }
+        private static unsafe void Point(uint* x, uint* y, long n, uint p, uint pinv) { if (Arm) NativeArm.Fullint64NttPointWIN_neon(x, y, n, p, pinv); else if (X64) Native64.Fullint64NttPointWIN_avx2(x, y, n, p, pinv); else Native86.Fullint64NttPointWIN_avx2(x, y, n, p, pinv); }
+        private static unsafe void Scale(uint* x, long n, uint p, uint c, uint cq) { if (Arm) NativeArm.Fullint64NttScaleWIN_neon(x, n, p, c, cq); else if (X64) Native64.Fullint64NttScaleWIN_avx2(x, n, p, c, cq); else Native86.Fullint64NttScaleWIN_avx2(x, n, p, c, cq); }
+        private static unsafe void Load(ulong* a, long la, uint* x, long L, uint p) { if (Arm) NativeArm.Fullint64NttLoadWIN_neon(a, la, x, L, p); else if (X64) Native64.Fullint64NttLoadWIN_avx2(a, la, x, L, p); else Native86.Fullint64NttLoadWIN_avx2(a, la, x, L, p); }
+        private static unsafe ulong Crt(uint* x0, uint* x1, uint* x2, long nd, ulong* r, long len, ulong* k) { if (Arm) return NativeArm.Fullint64NttCrtWIN_neon(x0, x1, x2, nd, r, len, k); if (X64) return Native64.Fullint64NttCrtWIN(x0, x1, x2, nd, r, len, k); else return Native86.Fullint64NttCrtWIN(x0, x1, x2, nd, r, len, k); }
 
         private static unsafe class Native64
         {
@@ -442,6 +448,37 @@ namespace FullInt.Core
             public static extern void Fullint64NttLoadWIN_avx2(ulong* a, long la, uint* x, long L, uint p);
             [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
             public static extern ulong Fullint64NttCrtWIN(uint* x0, uint* x1, uint* x2, long nd, ulong* r, long len, ulong* k);
+        }
+
+        // AArch64 (arm64/NttNeon.s in libFullIntOperations_linux_arm64.so, reached under the x64 name:
+        // LinuxNativeLibrary)
+        private static unsafe class NativeArm
+        {
+            private const string Dll = "FullIntOperations_win_x64.dll";
+            [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void Fullint64NttDif1WIN_neon(uint* x, long L, long h, uint* w, uint* wq, uint p);
+            [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void Fullint64NttDif2WIN_neon(uint* x, long L, long h, uint* w, uint* wq, uint p);
+            [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void Fullint64NttDif3WIN_neon(uint* x, long L, uint* w, uint* wq, uint p);
+            [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void Fullint64NttDit1WIN_neon(uint* x, long L, long h, uint* w, uint* wq, uint p);
+            [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void Fullint64NttDit2WIN_neon(uint* x, long L, long h, uint* w, uint* wq, uint p);
+            [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void Fullint64NttDit3WIN_neon(uint* x, long L, uint* w, uint* wq, uint p);
+            [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void Fullint64NttR3DifWIN_neon(uint* x, long M, uint* k, uint p);
+            [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void Fullint64NttR3DitWIN_neon(uint* x, long M, uint* k, uint p);
+            [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void Fullint64NttPointWIN_neon(uint* x, uint* y, long n, uint p, uint pinv);
+            [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void Fullint64NttScaleWIN_neon(uint* x, long n, uint p, uint c, uint cq);
+            [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void Fullint64NttLoadWIN_neon(ulong* a, long la, uint* x, long L, uint p);
+            [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+            public static extern ulong Fullint64NttCrtWIN_neon(uint* x0, uint* x1, uint* x2, long nd, ulong* r, long len, ulong* k);
         }
 
         private static unsafe class Native86
