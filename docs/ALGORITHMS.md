@@ -13,7 +13,7 @@ Notation: `n`, `m` are operand sizes in 64-bit limbs; `M(n)` is the cost of mult
 | Divide | `Div.asm` | Long division with a quotient-digit estimate: the top two words are normalized on every step with `bsr` + `shld`, `q_min = U / (D+1)` and `q_max = U / D` are computed, then interpolated using the next divisor word. The digit is applied with a multiply-subtract and **one** ±1 correction. | O(n·m), ⚠️ the estimate can be off by more than 1, which gives wrong digits |
 | To decimal string | `ToDecString.asm` | Repeated division of the whole number by 10¹⁹, each remainder producing 19 digits | O(n²) |
 | From decimal string | `FromDecString.asm` | Parse 19-digit chunks, then convert radix 10¹⁹ → 2⁶⁴ by repeated division | O(n²) |
-| Power | `FullInt64Engine.pow` | Right-to-left binary exponentiation. The exponent bits come from `ToString(2)`. | O(log e) multiplications |
+| Power | `FullIntEngine.pow` | Right-to-left binary exponentiation. The exponent bits come from `ToString(2)`. | O(log e) multiplications |
 | Radix mode conversion | `ConvertToBase` | Repeated division by 10¹⁹ (bin → dec) or by 2⁶⁴ written in radix 10¹⁹ (dec → bin) | O(n²) |
 
 ### Why the schoolbook multiply loses to `BigInteger` today

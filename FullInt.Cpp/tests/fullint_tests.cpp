@@ -3,7 +3,7 @@
 // does not define the same way (parse prefixes, hex format).
 #include <fullint/BurnikelZiegler.h>
 #include <fullint/NewtonDivision.h>
-#include <fullint/FullInt64.h>
+#include <fullint/FullInt.h>
 #include <fullint/Karatsuba.h>
 #include <fullint/kernels.h>
 #include <gmp.h>
@@ -15,7 +15,7 @@
 #include <string>
 #include <vector>
 
-using fullint::FullInt64;
+using fullint::FullInt;
 
 namespace {
 
@@ -42,7 +42,7 @@ struct Mpz
     Mpz& operator=(const Mpz&) = delete;
 };
 
-void ToMpz(const FullInt64& x, mpz_t out)
+void ToMpz(const FullInt& x, mpz_t out)
 {
     auto w = x.Words();
     mpz_import(out, w.size(), 1, sizeof(uint64_t), 0, 0, w.data());   // order 1: most significant word first
@@ -56,7 +56,7 @@ std::string MpzDec(const mpz_t v)
     return buf.data();
 }
 
-bool Same(const FullInt64& x, const mpz_t expected)
+bool Same(const FullInt& x, const mpz_t expected)
 {
     Mpz t;
     ToMpz(x, t.v);
@@ -65,7 +65,7 @@ bool Same(const FullInt64& x, const mpz_t expected)
 
 std::mt19937_64 rng(20261114);
 
-FullInt64 RandomValue(int words)
+FullInt RandomValue(int words)
 {
     std::vector<uint64_t> w(words);
     int kind = (int)(rng() % 8);
@@ -74,16 +74,16 @@ FullInt64 RandomValue(int words)
     if (kind == 1) { for (auto& x : w) x = 0; w[0] = 1ull << (rng() % 64); }   // a power of two
     if (kind == 2 && words > 1) w[words - 1] = 0;                        // low zero word
     if (w[0] == 0) w[0] = 1;
-    return FullInt64((rng() & 1) != 0, fullint::CSpan(w));
+    return FullInt((rng() & 1) != 0, fullint::CSpan(w));
 }
 
-std::string Desc(const char* op, const FullInt64& a, const FullInt64& b)
+std::string Desc(const char* op, const FullInt& a, const FullInt& b)
 {
     return std::string(op) + " a(" + std::to_string(a.Length()) + (a.IsNegative() ? "w,-) b(" : "w,+) b(") +
            std::to_string(b.Length()) + (b.IsNegative() ? "w,-)" : "w,+)");
 }
 
-void CheckPair(const FullInt64& a, const FullInt64& b)
+void CheckPair(const FullInt& a, const FullInt& b)
 {
     Mpz ma, mb, e, e2;
     ToMpz(a, ma.v);
@@ -101,8 +101,8 @@ void CheckPair(const FullInt64& a, const FullInt64& b)
         mpz_tdiv_qr(e.v, e2.v, ma.v, mb.v);   // truncating, as C#/BigInteger
         CHECK(Same(a / b, e.v), Desc("div", a, b));
         CHECK(Same(a % b, e2.v), Desc("mod", a, b));
-        FullInt64 r;
-        FullInt64 q = fullint::FullInt64Engine::div(a, b, r);
+        FullInt r;
+        FullInt q = fullint::FullIntEngine::div(a, b, r);
         CHECK(Same(q, e.v) && Same(r, e2.v), Desc("divrem", a, b));
     }
 
@@ -115,25 +115,25 @@ void CheckPair(const FullInt64& a, const FullInt64& b)
 
     int c = mpz_cmp(ma.v, mb.v);
     c = c < 0 ? -1 : c > 0 ? 1 : 0;
-    CHECK(fullint::FullInt64Engine::Compare(a, b) == c, Desc("compare", a, b));
+    CHECK(fullint::FullIntEngine::Compare(a, b) == c, Desc("compare", a, b));
     CHECK((a == b) == (c == 0) && (a < b) == (c < 0) && (a > b) == (c > 0), Desc("relational", a, b));
 }
 
-void CheckSingle(const FullInt64& a)
+void CheckSingle(const FullInt& a)
 {
     Mpz ma, e;
     ToMpz(a, ma.v);
 
     std::string dec = MpzDec(ma.v);
     CHECK(a.ToString() == dec, "ToString(10) " + dec.substr(0, 40));
-    CHECK(FullInt64::Parse(dec) == a, "Parse(dec) " + dec.substr(0, 40));
+    CHECK(FullInt::Parse(dec) == a, "Parse(dec) " + dec.substr(0, 40));
 
     std::string hex = a.ToString(16);
     std::vector<char> buf(mpz_sizeinbase(ma.v, 16) + 2);
     mpz_abs(e.v, ma.v);
     mpz_get_str(buf.data(), -16, e.v);   // upper case
     CHECK(hex == std::string(a.IsNegative() ? "-0x" : "0x") + buf.data(), "ToString(16) " + hex.substr(0, 40));
-    CHECK(FullInt64::Parse(hex) == a, "Parse(hex) " + hex.substr(0, 40));
+    CHECK(FullInt::Parse(hex) == a, "Parse(hex) " + hex.substr(0, 40));
 
     for (int base : { 2, 8 })
     {
@@ -143,7 +143,7 @@ void CheckSingle(const FullInt64& a)
     }
     std::vector<char> oct(mpz_sizeinbase(e.v, 8) + 2);
     mpz_get_str(oct.data(), 8, e.v);
-    CHECK(FullInt64::Parse(std::string(a.IsNegative() ? "-0" : "0") + oct.data()) == a, "Parse(octal)");
+    CHECK(FullInt::Parse(std::string(a.IsNegative() ? "-0" : "0") + oct.data()) == a, "Parse(octal)");
 
     mpz_neg(e.v, ma.v);
     CHECK(Same(-a, e.v), "negate");
@@ -162,58 +162,58 @@ void CheckSingle(const FullInt64& a)
 
 void EdgeCases()
 {
-    CHECK(FullInt64() == FullInt64(0) && !FullInt64().IsNegative(), "zero");
-    CHECK(FullInt64::Parse("-0") == FullInt64(0) && !FullInt64::Parse("-0").IsNegative(), "-0 is zero");
-    CHECK((FullInt64(5) - FullInt64(5)).IsNegative() == false, "5 - 5 not negative");
-    CHECK((FullInt64(-3) * FullInt64(0)).IsNegative() == false, "-3 * 0 not negative");
-    CHECK(FullInt64(INT64_MIN).ToString() == "-9223372036854775808", "INT64_MIN");
-    CHECK(FullInt64(UINT64_MAX).ToString() == "18446744073709551615", "UINT64_MAX");
-    CHECK(FullInt64::Parse("") == FullInt64(0), "empty parses as 0");
-    CHECK(FullInt64::Parse("0x1F") == FullInt64(31), "0x prefix");
-    CHECK(FullInt64::Parse("x1f") == FullInt64(31), "x prefix");
-    CHECK(FullInt64::Parse("017") == FullInt64(15), "octal prefix");
+    CHECK(FullInt() == FullInt(0) && !FullInt().IsNegative(), "zero");
+    CHECK(FullInt::Parse("-0") == FullInt(0) && !FullInt::Parse("-0").IsNegative(), "-0 is zero");
+    CHECK((FullInt(5) - FullInt(5)).IsNegative() == false, "5 - 5 not negative");
+    CHECK((FullInt(-3) * FullInt(0)).IsNegative() == false, "-3 * 0 not negative");
+    CHECK(FullInt(INT64_MIN).ToString() == "-9223372036854775808", "INT64_MIN");
+    CHECK(FullInt(UINT64_MAX).ToString() == "18446744073709551615", "UINT64_MAX");
+    CHECK(FullInt::Parse("") == FullInt(0), "empty parses as 0");
+    CHECK(FullInt::Parse("0x1F") == FullInt(31), "0x prefix");
+    CHECK(FullInt::Parse("x1f") == FullInt(31), "x prefix");
+    CHECK(FullInt::Parse("017") == FullInt(15), "octal prefix");
 
     bool threw = false;
-    try { (void)(FullInt64(1) / FullInt64(0)); } catch (const std::domain_error&) { threw = true; }
+    try { (void)(FullInt(1) / FullInt(0)); } catch (const std::domain_error&) { threw = true; }
     CHECK(threw, "division by zero throws");
     threw = false;
-    try { (void)FullInt64::Parse("12a"); } catch (const std::invalid_argument&) { threw = true; }
+    try { (void)FullInt::Parse("12a"); } catch (const std::invalid_argument&) { threw = true; }
     CHECK(threw, "bad digit throws");
     threw = false;
-    try { (void)Pow(FullInt64(2), FullInt64(-1)); } catch (const std::out_of_range&) { threw = true; }
+    try { (void)Pow(FullInt(2), FullInt(-1)); } catch (const std::out_of_range&) { threw = true; }
     CHECK(threw, "negative exponent throws");
 
     // copy / move / self-assignment, inline and heap
     for (int words : { 1, 4, 5, 40 })
     {
-        FullInt64 a = RandomValue(words);
-        FullInt64 b(a);
+        FullInt a = RandomValue(words);
+        FullInt b(a);
         CHECK(a == b, "copy");
-        FullInt64 c(std::move(b));
-        CHECK(c == a && b == FullInt64(0), "move");
+        FullInt c(std::move(b));
+        CHECK(c == a && b == FullInt(0), "move");
         c = c;
         CHECK(c == a, "self copy-assign");
-        FullInt64 d = RandomValue(70);
+        FullInt d = RandomValue(70);
         d = a;
         CHECK(d == a, "copy-assign over heap");
         d = std::move(c);
         CHECK(d == a, "move-assign");
-        FullInt64 bytes = FullInt64::FromBytes(std::span<const uint8_t>((const uint8_t*)a.Words().data(), 0), false);
-        CHECK(bytes == FullInt64(0), "FromBytes empty");
+        FullInt bytes = FullInt::FromBytes(std::span<const uint8_t>((const uint8_t*)a.Words().data(), 0), false);
+        CHECK(bytes == FullInt(0), "FromBytes empty");
     }
     {
         uint8_t le[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09 };
-        CHECK(FullInt64::FromBytes(le, true).ToString(16) == "-0x90807060504030201", "FromBytes");
+        CHECK(FullInt::FromBytes(le, true).ToString(16) == "-0x90807060504030201", "FromBytes");
     }
 
     Mpz e;
     for (int p : { 0, 1, 2, 7, 64, 100 })
     {
         mpz_ui_pow_ui(e.v, 3, p);
-        CHECK(Same(Pow(FullInt64(3), FullInt64(p)), e.v), "pow 3^" + std::to_string(p));
+        CHECK(Same(Pow(FullInt(3), FullInt(p)), e.v), "pow 3^" + std::to_string(p));
         mpz_set_si(e.v, -7);
         mpz_pow_ui(e.v, e.v, p);
-        CHECK(Same(Pow(FullInt64(-7), FullInt64(p)), e.v), "pow -7^" + std::to_string(p));
+        CHECK(Same(Pow(FullInt(-7), FullInt(p)), e.v), "pow -7^" + std::to_string(p));
     }
 }
 
@@ -224,7 +224,7 @@ void MultiplyThresholds()
     {
         int la = 1 + (int)(rng() % 120), lb = 1 + (int)(rng() % 120);
         if (round % 50 == 0) { la = 300 + (int)(rng() % 900); lb = 300 + (int)(rng() % 900); }
-        FullInt64 a = RandomValue(la), b = RandomValue(lb);
+        FullInt a = RandomValue(la), b = RandomValue(lb);
         std::vector<uint64_t> r(a.Length() + b.Length());
         int threshold = 2 + (int)(rng() % 10), toom3 = 3 + (int)(rng() % 20);
         int toom4 = rng() % 3 == 0 ? 1 << 30 : 4 + (int)(rng() % 40);   // Toom-4 levels too
@@ -247,7 +247,7 @@ void FftProducts()
     for (int round = 0; round < 800; round++)
     {
         int la = 1 + (int)(rng() % (round % 10 == 0 ? 400 : 60)), lb = 1 + (int)(rng() % (round % 10 == 0 ? 400 : 60));
-        FullInt64 a = RandomValue(la), b = RandomValue(lb);
+        FullInt a = RandomValue(la), b = RandomValue(lb);
         std::vector<uint64_t> r(a.Length() + b.Length());
         int k = 1 + (int)(rng() % 9);
         fullint::Karatsuba::FftMultiply(a.Words(), b.Words(), r, k);
@@ -261,7 +261,7 @@ void FftProducts()
     for (int round = 0; round < 12; round++)
     {
         int la = 100 + (int)(rng() % 600), lb = 100 + (int)(rng() % 600);
-        FullInt64 a = RandomValue(la), b = RandomValue(lb);
+        FullInt a = RandomValue(la), b = RandomValue(lb);
         std::vector<uint64_t> r(a.Length() + b.Length());
         int fft = round % 3 == 0 ? 24 : round % 3 == 1 ? 48 : 100;
         fullint::Karatsuba::Multiply(a.Words(), b.Words(), r, 8, 24, 48, fft);
@@ -351,8 +351,8 @@ void SquaresCheck()
     }
     for (int round = 0; round < 40; round++)
     {
-        FullInt64 x = RandomValue(1 + (int)(rng() % 600));
-        FullInt64 sq = x * x;
+        FullInt x = RandomValue(1 + (int)(rng() % 600));
+        FullInt sq = x * x;
         Mpz mx, e, got;
         ToMpz(Abs(x), mx.v);
         mpz_mul(e.v, mx.v, mx.v);
@@ -619,7 +619,7 @@ void NewtonDivide()
 // leading zero words, down to zero itself - against GMP
 void AndLeadingZeros()
 {
-    FullInt64 shared;
+    FullInt shared;
     for (int la = 1; la <= 20; la++)
         for (int lb = 1; lb <= 20; lb++)
             for (int k = 0; k <= std::min(la, lb); k++)
@@ -633,7 +633,7 @@ void AndLeadingZeros()
                     wb[ib] = ~wa[ia];
                     if (ib == 0) wb[0] |= 1;   // keep b's top word nonzero
                 }
-                FullInt64 a(false, fullint::CSpan(wa)), b(false, fullint::CSpan(wb));
+                FullInt a(false, fullint::CSpan(wa)), b(false, fullint::CSpan(wb));
                 Mpz ma, mb, e;
                 ToMpz(a, ma.v);
                 ToMpz(b, mb.v);
@@ -672,7 +672,7 @@ void ToStringShapes()
             size_t cnt = 0;
             std::vector<uint64_t> words((mpz_sizeinbase(e.v, 2) + 63) / 64 + 1);
             mpz_export(words.data(), &cnt, 1, 8, 0, 0, e.v);
-            FullInt64 a(mpz_sgn(e.v) < 0, fullint::CSpan(words.data(), cnt));
+            FullInt a(mpz_sgn(e.v) < 0, fullint::CSpan(words.data(), cnt));
             buf = mpz_get_str(nullptr, 10, e.v);
             CHECK(a.ToString() == buf, "ToString " + std::to_string(n) + " words shape " + std::to_string(shape));
             void (*freefunc)(void*, size_t);
@@ -697,7 +697,7 @@ void ParseShapes()
             std::string s = (neg ? "-" : "") + t;
             Mpz e;
             mpz_set_str(e.v, s.c_str(), 10);
-            CHECK(Same(FullInt64::Parse(s), e.v), "Parse " + std::to_string(len) + " shape " + std::to_string(shape));
+            CHECK(Same(FullInt::Parse(s), e.v), "Parse " + std::to_string(len) + " shape " + std::to_string(shape));
         }
     const unsigned char badBytes[] = { '/', ':', 0x00, 0x20, 0x7F, 0xFA, 0xFF, 'a' };
     for (int len = 2; len <= 40; len++)
@@ -707,7 +707,7 @@ void ParseShapes()
                 std::string t(len, '5');
                 t[pos] = (char)b;
                 bool threw = false;
-                try { (void)FullInt64::Parse(t); } catch (const std::invalid_argument&) { threw = true; }
+                try { (void)FullInt::Parse(t); } catch (const std::invalid_argument&) { threw = true; }
                 CHECK(threw, "Parse refuses a non-digit at " + std::to_string(pos) + " of " + std::to_string(len));
             }
 }
@@ -716,14 +716,14 @@ void ParseShapes()
 // 1-12, small top words (the result's top word zero) and full ones, both signs - against GMP
 void ShiftLeftIntoAll()
 {
-    FullInt64 shared;
+    FullInt shared;
     for (int la = 1; la <= 12; la++)
         for (int shift = 1; shift <= 140; shift++)
         {
             std::vector<uint64_t> w(la);
             for (auto& x : w) x = rng();
             w[0] = shift % 3 == 0 ? 1 + (rng() & 0xFF) : w[0] | 1ull << 63;
-            FullInt64 a(shift % 2 == 0, fullint::CSpan(w));
+            FullInt a(shift % 2 == 0, fullint::CSpan(w));
             Mpz ma, e;
             ToMpz(a, ma.v);
             mpz_mul_2exp(e.v, ma.v, shift);
@@ -737,7 +737,7 @@ void ShiftLeftIntoAll()
 // zero operands; every sign pair, lengths 1-12 and some longer
 void AddSubIntoShapes()
 {
-    FullInt64 shared;
+    FullInt shared;
     for (int round = 0; round < 20000; round++)
     {
         int la = 1 + (int)(rng() % (round % 10 == 0 ? 40 : 12)), lb = 1 + (int)(rng() % (round % 10 == 0 ? 40 : 12));
@@ -760,7 +760,7 @@ void AddSubIntoShapes()
         else if (shape == 4) { for (auto& x : wa) x = 0; la = 1; wa.resize(1); }   // zero
         if (wa[0] == 0 && la > 1) wa[0] = 1;
         if (wb[0] == 0 && lb > 1) wb[0] = 1;
-        FullInt64 a(rng() & 1, fullint::CSpan(wa)), b(rng() & 1, fullint::CSpan(wb));
+        FullInt a(rng() & 1, fullint::CSpan(wa)), b(rng() & 1, fullint::CSpan(wb));
         Mpz ma, mb, e;
         ToMpz(a, ma.v);
         ToMpz(b, mb.v);
@@ -771,7 +771,7 @@ void AddSubIntoShapes()
         mpz_sub(e.v, ma.v, mb.v);
         fullint::Subtract(shared, a, b);
         CHECK(Same(shared, e.v), "Subtract into " + ctx);
-        FullInt64 fresh;   // a fresh (inline) result
+        FullInt fresh;   // a fresh (inline) result
         fullint::Subtract(fresh, b, a);
         mpz_sub(e.v, mb.v, ma.v);
         CHECK(Same(fresh, e.v), "Subtract into fresh " + ctx);
@@ -782,11 +782,11 @@ void AddSubIntoShapes()
 // operators: result fresh, reused across sizes, and the same object as a or b
 void InPlaceApi()
 {
-    FullInt64 shared;
+    FullInt shared;
     for (int round = 0; round < 3000; round++)
     {
         int la = 1 + (int)(rng() % (round % 3 == 0 ? 90 : 9)), lb = 1 + (int)(rng() % (round % 3 == 0 ? 90 : 9));
-        FullInt64 a = RandomValue(la), b = RandomValue(lb);
+        FullInt a = RandomValue(la), b = RandomValue(lb);
         int shift = (int)(rng() % 200);
         std::string ctx = std::to_string(la) + "/" + std::to_string(lb) + " round " + std::to_string(round);
 
@@ -812,7 +812,7 @@ void InPlaceApi()
             CHECK(shared == a / b, "Divide " + ctx);
             fullint::Remainder(shared, a, b);
             CHECK(shared == a % b, "Remainder " + ctx);
-            FullInt64 d(a), m(a), e(b);
+            FullInt d(a), m(a), e(b);
             fullint::Divide(d, d, b);
             CHECK(d == a / b, "Divide into a " + ctx);
             fullint::Remainder(m, m, b);
@@ -820,37 +820,37 @@ void InPlaceApi()
             fullint::Divide(e, a, e);
             CHECK(e == a / b, "Divide into b " + ctx);
         }
-        FullInt64 g(a), h(b);
+        FullInt g(a), h(b);
         g &= b;
         CHECK(g == (a & b), "&= " + ctx);
         h ^= a;
         CHECK(h == (a ^ b), "^= " + ctx);
 
-        FullInt64 x(a);   // into a
+        FullInt x(a);   // into a
         fullint::Add(x, x, b);
         CHECK(x == a + b, "Add into a " + ctx);
         fullint::Subtract(x, x, b);
         CHECK(x == a, "Subtract into a " + ctx);
         fullint::Multiply(x, x, b);
         CHECK(x == a * b, "Multiply into a " + ctx);
-        FullInt64 y(b);   // into b
+        FullInt y(b);   // into b
         fullint::Add(y, a, y);
         CHECK(y == a + b, "Add into b " + ctx);
         fullint::Subtract(y, a, y);
         CHECK(y == -b, "Subtract into b " + ctx);
-        FullInt64 z(a);   // both operands are the result
+        FullInt z(a);   // both operands are the result
         fullint::Add(z, z, z);
         CHECK(z == a + a, "Add z = z + z " + ctx);
 
-        FullInt64 c(a);   // compound operators, a few steps in a row (the carry room is reused)
+        FullInt c(a);   // compound operators, a few steps in a row (the carry room is reused)
         c += b; c += b; c -= a; c *= b; c -= b;
         CHECK(c == (a + b + b - a) * b - b, "compound " + ctx);
     }
 
-    FullInt64 acc = FullInt64(UINT64_MAX) * FullInt64(UINT64_MAX);   // a long run of += 1
-    FullInt64 expect = acc;
+    FullInt acc = FullInt(UINT64_MAX) * FullInt(UINT64_MAX);   // a long run of += 1
+    FullInt expect = acc;
     for (int i = 0; i < 1000; i++) ++acc;
-    CHECK(acc == expect + FullInt64(1000), "++ x1000");
+    CHECK(acc == expect + FullInt(1000), "++ x1000");
 }
 
 // decimal text by halves against GMP: powers of ten and neighbours, zero runs, random
@@ -887,7 +887,7 @@ void DecimalByHalves()
             if (to != savedTo && t.size() > 5000) continue;
             for (const std::string& text : { t, "-" + t })
             {
-                FullInt64 x = FullInt64::Parse(text);
+                FullInt x = FullInt::Parse(text);
                 Mpz e, got;
                 mpz_set_str(e.v, text.c_str(), 10);
                 ToMpz(x, got.v);
@@ -1006,9 +1006,9 @@ static void CompareKernels()
                 {
                     bool na = sg & 1, nb = (sg >> 1) & 1;
                     if (a[0] == 0 || b[0] == 0) continue;   // normalized numbers only
-                    FullInt64 fa(na, fullint::CSpan(a)), fb(nb, fullint::CSpan(b));
+                    FullInt fa(na, fullint::CSpan(a)), fb(nb, fullint::CSpan(b));
                     int want = na != nb ? (na ? -1 : 1) : (na ? -expect : expect);
-                    CHECK(fullint::FullInt64Engine::Compare(fa, fb) == want, "Compare objects");
+                    CHECK(fullint::FullIntEngine::Compare(fa, fb) == want, "Compare objects");
                 }
 #elif FULLINT_X86
                 if (fullint::Cpu::Has(fullint::Cpu::Sse2))
@@ -1049,9 +1049,9 @@ int main()
     for (int s : sizes)
         for (int rep = 0; rep < 4; rep++)
             CheckSingle(RandomValue(s));
-    CheckSingle(FullInt64(0));
-    CheckPair(FullInt64(0), RandomValue(3));
-    CheckPair(RandomValue(3), FullInt64(0));
+    CheckSingle(FullInt(0));
+    CheckPair(FullInt(0), RandomValue(3));
+    CheckPair(RandomValue(3), FullInt(0));
 
     std::printf("%s: %ld checks, %d failed\n", failures ? "FAILED" : "OK", checks, failures);
     return failures ? 1 : 0;

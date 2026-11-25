@@ -15,11 +15,11 @@ Arbitrary-precision integer arithmetic for .NET, built on 64-bit limbs with hand
 ## Quick start
 
 ```csharp
-using FullInt.Core;
+using FullNumerics;
 
-FullInt64 a = "123456789012345678901234567890";      // decimal string
-FullInt64 b = "0xFFFFFFFFFFFFFFFFFFFF";              // hex string
-FullInt64 c = 42;                                    // from int/long/byte
+FullInt a = "123456789012345678901234567890";      // decimal string
+FullInt b = "0xFFFFFFFFFFFFFFFFFFFF";              // hex string
+FullInt c = 42;                                    // from int/long/byte
 
 var sum  = a + b;
 var prod = a * b;
@@ -90,7 +90,7 @@ On platforms without a native backend yet (`linux-*`, `osx-*`, `win-arm64`), the
 ## Repository layout
 
 ```
-FullInt.Core/        main library: FullInt64 type, engine, core abstraction, P/Invoke bindings
+FullInt.Core/        main library: FullInt type, engine, core abstraction, P/Invoke bindings
 FullInt.Asm/         native kernels (NASM: Sources/x64, Sources/x86) and build scripts
 FullInt.AsmForNet/   MSBuild glue that builds the native DLL and copies it next to managed outputs
 FullInt.Tests/       MSTest suite; randomized differential tests against System.Numerics.BigInteger

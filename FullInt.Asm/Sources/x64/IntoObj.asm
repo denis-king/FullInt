@@ -4,20 +4,20 @@ CODE_SECTION
 
 ; =============================================================================
 ;  x64: the C++ into-operations' common case on the number objects themselves (C++ only:
-;  FullInt64's layout, checked by a static_assert in FullInt64Engine.cpp). The whole common case
+;  FullInt's layout, checked by a static_assert in FullIntEngine.cpp). The whole common case
 ;  in one call - the checks, the words' addresses, the loop, the result's header - and 0;
 ;  anything else returns 1 with nothing written, and the caller takes the C++ path.
 ;
-;  FullInt64 (x64):  +0   inline words (8) / the heap pointer (when cap > 8)
+;  FullInt (x64):  +0   inline words (8) / the heap pointer (when cap > 8)
 ;                    +40h cap   +44h off   +48h size   +4Ch neg (byte)
 ;  A number's words: base + off*8, size of them, index 0 = the most significant word.
 ;
-;    int Fullint64AndObjWIN(FullInt64* r, const FullInt64* a, const FullInt64* b)
+;    int Fullint64AndObjWIN(FullInt* r, const FullInt* a, const FullInt* b)
 ;      r = a & b when both are non-negative, the shorter has at most 32 words, r is neither and has
 ;      room for them: eight words a pass with SSE2 (every x86-64), then four, two, one; the leading
 ;      zero words taken off. (The C++ loop: 4 words 1.17 of GMP - its vectorized path's checks.)
 ;
-;    int Fullint64ShlObjWIN(FullInt64* r, const FullInt64* a, int shift)
+;    int Fullint64ShlObjWIN(FullInt* r, const FullInt* a, int shift)
 ;      r = a << shift when r is not a, a is not zero and has 1-32 words, shift > 0 and not a
 ;      multiple of 64, r has room (la + shift/64 + 1 words): r[i] = a[i-1] << b | a[i] >> (64 - b),
 ;      b = shift % 64, with SSE2's 64-bit lane shifts (psllq / psrlq), two words a pass, then

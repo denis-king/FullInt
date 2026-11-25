@@ -1,29 +1,29 @@
 ; =============================================================================
 ;  x86 (32-bit): the C++ into-operations' common short cases on the number objects themselves
-;  (C++ only: FullInt64's layout, checked by static_asserts in FullInt64Engine.cpp). cdecl.
+;  (C++ only: FullInt's layout, checked by static_asserts in FullIntEngine.cpp). cdecl.
 ;
 ;  MSVC on x86 makes no tail calls and keeps much of the C++ paths' state on the stack: a thin
 ;  C++ entry in front of the general function cost more than it saved. These kernels do the
 ;  whole common case - the checks, the words' addresses, the loop, the result's header - and
 ;  return 0; anything else returns 1 with nothing written, and the caller takes the general path.
 ;
-;  FullInt64 (x86):  +0   inline words (8) / the heap pointer (when cap > 8)
+;  FullInt (x86):  +0   inline words (8) / the heap pointer (when cap > 8)
 ;                    +64  cap   +68 off   +72 size   +76 neg (byte)
 ;  A number's words: base + off*8, size of them, index 0 = the most significant word.
 ;
-;    int Fullint64AndObjWIN(FullInt64* r, const FullInt64* a, const FullInt64* b)
+;    int Fullint64AndObjWIN(FullInt* r, const FullInt* a, const FullInt* b)
 ;      r = a & b when both are non-negative, r is neither and has room for the shorter's
 ;      length: eight words a pass with SSE2 (movdqu / pand; the C++ x86 build needs SSE2 anyway),
 ;      then four, two, one.
 ;
-;    int Fullint64AddObjWIN(FullInt64* r, const FullInt64* a, const FullInt64* b, int negate2)
+;    int Fullint64AddObjWIN(FullInt* r, const FullInt* a, const FullInt* b, int negate2)
 ;      r = a + b (negate2 = 0) or a - b (1) when r is neither and has room (the longer's length,
 ;      + 1 for a sum); any lengths. Same signs: the words added from the low end with the carry in
 ;      CF, then the carry through the longer's other words, the carry word on top. Opposite signs:
 ;      the larger magnitude (the longer; equal lengths: compared from the top, the equal top words
 ;      left out) minus the smaller with the borrow in CF, the leading zero words counted.
 ;
-;    int Fullint64ShlObjWIN(FullInt64* r, const FullInt64* a, int shift)
+;    int Fullint64ShlObjWIN(FullInt* r, const FullInt* a, int shift)
 ;      r = a << shift when r is not a, a is not zero, shift > 0 and not a multiple of 64, and r
 ;      has room: la + shift/64 + 1 words. Words of r from the top: r[i] = a[i-1] << b | a[i] >>
 ;      (64 - b), b = shift % 64, with SSE2's 64-bit lane shifts (psllq / psrlq), two words a pass

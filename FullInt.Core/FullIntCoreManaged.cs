@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace FullInt.Core
+namespace FullNumerics
 {
     public class FullIntCoreManaged : IFullIntCore
     {

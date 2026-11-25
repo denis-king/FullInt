@@ -1,9 +1,9 @@
 ﻿using System.Diagnostics;
 using System.Globalization;
 using System.Numerics;
-using FullInt.Core;
+using FullNumerics;
 
-namespace FullInt.Benchmarks
+namespace FullNumerics.Benchmarks
 {
     /// <summary>
     /// The .NET half of the cross benchmark (GMP / FullInt C++ / FullInt .NET / BigInteger).
@@ -135,15 +135,15 @@ namespace FullInt.Benchmarks
                 ulong[] wa = Words(n), wb = Words(n), wc = Words(2 * n);
                 if (n > maxN) break;
 
-                var a = new FullInt64(false, wa);
-                var b = new FullInt64(false, wb);
-                var c = new FullInt64(false, wc);
-                var a2 = new FullInt64(false, (ulong[])wa.Clone());
+                var a = new FullInt(false, wa);
+                var b = new FullInt(false, wb);
+                var c = new FullInt(false, wc);
+                var a2 = new FullInt(false, (ulong[])wa.Clone());
                 BigInteger ba = Big(wa), bb = Big(wb), bc = Big(wc), ba2 = Big(wa);
                 string text = ba.ToString(CultureInfo.InvariantCulture);
                 var sinks = new Sinks();
                 keep.Add(sinks);
-                var ri = new FullInt64(0);   // into an existing result (FullInt64.Add(result, a, b))
+                var ri = new FullInt(0);   // into an existing result (FullInt.Add(result, a, b))
 
                 void Row(string op, Action ours, Action big)
                 {
@@ -151,28 +151,28 @@ namespace FullInt.Benchmarks
                     cells.Add((op, n, ours, n <= bigMax ? big : null));
                 }
 
-                // op: a new value each time (both sides); opto: FullInt64 into an existing result
-                // (FullInt64.Add(result, a, b) ...) - BigInteger has no such form, its side is the
+                // op: a new value each time (both sides); opto: FullInt into an existing result
+                // (FullInt.Add(result, a, b) ...) - BigInteger has no such form, its side is the
                 // same new-value operation, so the pair shows what the into-API saves
                 Row("add", () => sinks.r = a + b, () => sinks.br = ba + bb);
-                Row("addto", () => FullInt64.Add(ri, a, b), () => sinks.br = ba + bb);
+                Row("addto", () => FullInt.Add(ri, a, b), () => sinks.br = ba + bb);
                 Row("sub", () => sinks.r = a - b, () => sinks.br = ba - bb);
-                Row("subto", () => FullInt64.Subtract(ri, a, b), () => sinks.br = ba - bb);
+                Row("subto", () => FullInt.Subtract(ri, a, b), () => sinks.br = ba - bb);
                 Row("mul", () => sinks.r = a * b, () => sinks.br = ba * bb);
-                Row("multo", () => FullInt64.Multiply(ri, a, b), () => sinks.br = ba * bb);
+                Row("multo", () => FullInt.Multiply(ri, a, b), () => sinks.br = ba * bb);
                 Row("div", () => sinks.r = c / b, () => sinks.br = bc / bb);
-                Row("divto", () => FullInt64.Divide(ri, c, b), () => sinks.br = bc / bb);
+                Row("divto", () => FullInt.Divide(ri, c, b), () => sinks.br = bc / bb);
                 Row("mod", () => sinks.r = c % b, () => sinks.br = bc % bb);
-                Row("modto", () => FullInt64.Remainder(ri, c, b), () => sinks.br = bc % bb);
+                Row("modto", () => FullInt.Remainder(ri, c, b), () => sinks.br = bc % bb);
                 Row("shl", () => sinks.r = a << 13, () => sinks.br = ba << 13);
-                Row("shlto", () => FullInt64.ShiftLeft(ri, a, 13), () => sinks.br = ba << 13);
+                Row("shlto", () => FullInt.ShiftLeft(ri, a, 13), () => sinks.br = ba << 13);
                 Row("shr", () => sinks.r = a >> 13, () => sinks.br = ba >> 13);
-                Row("shrto", () => FullInt64.ShiftRight(ri, a, 13), () => sinks.br = ba >> 13);
+                Row("shrto", () => FullInt.ShiftRight(ri, a, 13), () => sinks.br = ba >> 13);
                 Row("and", () => sinks.r = a & b, () => sinks.br = ba & bb);
-                Row("andto", () => FullInt64.And(ri, a, b), () => sinks.br = ba & bb);
+                Row("andto", () => FullInt.And(ri, a, b), () => sinks.br = ba & bb);
                 Row("cmp", () => sinks.i += a > a2 ? 1 : 0, () => sinks.i += BigInteger.Compare(ba, ba2));
                 Row("todec", () => sinks.s = a.ToString(10), () => sinks.s = ba.ToString(CultureInfo.InvariantCulture));
-                Row("parse", () => sinks.r = FullInt64.Parse(text), () => sinks.br = BigInteger.Parse(text, CultureInfo.InvariantCulture));
+                Row("parse", () => sinks.r = FullInt.Parse(text), () => sinks.br = BigInteger.Parse(text, CultureInfo.InvariantCulture));
             }
 
             for (int pass = 0; pass < 3; pass++)
@@ -197,7 +197,7 @@ namespace FullInt.Benchmarks
 
         private sealed class Sinks
         {
-            public FullInt64? r;
+            public FullInt? r;
             public BigInteger br;
             public string? s;
             public int i;

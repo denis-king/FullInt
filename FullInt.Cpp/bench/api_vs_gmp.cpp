@@ -1,9 +1,9 @@
-// API against API: FullInt64 (C++) against GMP's mpz, in like-for-like pairs:
+// API against API: FullInt (C++) against GMP's mpz, in like-for-like pairs:
 //   op    (add, sub, mul, ...): a new value each time, memory included -
-//         FullInt64: r = a op b (a new number, moved into r, r's old buffer released);
+//         FullInt: r = a op b (a new number, moved into r, r's old buffer released);
 //         GMP: mpz_init(t); mpz_op(t, a, b); mpz_swap(r, t); mpz_clear(t)
 //   opto  (addto, subto, ...): into an existing result, the arithmetic alone -
-//         FullInt64: Op(r, a, b) into r's buffer; GMP: mpz_op(r, a, b) into r's buffer
+//         FullInt: Op(r, a, b) into r's buffer; GMP: mpz_op(r, a, b) into r's buffer
 //   todec: a new std::string on both sides; parse: a new number on both sides
 // The same operations, sizes and numbers as the .NET half (FullInt.Benchmarks "cross"):
 // the inputs come from the same splitmix64 sequence. With --net <csv> from that run, the
@@ -14,7 +14,7 @@
 // usage: fullint_bench_api [--ops add,mul,...] [--max N] [--cpu K (the core to pin to; default 2)] [--set name=value ...] [--quick] [--net file.csv] [--csv file]
 //   --quick: 1 ms batches and 3 rounds - a fast "did it help" check, noisier than the full run
 #include <fullint/BurnikelZiegler.h>
-#include <fullint/FullInt64.h>
+#include <fullint/FullInt.h>
 #include <fullint/Karatsuba.h>
 #include <fullint/NewtonDivision.h>
 #include <gmp.h>
@@ -40,7 +40,7 @@
 #include <sched.h>
 #endif
 
-using fullint::FullInt64;
+using fullint::FullInt;
 
 namespace {
 
@@ -219,7 +219,7 @@ int main(int argc, char** argv)
         auto wa = Words(n), wb = Words(n), wc = Words(2 * n);
         if (n > maxN) break;
 
-        FullInt64 a(false, fullint::CSpan(wa)), b(false, fullint::CSpan(wb)), c(false, fullint::CSpan(wc)), a2(a);
+        FullInt a(false, fullint::CSpan(wa)), b(false, fullint::CSpan(wb)), c(false, fullint::CSpan(wc)), a2(a);
         mpz_t ga, gb, gc, ga2, gr;
         mpz_inits(ga, gb, gc, ga2, gr, nullptr);
         mpz_import(ga, wa.size(), 1, 8, 0, 0, wa.data());
@@ -229,7 +229,7 @@ int main(int argc, char** argv)
         std::string text = a.ToString();
         std::vector<char> gbuf(mpz_sizeinbase(ga, 10) + 2);
 
-        FullInt64 r;
+        FullInt r;
         std::string s;
 
         auto row = [&](const char* op, const auto& ours, const auto& gmp) {
@@ -258,7 +258,7 @@ int main(int argc, char** argv)
         };
 
         // GMP's "new value": a fresh mpz per operation (its buffer allocated by the operation),
-        // swapped into gr, the old one freed - as r = a op b does with FullInt64
+        // swapped into gr, the old one freed - as r = a op b does with FullInt
         auto fresh = [&](auto op) {
             mpz_t t;
             mpz_init(t);
@@ -266,7 +266,7 @@ int main(int argc, char** argv)
             mpz_swap(gr, t);
             mpz_clear(t);
         };
-        FullInt64 ri;   // into an existing result: the same call shape as GMP's mpz_op(r, a, b)
+        FullInt ri;   // into an existing result: the same call shape as GMP's mpz_op(r, a, b)
 
         row("add", [&] { r = a + b; }, [&] { fresh([&](mpz_ptr t) { mpz_add(t, ga, gb); }); });
         row("addto", [&] { fullint::Add(ri, a, b); }, [&] { mpz_add(gr, ga, gb); });
@@ -286,7 +286,7 @@ int main(int argc, char** argv)
         row("andto", [&] { fullint::And(ri, a, b); }, [&] { mpz_and(gr, ga, gb); });
         row("cmp", [&] { sink = a > a2; }, [&] { sink = mpz_cmp(ga, ga2); });
         row("todec", [&] { s = a.ToString(); }, [&] { mpz_get_str(gbuf.data(), 10, ga); s = std::string(gbuf.data()); });
-        row("parse", [&] { r = FullInt64::Parse(text); }, [&] { fresh([&](mpz_ptr t) { mpz_set_str(t, text.c_str(), 10); }); });
+        row("parse", [&] { r = FullInt::Parse(text); }, [&] { fresh([&](mpz_ptr t) { mpz_set_str(t, text.c_str(), 10); }); });
 
         mpz_clears(ga, gb, gc, ga2, gr, nullptr);
     }

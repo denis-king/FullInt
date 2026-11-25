@@ -113,7 +113,7 @@ fi_subn_body:                   ; (SubCmpNHdr's fast path continues here)
 ; =============================================================================
 ;  The engine's into-paths with the number's header written here too, so the C++ caller keeps
 ;  nothing across the call and jumps to the kernel (it saved three registers and set a frame):
-;    struct Header { uint32 off; uint32 size; uint8 neg; }   (FullInt64's off_, size_, neg_)
+;    struct Header { uint32 off; uint32 size; uint8 neg; }   (FullInt's off_, size_, neg_)
 ;
 ;  void Fullint64AddNHdrWIN(const uint64* A, const uint64* B, uint64* R, Header* h)
 ;       in: h->size = n (>= 1). R[1 .. n] = A + B, R[0] = the carry; h->off = 1 - carry,

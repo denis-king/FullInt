@@ -1,6 +1,6 @@
 using System.Numerics;
 
-namespace FullInt.Tests
+namespace FullNumerics.Tests
 {
     /// <summary>
     /// BigInteger byte conversions that exist on every target the tests run on

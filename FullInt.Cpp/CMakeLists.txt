@@ -89,11 +89,11 @@ add_library(FullInt::kernels ALIAS fullint_kernels)
 endif()
 
 # ----------------------------------------------------------------------------
-# the library: FullInt64 and its engine
+# the library: FullInt and its engine
 # ----------------------------------------------------------------------------
 add_library(fullint STATIC
-    src/FullInt64Engine.cpp
-    src/FullInt64Engine.Decimal.cpp
+    src/FullIntEngine.cpp
+    src/FullIntEngine.Decimal.cpp
     src/BurnikelZiegler.cpp
     src/NewtonDivision.cpp
     src/Karatsuba.cpp

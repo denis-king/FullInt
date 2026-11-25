@@ -3,7 +3,7 @@ using System.Buffers;
 using System.Runtime.InteropServices;
 using System.Threading;
 
-namespace FullInt.Core
+namespace FullNumerics
 {
     /// <summary>
     /// Multiplication through number-theoretic transforms with the AVX2 kernels (NttAvx2.asm, x64 and x86)

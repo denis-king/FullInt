@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace FullInt.Benchmarks
+namespace FullNumerics.Benchmarks
 {
     /// <summary>
     /// A/B comparison of two builds of the native library (FullIntOperations_win_x64.dll) in one process.

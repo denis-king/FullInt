@@ -1,5 +1,5 @@
-// Port of FullInt.Core/FullInt64Engine.cs: the general (out-of-line) paths.
-#include <fullint/FullInt64.h>
+// Port of FullInt.Core/FullIntEngine.cs: the general (out-of-line) paths.
+#include <fullint/FullInt.h>
 #include <fullint/BurnikelZiegler.h>
 #include <fullint/NewtonDivision.h>
 #include <fullint/Karatsuba.h>
@@ -143,32 +143,32 @@ void WordBuffers::Free(uint64_t* p, uint32_t capacity) noexcept
 
 #pragma region add
 
-// a + b, or a - b with negate2 (no FullInt64 is made for -b), built by addInto in a fresh number
+// a + b, or a - b with negate2 (no FullInt is made for -b), built by addInto in a fresh number
 // (never aliased): its short paths (two words straight-line, the kernel entered directly, the
 // length set from the carry) serve both API forms. x64 2-64 words: 0.8-0.95 of the separate path.
-FullInt64 FullInt64Engine::addOrSub(const FullInt64& value1, const FullInt64& value2, bool negate2)
+FullInt FullIntEngine::addOrSub(const FullInt& value1, const FullInt& value2, bool negate2)
 {
-    FullInt64 r;
+    FullInt r;
     addIntoGeneral(r, value1, value2, negate2);   // a fresh number: the thin entry's checks would not apply
     return r;
 }
 
 // C# allocates the exact size and widens on a carry out; here the carry word is reserved in
 // front (one more word costs nothing) and dropped by the offset when it stays zero.
-FullInt64 FullInt64Engine::addMagnitudes(CSpan a, CSpan b, bool negative)
+FullInt FullIntEngine::addMagnitudes(CSpan a, CSpan b, bool negative)
 {
     uint32_t n = (uint32_t)std::max(a.size(), b.size());
-    FullInt64 r;
+    FullInt r;
     uint64_t* p = r.Prepare(n + 1);
     p[0] = FullIntCore::Add(a, b, Span(p + 1, n));
     r.Normalize(negative);
     return r;
 }
 
-FullInt64 FullInt64Engine::subMagnitudes(CSpan a, CSpan b, bool neg1, bool neg2)
+FullInt FullIntEngine::subMagnitudes(CSpan a, CSpan b, bool neg1, bool neg2)
 {
     uint32_t n = (uint32_t)std::max(a.size(), b.size());   // |a - b| always fits
-    FullInt64 r;
+    FullInt r;
     uint64_t* p = r.Prepare(n);
     int compareResult = FullIntCore::Sub(a, b, Span(p, n));
     r.Normalize(compareResult > 0 ? neg1 : compareResult < 0 ? neg2 : false);
@@ -188,7 +188,7 @@ FullInt64 FullInt64Engine::subMagnitudes(CSpan a, CSpan b, bool neg1, bool neg2)
 // a ± b when both are at most two words (the caller checks): plain 64-bit arithmetic, no kernel call, all words read
 // first (result may be an operand). Writes straight into result's buffer: every buffer holds at
 // least InlineWords words, so no Prepare / Grow - and no call: the function stays a leaf.
-void FullInt64Engine::addIntoShort(FullInt64& result, const FullInt64& value1, const FullInt64& value2, bool negate2) noexcept
+void FullIntEngine::addIntoShort(FullInt& result, const FullInt& value1, const FullInt& value2, bool negate2) noexcept
 {
     CSpan a = value1.Words(), b = value2.Words();
     bool neg1 = value1.neg_, neg2 = value2.neg_ != negate2;
@@ -224,7 +224,7 @@ void FullInt64Engine::addIntoShort(FullInt64& result, const FullInt64& value1, c
 // function saved 8-9 registers on every call): equal lengths of at least 3 words, room in result's
 // buffer, result neither operand; same signs: AddN, opposite: the first differing word from the top
 // decides, SubN on the words from it. Everything else: addIntoGeneral.
-void FullInt64Engine::addInto(FullInt64& result, const FullInt64& value1, const FullInt64& value2, bool negate2)
+void FullIntEngine::addInto(FullInt& result, const FullInt& value1, const FullInt& value2, bool negate2)
 {
 #if FULLINT_WORD64
     // a dispatcher only: every case is a jump with the same arguments, so this saves no registers
@@ -251,10 +251,10 @@ void FullInt64Engine::addInto(FullInt64& result, const FullInt64& value1, const 
 #if FULLINT_WORD64
 // equal lengths >= 3, same signs, room in result (n + 1 <= cap_), result neither operand
 // (the kernel writes the header too: nothing kept across the call, a jump to it)
-void FullInt64Engine::addIntoAddN(FullInt64& result, const FullInt64& value1, const FullInt64& value2) noexcept
+void FullIntEngine::addIntoAddN(FullInt& result, const FullInt& value1, const FullInt& value2) noexcept
 {
-    static_assert(offsetof(FullInt64, size_) == offsetof(FullInt64, off_) + 4 &&
-                  offsetof(FullInt64, neg_) == offsetof(FullInt64, off_) + 8, "the kernels' header");
+    static_assert(offsetof(FullInt, size_) == offsetof(FullInt, off_) + 4 &&
+                  offsetof(FullInt, neg_) == offsetof(FullInt, off_) + 8, "the kernels' header");
     result.neg_ = value1.neg_;
     result.size_ = value1.size_;   // in: n
     Fullint64AddNHdrWIN(value1.Data(), value2.Data(), result.Base(), &result.off_);
@@ -263,7 +263,7 @@ void FullInt64Engine::addIntoAddN(FullInt64& result, const FullInt64& value1, co
 // equal lengths >= 3, opposite signs, room in result, result neither operand: one kernel compares
 // from the top, subtracts the smaller from the larger at the words' own places and counts the
 // zero words above (only volatile registers on either side of the call)
-void FullInt64Engine::addIntoSubN(FullInt64& result, const FullInt64& value1, const FullInt64& value2, bool) noexcept
+void FullIntEngine::addIntoSubN(FullInt& result, const FullInt& value1, const FullInt& value2, bool) noexcept
 {
     // opposite signs: the larger magnitude's sign - value1's, the kernel flips it when it swaps
     result.neg_ = value1.neg_;
@@ -272,7 +272,7 @@ void FullInt64Engine::addIntoSubN(FullInt64& result, const FullInt64& value1, co
 }
 #endif
 
-void FullInt64Engine::addIntoGeneral(FullInt64& result, const FullInt64& value1, const FullInt64& value2, bool negate2)
+void FullIntEngine::addIntoGeneral(FullInt& result, const FullInt& value1, const FullInt& value2, bool negate2)
 {
     bool neg1 = value1.neg_, neg2 = value2.neg_ != negate2;
     CSpan a = value1.Words(), b = value2.Words();
@@ -423,7 +423,7 @@ void FullInt64Engine::addIntoGeneral(FullInt64& result, const FullInt64& value1,
 
 // the result is one of the operands: in its own buffer when the sum fits there (the operand's words are
 // read before their places are written), otherwise a new number
-void FullInt64Engine::addIntoAliased(FullInt64& result, CSpan a, CSpan b, bool neg1, bool neg2)
+void FullIntEngine::addIntoAliased(FullInt& result, CSpan a, CSpan b, bool neg1, bool neg2)
 {
     bool same = neg1 == neg2;
     uint32_t n = (uint32_t)std::max(a.size(), b.size()) + (same ? 1 : 0);
@@ -449,7 +449,7 @@ void FullInt64Engine::addIntoAliased(FullInt64& result, CSpan a, CSpan b, bool n
     }
 }
 
-void FullInt64Engine::addIntoFresh(FullInt64& result, CSpan a, CSpan b, bool neg1, bool neg2)
+void FullIntEngine::addIntoFresh(FullInt& result, CSpan a, CSpan b, bool neg1, bool neg2)
 {
     result = neg1 == neg2 ? addMagnitudes(a, b, neg1) : subMagnitudes(a, b, neg1, neg2);
 }
@@ -477,17 +477,17 @@ static FULLINT_FORCEINLINE bool MultShort(CSpan a, CSpan b, uint64_t* r) noexcep
     return false;
 }
 
-void FullInt64Engine::multIntoAliased(FullInt64& result, const FullInt64& value1, const FullInt64& value2)
+void FullIntEngine::multIntoAliased(FullInt& result, const FullInt& value1, const FullInt& value2)
 {
     result = mult(value1, value2);
 }
 
-void FullInt64Engine::shiftIntoAliased(FullInt64& result, const FullInt64& value, int shift, bool left)
+void FullIntEngine::shiftIntoAliased(FullInt& result, const FullInt& value, int shift, bool left)
 {
     result = left ? shiftLeft(value, shift) : shiftRight(value, shift);
 }
 
-void FullInt64Engine::multInto(FullInt64& result, const FullInt64& value1, const FullInt64& value2)
+void FullIntEngine::multInto(FullInt& result, const FullInt& value1, const FullInt& value2)
 {
     if (&result == &value1 || &result == &value2)   // the multiply reads the operands throughout
     {
@@ -522,7 +522,7 @@ static constexpr size_t SHIFT_INLINE = 0;
 // shift by 1-63 bits of a value up to SHIFT_INLINE words, room in result, result not the value:
 // the words here, written straight into result's buffer (no Prepare / Grow, no kernel call, no
 // zero runs: the function stays small). Everything else: the general functions (a jump).
-void FullInt64Engine::shiftLeftInto(FullInt64& result, const FullInt64& value, int shift)
+void FullIntEngine::shiftLeftInto(FullInt& result, const FullInt& value, int shift)
 {
 #if FULLINT_WORD64
     uint32_t la = value.size_;
@@ -564,12 +564,12 @@ void FullInt64Engine::shiftLeftInto(FullInt64& result, const FullInt64& value, i
 // IntoObj.asm's ShlObj jumps here when the case is not its own (the arguments as they came)
 extern "C" void Fullint64ShlIntoGeneral(void* r, const void* a, int shift)
 {
-    fullint::FullInt64Engine::shiftLeftInto(*static_cast<fullint::FullInt64*>(r), *static_cast<const fullint::FullInt64*>(a), shift);
+    fullint::FullIntEngine::shiftLeftInto(*static_cast<fullint::FullInt*>(r), *static_cast<const fullint::FullInt*>(a), shift);
 }
 namespace fullint {
 #endif
 
-void FullInt64Engine::shiftLeftIntoGeneral(FullInt64& result, const FullInt64& value, int shift)
+void FullIntEngine::shiftLeftIntoGeneral(FullInt& result, const FullInt& value, int shift)
 {
     CSpan a = value.Words();
     if (&result == &value || shift < 0 || a[0] == 0)   // (a[0] == 0: the value is zero)
@@ -612,7 +612,7 @@ void FullInt64Engine::shiftLeftIntoGeneral(FullInt64& result, const FullInt64& v
     result.neg_ = negative;
 }
 
-void FullInt64Engine::shiftRightInto(FullInt64& result, const FullInt64& value, int shift)
+void FullIntEngine::shiftRightInto(FullInt& result, const FullInt& value, int shift)
 {
 #if FULLINT_WORD64
     uint32_t la = value.size_;
@@ -650,7 +650,7 @@ void FullInt64Engine::shiftRightInto(FullInt64& result, const FullInt64& value, 
 
 // the general right shift into result (inline into the operator; the thin entry jumps to the
 // out-of-line copy below)
-FULLINT_FORCEINLINE void FullInt64Engine::ShiftRightIntoBody(FullInt64& result, const FullInt64& value, int shift)
+FULLINT_FORCEINLINE void FullIntEngine::ShiftRightIntoBody(FullInt& result, const FullInt& value, int shift)
 {
     if (&result == &value || shift < 0 || value.neg_)   // negative: floor rounding, the ordinary path
     {
@@ -663,7 +663,7 @@ FULLINT_FORCEINLINE void FullInt64Engine::ShiftRightIntoBody(FullInt64& result, 
     result.Normalize(false);
 }
 
-void FullInt64Engine::shiftRightIntoGeneral(FullInt64& result, const FullInt64& value, int shift)
+void FullIntEngine::shiftRightIntoGeneral(FullInt& result, const FullInt& value, int shift)
 {
     ShiftRightIntoBody(result, value, shift);
 }
@@ -672,11 +672,11 @@ void FullInt64Engine::shiftRightIntoGeneral(FullInt64& result, const FullInt64& 
 
 #pragma region mult
 
-FullInt64 FullInt64Engine::multGeneral(const FullInt64& value1, const FullInt64& value2)
+FullInt FullIntEngine::multGeneral(const FullInt& value1, const FullInt& value2)
 {
     CSpan a = value1.Words(), b = value2.Words();
     uint32_t length = (uint32_t)(a.size() + b.size());
-    FullInt64 r;
+    FullInt r;
     Span bytes(r.Prepare(length), length);
 
     if (MultShort(a, b, bytes.data()))
@@ -692,13 +692,13 @@ FullInt64 FullInt64Engine::multGeneral(const FullInt64& value1, const FullInt64&
     return r;
 }
 
-FullInt64 FullInt64Engine::pow(const FullInt64& value1, const FullInt64& value2)
+FullInt FullIntEngine::pow(const FullInt& value1, const FullInt& value2)
 {
     // integer power is undefined for negative exponents (same as BigInteger.Pow)
     if (value2.neg_) throw std::out_of_range("The exponent must be non-negative.");
 
-    FullInt64 result(1);
-    FullInt64 value(value1);
+    FullInt result(1);
+    FullInt value(value1);
     CSpan e = value2.Words();   // the exponent's bits from the low end (C#: its base-2 string)
     size_t bits = e.size() * 64 - (size_t)FullHelper::LeadingZeroCount(e[0]);
     for (size_t i = 0; i < bits; i++)
@@ -714,24 +714,24 @@ FullInt64 FullInt64Engine::pow(const FullInt64& value1, const FullInt64& value2)
 #pragma region div
 
 // a / b: the remainder is not materialized
-FullInt64 FullInt64Engine::div(const FullInt64& value1, const FullInt64& value2)
+FullInt FullIntEngine::div(const FullInt& value1, const FullInt& value2)
 {
-    FullInt64 q;
+    FullInt q;
     divRem(value1, value2, &q, nullptr);
     return q;
 }
 
 // a % b: the quotient is not materialized
-FullInt64 FullInt64Engine::mod(const FullInt64& value1, const FullInt64& value2)
+FullInt FullIntEngine::mod(const FullInt& value1, const FullInt& value2)
 {
-    FullInt64 r;
+    FullInt r;
     divRem(value1, value2, nullptr, &r);
     return r;
 }
 
-FullInt64 FullInt64Engine::div(const FullInt64& value1, const FullInt64& value2, FullInt64& remainder)
+FullInt FullIntEngine::div(const FullInt& value1, const FullInt& value2, FullInt& remainder)
 {
-    FullInt64 q, r;   // locals: remainder may be value1 or value2
+    FullInt q, r;   // locals: remainder may be value1 or value2
     divRem(value1, value2, &q, &r);
     remainder = std::move(r);
     return q;
@@ -742,7 +742,7 @@ FullInt64 FullInt64Engine::div(const FullInt64& value1, const FullInt64& value2,
 // The results are built in their own buffers; one that is an operand goes through
 // divRemAliased (locals moved in at the end - out of line: their unwind frame cost every short
 // division several ns).
-void FullInt64Engine::divRem(const FullInt64& value1, const FullInt64& value2, FullInt64* quotient, FullInt64* remainder)
+void FullIntEngine::divRem(const FullInt& value1, const FullInt& value2, FullInt* quotient, FullInt* remainder)
 {
     if ((quotient && (quotient == &value1 || quotient == &value2)) ||
         (remainder && (remainder == &value1 || remainder == &value2 || remainder == quotient)))
@@ -855,9 +855,9 @@ void FullInt64Engine::divRem(const FullInt64& value1, const FullInt64& value2, F
     if (quotient) quotient->Normalize(neg1 != neg2);
 }
 
-void FullInt64Engine::divRemAliased(const FullInt64& value1, const FullInt64& value2, FullInt64* quotient, FullInt64* remainder)
+void FullIntEngine::divRemAliased(const FullInt& value1, const FullInt& value2, FullInt* quotient, FullInt* remainder)
 {
-    FullInt64 q, r;
+    FullInt q, r;
     divRem(value1, value2, quotient ? &q : nullptr, remainder ? &r : nullptr);
     if (remainder) *remainder = std::move(r);
     if (quotient) *quotient = std::move(q);
@@ -867,20 +867,20 @@ void FullInt64Engine::divRemAliased(const FullInt64& value1, const FullInt64& va
 
 #pragma region bitwise
 
-FullInt64 FullInt64Engine::bitwise(int op, const FullInt64& value1, const FullInt64& value2)
+FullInt FullIntEngine::bitwise(int op, const FullInt& value1, const FullInt& value2)
 {
-    FullInt64 r;
+    FullInt r;
     bitwiseInto(r, op, value1, value2);
     return r;
 }
 
 // result = value1 op value2 in result's buffer; result aliased with an operand: a new number
-void FullInt64Engine::bitwiseInto(FullInt64& result, int op, const FullInt64& value1, const FullInt64& value2)
+void FullIntEngine::bitwiseInto(FullInt& result, int op, const FullInt& value1, const FullInt& value2)
 {
     // IntoObj.asm (x64 and x86) works on the objects: its offsets (the same on both)
-    static_assert(offsetof(FullInt64, cap_) == 64 && offsetof(FullInt64, off_) == 68 &&
-                  offsetof(FullInt64, size_) == 72 && offsetof(FullInt64, neg_) == 76 && FullInt64::InlineWords == 8,
-                  "IntoObj.asm's FullInt64 layout");
+    static_assert(offsetof(FullInt, cap_) == 64 && offsetof(FullInt, off_) == 68 &&
+                  offsetof(FullInt, size_) == 72 && offsetof(FullInt, neg_) == 76 && FullInt::InlineWords == 8,
+                  "IntoObj.asm's FullInt layout");
     if (&result == &value1 || &result == &value2)
     {
         bitwiseIntoAliased(result, op, value1, value2);
@@ -919,33 +919,33 @@ void FullInt64Engine::bitwiseInto(FullInt64& result, int op, const FullInt64& va
     result.Normalize(negative != 0);
 }
 
-void FullInt64Engine::bitwiseIntoAliased(FullInt64& result, int op, const FullInt64& value1, const FullInt64& value2)
+void FullIntEngine::bitwiseIntoAliased(FullInt& result, int op, const FullInt& value1, const FullInt& value2)
 {
-    FullInt64 r;
+    FullInt r;
     bitwiseInto(r, op, value1, value2);
     result = std::move(r);
 }
 
-FullInt64 FullInt64Engine::shiftLeftGeneral(const FullInt64& value, int shift)
+FullInt FullIntEngine::shiftLeftGeneral(const FullInt& value, int shift)
 {
     if (shift < 0) return shiftRight(value, shift == INT32_MIN ? INT32_MAX : -shift);
 
     CSpan a = value.Words();
     uint32_t n = (uint32_t)a.size() + (uint32_t)shift / 64 + 1;
-    FullInt64 r;
+    FullInt r;
     FullIntCore::ShiftLeft(a, shift, Span(r.Prepare(n), n));
     r.Normalize(value.neg_);
     return r;
 }
 
 // arithmetic shift: rounds toward negative infinity, like BigInteger
-FullInt64 FullInt64Engine::shiftRightGeneral(const FullInt64& value, int shift)
+FullInt FullIntEngine::shiftRightGeneral(const FullInt& value, int shift)
 {
     if (shift < 0) return shiftLeft(value, shift == INT32_MIN ? INT32_MAX : -shift);
 
     if (!value.neg_)   // zero is never negative
     {
-        FullInt64 r;
+        FullInt r;
         if constexpr (SHIFT_INLINE > 0)   // x64 16-64 words: 0.6-0.75 of the kernel path below; x86: only a layer more
         {
             // short: the thin entry (its inline words); longer: a fresh number has no room for them
@@ -962,15 +962,15 @@ FullInt64 FullInt64Engine::shiftRightGeneral(const FullInt64& value, int shift)
     }
 
     // -|a| >> k = -(((|a| - 1) >> k) + 1)
-    FullInt64 shifted = shiftRight(sub(abs(value), FullInt64(1)), shift);
-    return negate(add(shifted, FullInt64(1)));
+    FullInt shifted = shiftRight(sub(abs(value), FullInt(1)), shift);
+    return negate(add(shifted, FullInt(1)));
 }
 
 #pragma endregion
 
 #pragma region conversions
 
-std::string FullInt64Engine::ToDecString(const FullInt64& value)
+std::string FullIntEngine::ToDecString(const FullInt& value)
 {
     CSpan w = value.Words();
     if (w.size() == 1)   // one word: the standard library formats it, no buffers, no kernel call
@@ -981,7 +981,7 @@ std::string FullInt64Engine::ToDecString(const FullInt64& value)
         p = std::to_chars(p, text + sizeof(text), w[0]).ptr;
         return std::string(text, p);
     }
-    if (w.size() > (size_t)DecimalConversion::ToStringThreshold)   // long: by halves (FullInt64Engine.Decimal.cpp)
+    if (w.size() > (size_t)DecimalConversion::ToStringThreshold)   // long: by halves (FullIntEngine.Decimal.cpp)
     {
         return ToDecStringRecursive(value);
     }
@@ -1014,7 +1014,7 @@ std::string FullInt64Engine::ToDecString(const FullInt64& value)
     return std::string((const char*)resultBuf + start, (size_t)(resultBytes - start));
 }
 
-std::string FullInt64Engine::ToString(const FullInt64& value, int base)
+std::string FullIntEngine::ToString(const FullInt& value, int base)
 {
     if (base == 10) return ToDecString(value);
 
@@ -1062,7 +1062,7 @@ std::string FullInt64Engine::ToString(const FullInt64& value, int base)
 // As C#: an optional '-', then a leading '0' means octal and "0x" / "x" hexadecimal; otherwise decimal.
 // C++ also rejects characters that are not digits of the base (C# hands decimal text to the
 // kernel unchecked).
-FullInt64 FullInt64Engine::ToFullInt64(std::string_view value)
+FullInt FullIntEngine::ToFullInt(std::string_view value)
 {
     bool s = false;
     int base = 10;
@@ -1116,11 +1116,11 @@ FullInt64 FullInt64Engine::ToFullInt64(std::string_view value)
     }
     if (bad) throw std::invalid_argument("not a digit of the base");
 
-    FullInt64 result;
+    FullInt result;
     if (base == 10)
     {
         result = value.size() > (size_t)DecimalConversion::ParseThreshold
-            ? ParseDecimal(value)          // long text: by halves (FullInt64Engine.Decimal.cpp)
+            ? ParseDecimal(value)          // long text: by halves (FullIntEngine.Decimal.cpp)
             : ParseDecimalLeaf(value);
     }
     else   // 16 and 8: the digits are bit groups (C#: 16-digit chunks for hex, mult/add per digit for octal)
@@ -1144,9 +1144,9 @@ FullInt64 FullInt64Engine::ToFullInt64(std::string_view value)
 
 #pragma endregion
 
-// ---- FullInt64 members that need the engine ----
+// ---- FullInt members that need the engine ----
 
-FullInt64::FullInt64(bool negative, CSpan magnitude)
+FullInt::FullInt(bool negative, CSpan magnitude)
 {
     if (magnitude.empty())
     {
@@ -1157,16 +1157,16 @@ FullInt64::FullInt64(bool negative, CSpan magnitude)
     Normalize(negative);
 }
 
-FullInt64::FullInt64(std::string_view text) : FullInt64(FullInt64Engine::ToFullInt64(text)) {}
+FullInt::FullInt(std::string_view text) : FullInt(FullIntEngine::ToFullInt(text)) {}
 
-FullInt64 FullInt64::Parse(std::string_view text) { return FullInt64Engine::ToFullInt64(text); }
+FullInt FullInt::Parse(std::string_view text) { return FullIntEngine::ToFullInt(text); }
 
-std::string FullInt64::ToString(int base) const { return FullInt64Engine::ToString(*this, base); }
+std::string FullInt::ToString(int base) const { return FullIntEngine::ToString(*this, base); }
 
-FullInt64 FullInt64::FromBytes(std::span<const uint8_t> magnitude, bool negative)
+FullInt FullInt::FromBytes(std::span<const uint8_t> magnitude, bool negative)
 {
     uint32_t words = (uint32_t)std::max<size_t>((magnitude.size() + 7) / 8, 1);
-    FullInt64 r;
+    FullInt r;
     uint64_t* limbs = r.Prepare(words);   // limbs[0] is the most significant word
     std::memset(limbs, 0, words * sizeof(uint64_t));
     for (size_t i = 0; i < magnitude.size(); i++)
@@ -1175,6 +1175,6 @@ FullInt64 FullInt64::FromBytes(std::span<const uint8_t> magnitude, bool negative
     return r;
 }
 
-std::ostream& operator<<(std::ostream& os, const FullInt64& value) { return os << value.ToString(); }
+std::ostream& operator<<(std::ostream& os, const FullInt& value) { return os << value.ToString(); }
 
 }  // namespace fullint

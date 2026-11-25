@@ -1,10 +1,10 @@
-// Port of FullInt.Core/FullInt64Engine.Decimal.cs: decimal text by halves.
+// Port of FullInt.Core/FullIntEngine.Decimal.cs: decimal text by halves.
 //
 //   P_k = 10^(19·2^k)   (P_0 = 10^19, P_k+1 = P_k²; computed once, cached)
 //   ToString(x):  x = q·P_k + r  ->  ToString(q) followed by ToString(r) padded to 19·2^k digits
 //   Parse(t):     t = [high][low: 19·2^k digits]  ->  Parse(high)·P_k + Parse(low)
 // Leaves below DecimalConversion thresholds are the ToDecString / FromDecString kernels.
-#include <fullint/FullInt64.h>
+#include <fullint/FullInt.h>
 #include <fullint/NewtonDivision.h>
 
 #include <atomic>
@@ -24,7 +24,7 @@ constexpr double BitsPerPower0 = 63.11663380285988;   // 19·log2(10): bits of P
 int DecimalPowerWords(int k) { return (int)std::ceil(BitsPerPower0 * (double)(1LL << k) / 64) + 1; }
 
 std::mutex powersLock;
-std::vector<std::unique_ptr<FullInt64>> powers;   // [k] = P_k; the objects never move
+std::vector<std::unique_ptr<FullInt>> powers;   // [k] = P_k; the objects never move
 
 // P_k = 10^(19·2^k) = 2^(19·2^k)·5^(19·2^k): its low 19·2^k bits are zero, about 30% of its words.
 // The divisions divide by P_k without its zero low words (P'), the dividend's low words go to the
@@ -33,14 +33,14 @@ std::vector<std::unique_ptr<FullInt64>> powers;   // [k] = P_k; the objects neve
 // reciprocal) when it is long enough.
 struct ShiftedPower
 {
-    FullInt64 p;      // P_k without its zero low words
+    FullInt p;      // P_k without its zero low words
     uint32_t zeros;   // those words
     std::unique_ptr<NewtonDivision::Prepared> prepared;
 };
 std::mutex shiftedLock;
 std::vector<std::unique_ptr<ShiftedPower>> shifted;
 
-const ShiftedPower& ShiftedDecimalPower(int k, const FullInt64& pk)
+const ShiftedPower& ShiftedDecimalPower(int k, const FullInt& pk)
 {
     std::lock_guard<std::mutex> guard(shiftedLock);
     if ((int)shifted.size() <= k) shifted.resize(k + 1);
@@ -50,7 +50,7 @@ const ShiftedPower& ShiftedDecimalPower(int k, const FullInt64& pk)
         uint32_t z = 0;
         while (z + 1 < w.size() && w[w.size() - 1 - z] == 0) z++;
         auto e = std::make_unique<ShiftedPower>();
-        e->p = FullInt64(false, w.subspan(0, w.size() - z));
+        e->p = FullInt(false, w.subspan(0, w.size() - z));
         e->zeros = z;
         if (w.size() - z >= (size_t)DecimalConversion::PreparedFrom)
             e->prepared = std::make_unique<NewtonDivision::Prepared>(NewtonDivision::Prepare(e->p.Words()));
@@ -79,10 +79,10 @@ const FractionReciprocal& FractionReciprocalFor(uint32_t n)
     if (p) return *p;
     auto e = new FractionReciprocal();   // kept for the process
     e->m = (uint32_t)(n * 64 * 0.30102999566398120 / 19) + 1;
-    FullInt64 d(1);
-    for (uint32_t i = 0; i < e->m; i++) d = d * FullInt64(uint64_t(10000000000000000000ull));
-    FullInt64 num = FullInt64(1) << (int)(64 * (e->m + 1 + n));
-    FullInt64 q = (num + d - FullInt64(1)) / d;
+    FullInt d(1);
+    for (uint32_t i = 0; i < e->m; i++) d = d * FullInt(uint64_t(10000000000000000000ull));
+    FullInt num = FullInt(1) << (int)(64 * (e->m + 1 + n));
+    FullInt q = (num + d - FullInt(1)) / d;
     CSpan w = q.Words();
     e->r.assign(w.begin(), w.end());
     fractionReciprocals[n].store(e, std::memory_order_release);
@@ -97,7 +97,7 @@ const FractionReciprocal& FractionReciprocalFor(uint32_t n)
 // bound (x times the reciprocal, the low n words dropped, + 1: below 2 units of its last word);
 // then ToDecStringFrac.asm multiplies f by 10^19 m times, each integer part 19 digits. The bound
 // keeps every integer part exact (see the kernel). x: n words, top nonzero; zero writes nothing.
-size_t FullInt64Engine::WriteDecimalFraction(CSpan w, char* text, size_t end)
+size_t FullIntEngine::WriteDecimalFraction(CSpan w, char* text, size_t end)
 {
     uint32_t n = (uint32_t)w.size();
     const FractionReciprocal& rc = FractionReciprocalFor(n);
@@ -117,22 +117,22 @@ size_t FullInt64Engine::WriteDecimalFraction(CSpan w, char* text, size_t end)
 }
 #endif
 
-const FullInt64& FullInt64Engine::DecimalPower(int k)
+const FullInt& FullIntEngine::DecimalPower(int k)
 {
     std::lock_guard<std::mutex> guard(powersLock);
     while ((int)powers.size() <= k)
     {
         if (powers.empty())
-            powers.push_back(std::make_unique<FullInt64>(uint64_t(10000000000000000000ull)));
+            powers.push_back(std::make_unique<FullInt>(uint64_t(10000000000000000000ull)));
         else
-            powers.push_back(std::make_unique<FullInt64>(mult(*powers.back(), *powers.back())));
+            powers.push_back(std::make_unique<FullInt>(mult(*powers.back(), *powers.back())));
     }
     return *powers[k];
 }
 
-std::string FullInt64Engine::ToDecStringRecursive(const FullInt64& value)
+std::string FullIntEngine::ToDecStringRecursive(const FullInt& value)
 {
-    FullInt64 magnitude = abs(value);
+    FullInt magnitude = abs(value);
     size_t capacity = (size_t)(value.size_ * 19.27) + 2;   // 64·log10(2) = 19.266 digits per word
     std::unique_ptr<char[]> text(new char[capacity + 1]);
     size_t start = WriteDecimal(magnitude, text.get(), capacity + 1, -1);
@@ -142,7 +142,7 @@ std::string FullInt64Engine::ToDecStringRecursive(const FullInt64& value)
 
 // x's digits right-aligned at text[.. end); width >= 0: exactly width digits (leading zeros),
 // -1: no padding (the top part). Returns the start index.
-size_t FullInt64Engine::WriteDecimal(const FullInt64& x, char* text, size_t end, ptrdiff_t width)
+size_t FullIntEngine::WriteDecimal(const FullInt& x, char* text, size_t end, ptrdiff_t width)
 {
     CSpan w = x.Words();
     if (w.size() <= (size_t)DecimalConversion::ToStringThreshold)
@@ -160,7 +160,7 @@ size_t FullInt64Engine::WriteDecimal(const FullInt64& x, char* text, size_t end,
     const ShiftedPower& sp = ShiftedDecimalPower(k, DecimalPower(k));
     size_t z = sp.zeros;
     CSpan pw = sp.p.Words(), xh = w.subspan(0, w.size() - z), xl = w.subspan(w.size() - z);
-    FullInt64 q, rh;
+    FullInt q, rh;
     if (sp.prepared)
     {
         // the same P_k divides 2^level numbers: its reciprocal once, then a product for the
@@ -173,9 +173,9 @@ size_t FullInt64Engine::WriteDecimal(const FullInt64& x, char* text, size_t end,
     else if (z == 0)
         divRem(x, sp.p, &q, &rh);
     else
-        divRem(FullInt64(false, xh), sp.p, &q, &rh);
+        divRem(FullInt(false, xh), sp.p, &q, &rh);
     // r = r'·β^z + xl
-    FullInt64 r;
+    FullInt r;
     CSpan rw = rh.Words();
     uint32_t lr = (uint32_t)(rw.size() + z);
     uint64_t* pr = r.Prepare(lr);
@@ -188,7 +188,7 @@ size_t FullInt64Engine::WriteDecimal(const FullInt64& x, char* text, size_t end,
 }
 
 // the kernel on a short number; zero writes nothing
-size_t FullInt64Engine::WriteDecimalLeaf(CSpan w, char* text, size_t end)
+size_t FullIntEngine::WriteDecimalLeaf(CSpan w, char* text, size_t end)
 {
 #if FULLINT_WORD64
     if (w.size() >= (size_t)DecimalConversion::FractionFrom && w.size() <= (size_t)DecimalConversion::FractionMaxWords)
@@ -217,7 +217,7 @@ size_t FullInt64Engine::WriteDecimalLeaf(CSpan w, char* text, size_t end)
 }
 
 // decimal digits (checked by the caller) to a non-negative number
-FullInt64 FullInt64Engine::ParseDecimal(std::string_view digits)
+FullInt FullIntEngine::ParseDecimal(std::string_view digits)
 {
     if (digits.size() <= (size_t)DecimalConversion::ParseThreshold) return ParseDecimalLeaf(digits);
 
@@ -225,12 +225,12 @@ FullInt64 FullInt64Engine::ParseDecimal(std::string_view digits)
     int k = 0;
     while (((size_t)19 << (k + 1)) < digits.size()) k++;
     size_t low = (size_t)19 << k;
-    FullInt64 high = ParseDecimal(digits.substr(0, digits.size() - low));
-    FullInt64 lowValue = ParseDecimal(digits.substr(digits.size() - low));
+    FullInt high = ParseDecimal(digits.substr(0, digits.size() - low));
+    FullInt lowValue = ParseDecimal(digits.substr(digits.size() - low));
     return add(mult(high, DecimalPower(k)), lowValue);
 }
 
-FullInt64 FullInt64Engine::ParseDecimalLeaf(std::string_view digits)
+FullInt FullIntEngine::ParseDecimalLeaf(std::string_view digits)
 {
     // small: stack buffers (as C# stackalloc), large: heap; both zeroed
     int resultWords = (int)(digits.size() / 19 + 1);
@@ -251,7 +251,7 @@ FullInt64 FullInt64Engine::ParseDecimalLeaf(std::string_view digits)
     }
     int start = resultWords;
     FullIntCore::FromDecString((const uint8_t*)digits.data(), (int)digits.size(), valueBuf, resultBuf, &start);
-    FullInt64 result;
+    FullInt result;
     uint32_t n = (uint32_t)(resultWords - start);
     if (n == 0) return result;
     std::memcpy(result.Prepare(n), resultBuf + start, n * sizeof(uint64_t));

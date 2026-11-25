@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace FullInt.Core
+namespace FullNumerics
 {
     public static class FullHelper
     {
@@ -89,7 +89,7 @@ namespace FullInt.Core
             return zeros;
         }
 		
-		// public static FullInt64 DeleteZeros(FullInt64 value)
+		// public static FullInt DeleteZeros(FullInt value)
         // {
             // value.value = DeleteZeros(value.value).ToArray();
             // return value;

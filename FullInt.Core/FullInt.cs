@@ -3,10 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 
-namespace FullInt.Core
+namespace FullNumerics
 {
     
-    public class FullInt64 : IEquatable<FullInt64>
+    public class FullInt : IEquatable<FullInt>
     {
         private ulong[] _value = null!;
         public ulong[] value
@@ -38,7 +38,7 @@ namespace FullInt.Core
         }
 
         // result = other, sharing other's array (the in-place API's fallback paths)
-        internal void Assign(FullInt64 other)
+        internal void Assign(FullInt other)
         {
             value = other.value;
             _sing = other.Sing;
@@ -53,29 +53,29 @@ namespace FullInt.Core
             get => _sing && !FullHelper.IsZero(value);
             set => _sing = value;
         }
-		private static FullInt64Engine _engine = FullInt64Engine.Instance;
+		private static FullIntEngine _engine = FullIntEngine.Instance;
 		
-        public FullInt64()
+        public FullInt()
         {
             _value = new ulong[1] { 0 };
             Sing = false;
         }
 
-        public FullInt64(bool s, ulong[] value)
+        public FullInt(bool s, ulong[] value)
         {
             _value = value;   // the field: a new object owns nothing yet (no setter work)
             this.Sing = s;
         }
-        public FullInt64(FullInt64 value) : this(value.Sing, value.value)
+        public FullInt(FullInt value) : this(value.Sing, value.value)
         {
             value._owned = false;   // the array is shared now
         }
 
-        public FullInt64(ulong value)
+        public FullInt(ulong value)
         {
             _value = new ulong[] { (ulong)value };
         }
-        public FullInt64(long value)
+        public FullInt(long value)
         {
             if (value < 0)
             {
@@ -84,10 +84,10 @@ namespace FullInt.Core
             }
             _value = new ulong[] { (ulong)value };
         }
-        public FullInt64(byte value) : this((long)value)
+        public FullInt(byte value) : this((long)value)
         {
         }
-        public FullInt64(int value) : this((long)value)
+        public FullInt(int value) : this((long)value)
         {
         }
 
@@ -95,7 +95,7 @@ namespace FullInt.Core
         /// Magnitude from bytes, little-endian: magnitude[0] is the least significant byte.
         /// The sign is a separate flag (the bytes are never two's complement).
         /// </summary>
-        public FullInt64(byte[] magnitude, bool negative = false)
+        public FullInt(byte[] magnitude, bool negative = false)
         {
             if (magnitude is null) throw new ArgumentNullException(nameof(magnitude));
             int words = Math.Max((magnitude.Length + 7) / 8, 1);
@@ -108,9 +108,9 @@ namespace FullInt.Core
             this.Sing = negative;
         }
 
-        public static FullInt64 Parse(string value)
+        public static FullInt Parse(string value)
         {
-            return _engine.ToFullInt64(value);
+            return _engine.ToFullInt(value);
         }
         
         public override String ToString()
@@ -121,33 +121,33 @@ namespace FullInt.Core
         {
             return _engine.ToString(this, Base);
         }
-        public static FullInt64 invertor(FullInt64 value)
+        public static FullInt invertor(FullInt value)
         {
-            FullInt64 result = new FullInt64(value);//check if need a copy
+            FullInt result = new FullInt(value);//check if need a copy
             result.Sing = !value.Sing;
             return result;
         }
 
         public override bool Equals(object? obj)
         {
-            // boxed primitives need an explicit conversion: (FullInt64)obj on a boxed int is an
+            // boxed primitives need an explicit conversion: (FullInt)obj on a boxed int is an
             // unboxing cast and throws InvalidCastException
             switch (obj)
             {
-                case FullInt64 f: return Equals(f);
-                case int i: return Equals(new FullInt64(i));
-                case long l: return Equals(new FullInt64(l));
-                case byte b: return Equals(new FullInt64(b));
-                case sbyte sb: return Equals(new FullInt64((long)sb));
-                case short s: return Equals(new FullInt64((long)s));
-                case ushort us: return Equals(new FullInt64((long)us));
-                case uint ui: return Equals(new FullInt64((long)ui));
-                case ulong ul: return Equals(new FullInt64(ul));
+                case FullInt f: return Equals(f);
+                case int i: return Equals(new FullInt(i));
+                case long l: return Equals(new FullInt(l));
+                case byte b: return Equals(new FullInt(b));
+                case sbyte sb: return Equals(new FullInt((long)sb));
+                case short s: return Equals(new FullInt((long)s));
+                case ushort us: return Equals(new FullInt((long)us));
+                case uint ui: return Equals(new FullInt((long)ui));
+                case ulong ul: return Equals(new FullInt(ul));
                 default: return false;
             }
         }
 
-        public bool Equals(FullInt64? other)
+        public bool Equals(FullInt? other)
         {
             return !(other is null) && _engine.IsEquals(this, other);
         }
@@ -166,19 +166,19 @@ namespace FullInt.Core
             return hash.ToHashCode();
         }
 
-        public static FullInt64 operator +(FullInt64 a, FullInt64 b)
+        public static FullInt operator +(FullInt a, FullInt b)
         {
             return _engine.add(a, b);
         }
-        public static FullInt64 operator -(FullInt64 a, FullInt64 b)
+        public static FullInt operator -(FullInt a, FullInt b)
         {
             return _engine.sub(a, b);
         }
-        public static FullInt64 operator *(FullInt64 a, FullInt64 b)
+        public static FullInt operator *(FullInt a, FullInt b)
         {
             return _engine.mult(a, b);
         }
-        public static FullInt64 operator /(FullInt64 a, FullInt64 b)
+        public static FullInt operator /(FullInt a, FullInt b)
         {
             //if (b == 0)
             //{
@@ -186,7 +186,7 @@ namespace FullInt.Core
             //}
             return _engine.div(a, b);
         }
-        public static FullInt64 operator %(FullInt64 a, FullInt64 b)
+        public static FullInt operator %(FullInt a, FullInt b)
         {
             //if (b == 0)
             //{
@@ -194,93 +194,93 @@ namespace FullInt.Core
             //}
             return _engine.mod(a, b);
         }
-        public static FullInt64 operator ^(FullInt64 a, FullInt64 b)
+        public static FullInt operator ^(FullInt a, FullInt b)
         {
             return _engine.pow(a, b);
         }
-        public static bool operator >(FullInt64 a, FullInt64 b)
+        public static bool operator >(FullInt a, FullInt b)
         {
             return _engine.IsABiggerB(a, b);
         }
-        public static bool operator <(FullInt64 a, FullInt64 b)
+        public static bool operator <(FullInt a, FullInt b)
         {
             return _engine.IsABiggerB(b, a);
         }
-        public static bool operator >=(FullInt64 a, FullInt64 b)
+        public static bool operator >=(FullInt a, FullInt b)
         {
             return _engine.IsABiggerOrEqualsB(a, b);
         }
-        public static bool operator <=(FullInt64 a, FullInt64 b)
+        public static bool operator <=(FullInt a, FullInt b)
         {
             return _engine.IsABiggerOrEqualsB(b, a);
         }
-        public static bool operator ==(FullInt64? a, FullInt64? b)
+        public static bool operator ==(FullInt? a, FullInt? b)
         {
             if (ReferenceEquals(a, b)) return true;
             if (a is null || b is null) return false;
             return _engine.IsEquals(a, b);
         }
-        public static bool operator !=(FullInt64? a, FullInt64? b)
+        public static bool operator !=(FullInt? a, FullInt? b)
         {
             return !(a == b);
         }
-        public static FullInt64 operator ++(FullInt64 a)
+        public static FullInt operator ++(FullInt a)
         {
             return _engine.add(a, 1);
         }
-        public static FullInt64 operator --(FullInt64 a)
+        public static FullInt operator --(FullInt a)
         {
             return _engine.sub(a, 1);
         }
-        public static FullInt64 operator -(FullInt64 a)
+        public static FullInt operator -(FullInt a)
         {
             return invertor(a);
         }
 
         // bitwise, BigInteger semantics (negative numbers as two's complement)
-        public static FullInt64 operator &(FullInt64 a, FullInt64 b)
+        public static FullInt operator &(FullInt a, FullInt b)
         {
             return _engine.and(a, b);
         }
-        public static FullInt64 operator |(FullInt64 a, FullInt64 b)
+        public static FullInt operator |(FullInt a, FullInt b)
         {
             return _engine.or(a, b);
         }
-        // '^' is the power operator in FullInt64, so XOR is a method
-        public static FullInt64 Xor(FullInt64 a, FullInt64 b)
+        // '^' is the power operator in FullInt, so XOR is a method
+        public static FullInt Xor(FullInt a, FullInt b)
         {
             return _engine.xor(a, b);
         }
-        public static FullInt64 operator ~(FullInt64 a)
+        public static FullInt operator ~(FullInt a)
         {
             return _engine.not(a);
         }
-        public static FullInt64 operator <<(FullInt64 a, int shift)
+        public static FullInt operator <<(FullInt a, int shift)
         {
             return _engine.shiftLeft(a, shift);
         }
-        public static FullInt64 operator >>(FullInt64 a, int shift)
+        public static FullInt operator >>(FullInt a, int shift)
         {
             return _engine.shiftRight(a, shift);
         }
 
-        public static implicit operator FullInt64(byte value)
+        public static implicit operator FullInt(byte value)
         {
-            return new FullInt64(value);
+            return new FullInt(value);
         }
-        public static implicit operator FullInt64(int value)
+        public static implicit operator FullInt(int value)
         {
-            return new FullInt64(value);
+            return new FullInt(value);
         }
-        public static implicit operator FullInt64(long value)
+        public static implicit operator FullInt(long value)
         {
-            return new FullInt64(value);
+            return new FullInt(value);
         }
-        public static implicit operator FullInt64(byte[] value)
+        public static implicit operator FullInt(byte[] value)
         {
-            return new FullInt64(value);
+            return new FullInt(value);
         }
-        public static explicit operator ulong[](FullInt64 value)
+        public static explicit operator ulong[](FullInt value)
         {
             value._owned = false;   // handed out
             return value.value;
@@ -292,27 +292,27 @@ namespace FullInt.Core
         // every operation accepts. result may be a or b. A word array taken from result.value
         // is overwritten by the next such call on result: copy it to keep it.
 
-        public static void Add(FullInt64 result, FullInt64 a, FullInt64 b) => _engine.addInto(result, a, b, negate2: false);
-        public static void Subtract(FullInt64 result, FullInt64 a, FullInt64 b) => _engine.addInto(result, a, b, negate2: true);
-        public static void Multiply(FullInt64 result, FullInt64 a, FullInt64 b) => _engine.multInto(result, a, b);
-        public static void ShiftLeft(FullInt64 result, FullInt64 a, int shift) => _engine.shiftLeftInto(result, a, shift);
-        public static void ShiftRight(FullInt64 result, FullInt64 a, int shift) => _engine.shiftRightInto(result, a, shift);
-        public static void And(FullInt64 result, FullInt64 a, FullInt64 b) => _engine.bitwiseInto(result, 0, a, b);
-        public static void Or(FullInt64 result, FullInt64 a, FullInt64 b) => _engine.bitwiseInto(result, 1, a, b);
-        public static void Xor(FullInt64 result, FullInt64 a, FullInt64 b) => _engine.bitwiseInto(result, 2, a, b);
+        public static void Add(FullInt result, FullInt a, FullInt b) => _engine.addInto(result, a, b, negate2: false);
+        public static void Subtract(FullInt result, FullInt a, FullInt b) => _engine.addInto(result, a, b, negate2: true);
+        public static void Multiply(FullInt result, FullInt a, FullInt b) => _engine.multInto(result, a, b);
+        public static void ShiftLeft(FullInt result, FullInt a, int shift) => _engine.shiftLeftInto(result, a, shift);
+        public static void ShiftRight(FullInt result, FullInt a, int shift) => _engine.shiftRightInto(result, a, shift);
+        public static void And(FullInt result, FullInt a, FullInt b) => _engine.bitwiseInto(result, 0, a, b);
+        public static void Or(FullInt result, FullInt a, FullInt b) => _engine.bitwiseInto(result, 1, a, b);
+        public static void Xor(FullInt result, FullInt a, FullInt b) => _engine.bitwiseInto(result, 2, a, b);
         // truncating, as / and %
-        public static void Divide(FullInt64 result, FullInt64 a, FullInt64 b) => result.Assign(_engine.div(a, b));
-        public static void Remainder(FullInt64 result, FullInt64 a, FullInt64 b) => result.Assign(_engine.mod(a, b));
+        public static void Divide(FullInt result, FullInt a, FullInt b) => result.Assign(_engine.div(a, b));
+        public static void Remainder(FullInt result, FullInt a, FullInt b) => result.Assign(_engine.mod(a, b));
         // explicit: use ToString()/ToString(base); an implicit conversion silently allocated a string
-        public static explicit operator string(FullInt64 value)
+        public static explicit operator string(FullInt value)
         {
             return _engine.ToString(value, 16);
         }
         // explicit: an implicit string → number conversion made e.g. x.Equals("5") compile and
         // return true, and turns any string into a number silently
-        public static explicit operator FullInt64(String value)
+        public static explicit operator FullInt(String value)
         {
-            return _engine.ToFullInt64(value);
+            return _engine.ToFullInt(value);
         }
 
     }

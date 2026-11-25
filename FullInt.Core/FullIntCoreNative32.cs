@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace FullInt.Core
+namespace FullNumerics
 {
     /// <summary>
     /// The 32-bit Windows core: FullIntOperations_win_x86.dll (Sources/x86, a port of the x64

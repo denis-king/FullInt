@@ -1,8 +1,8 @@
 using System.Numerics;
 using System.Runtime.InteropServices;
-using FullInt.Core;
+using FullNumerics;
 
-namespace FullInt.Tests
+namespace FullNumerics.Tests
 {
     /// <summary>
     /// The x86 asm kernels called directly (FullIntCoreNative32.Kernels), bypassing the routing
@@ -10,7 +10,7 @@ namespace FullInt.Tests
     /// the asm here. Runs only in a 32-bit Windows process (net48 with TargetPlatform=x86).
     /// </summary>
     [TestClass]
-    public class FullInt64X86KernelTests
+    public class FullIntX86KernelTests
     {
         private static bool IsX86Windows =>
             RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && RuntimeInformation.ProcessArchitecture == Architecture.X86;

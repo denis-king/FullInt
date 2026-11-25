@@ -1,7 +1,7 @@
 using System.Numerics;
-using FullInt.Core;
+using FullNumerics;
 
-namespace FullInt.Benchmarks
+namespace FullNumerics.Benchmarks
 {
     /// <summary>Deterministic operands, so runs are comparable between builds and machines.</summary>
     internal static class Data

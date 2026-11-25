@@ -1,7 +1,7 @@
 using BenchmarkDotNet.Attributes;
-using FullInt.Core;
+using FullNumerics;
 
-namespace FullInt.Benchmarks
+namespace FullNumerics.Benchmarks
 {
     /// <summary>
     /// Kernel level: IFullIntCore calls on preallocated buffers (no allocation, no sign handling),

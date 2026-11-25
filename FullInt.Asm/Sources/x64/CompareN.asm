@@ -117,8 +117,8 @@ fi_cmpn_body:                     ; rcx A, rdx B, r8 n (Win64 registers): CmpObj
 	WRET
 
 ;
-;    int Fullint64CmpObjWIN(const FullInt64* a, const FullInt64* b)   -> -1, 0, 1  (a vs b, signed)
-;      the whole C++ Compare on the objects (FullInt64: +0 the inline words / the heap pointer when
+;    int Fullint64CmpObjWIN(const FullInt* a, const FullInt* b)   -> -1, 0, 1  (a vs b, signed)
+;      the whole C++ Compare on the objects (FullInt: +0 the inline words / the heap pointer when
 ;      cap > 8, +40h cap, +44h off, +48h size, +4Ch neg; normalized): the signs, the lengths, the
 ;      top words, then the words as above; a negative pair's answer turned round. One call and
 ;      nothing around it in the caller (the inline compare's frame and branches cost 4 words

@@ -1,9 +1,9 @@
 using System.Buffers.Binary;
 using System.Numerics;
 using System.Text;
-using FullInt.Core;
+using FullNumerics;
 
-namespace FullInt.Tests
+namespace FullNumerics.Tests
 {
     /// <summary>
     /// Core-level Add / Sub / Mult / Compare / Div-by-word / ToDecString / FromDecString
@@ -11,7 +11,7 @@ namespace FullInt.Tests
     /// Operands include zero and boundary words. Fixed seeds.
     /// </summary>
     [TestClass]
-    public class FullInt64CoreArithmeticTests
+    public class FullIntCoreArithmeticTests
     {
         private static readonly ulong[] SpecialWords =
         {
@@ -580,7 +580,7 @@ namespace FullInt.Tests
             {
                 var w = Shaped(rnd.Next(1, 600));
                 w[0] |= 1;
-                var x = new FullInt64(rnd.Next(2) == 0, w);
+                var x = new FullInt(rnd.Next(2) == 0, w);
                 var big = BigInteger.Parse(x.ToString(10));
                 Assert.AreEqual((big * big).ToString(), (x * x).ToString(10), $"engine x*x {w.Length} words");
             }
@@ -612,7 +612,7 @@ namespace FullInt.Tests
             }
             foreach (var big in cases)
             {
-                var x = FullInt64.Parse(big.ToString());
+                var x = FullInt.Parse(big.ToString());
                 Assert.AreEqual(big.ToString(), x.ToString(10), $"{big.ToString().Length} digits");
             }
         }

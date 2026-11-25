@@ -1,22 +1,22 @@
-using FullInt.Core;
+using FullNumerics;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
-using FullIntCore = FullInt.Core.FullInt64;
+using FullIntCore = FullNumerics.FullInt;
 using System.Diagnostics;
 using System.Numerics;
 using System.Security.Cryptography;
 
-namespace FullInt.Tests
+namespace FullNumerics.Tests
 {
     [TestClass]
-    public class FullInt64MathTests
+    public class FullIntMathTests
     {
         public TestContext TestContext { get; set; }
-		private static FullInt64Engine _engine;
+		private static FullIntEngine _engine;
 		[ClassInitialize]
 		public static void InitClass(TestContext testContext)
 		{
-			_engine = FullInt64Engine.Instance;
+			_engine = FullIntEngine.Instance;
 			
 			//todo warm up operations
 		}
@@ -478,7 +478,7 @@ namespace FullInt.Tests
         [TestMethod]
         public void Speed_Pow_2Pow100_LogDuration()
         {
-            // Measure performance of FullInt64Engine.pow for 2^100
+            // Measure performance of FullIntEngine.pow for 2^100
             var baseValue = new FullIntCore(2L);
             var exponent = new FullIntCore(10000L);
 
@@ -504,7 +504,7 @@ namespace FullInt.Tests
         [TestMethod]
         public void Speed_Div_bigvalue_LogDuration()
         {
-            // Measure performance of FullInt64Engine.div for division involving long.MaxValue
+            // Measure performance of FullIntEngine.div for division involving long.MaxValue
             FullIntCore lastResult = _engine.pow(2, 10000);
 
             const int iterations = 100;
@@ -531,7 +531,7 @@ namespace FullInt.Tests
         [TestMethod]
         public void Speed_Div_bigvalue_to_byte_LogDuration()
         {
-            // Measure performance of FullInt64Engine.div for division involving long.MaxValue
+            // Measure performance of FullIntEngine.div for division involving long.MaxValue
             FullIntCore lastResult = _engine.pow(2, 10000);
 
             const int iterations = 100;
@@ -555,7 +555,7 @@ namespace FullInt.Tests
         [TestMethod]
         public void Speed_Div_bigvalue_to_bigger_one_LogDuration()
         {
-            // Measure performance of FullInt64Engine.div for division involving long.MaxValue
+            // Measure performance of FullIntEngine.div for division involving long.MaxValue
             FullIntCore lastResult = _engine.pow(2, 10000);
 
             const int iterations = 100;

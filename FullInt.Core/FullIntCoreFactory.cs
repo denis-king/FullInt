@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Runtime.InteropServices;
 
-namespace FullInt.Core
+namespace FullNumerics
 {
     public class FullIntCoreFactory
     {

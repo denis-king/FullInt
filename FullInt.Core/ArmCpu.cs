@@ -3,7 +3,7 @@ using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 
-namespace FullInt.Core
+namespace FullNumerics
 {
     /// <summary>
     /// AArch64: whether the cores multiply narrowly, for the thresholds (C++: Cpu::ArmNarrow). The

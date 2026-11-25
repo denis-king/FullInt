@@ -1,6 +1,6 @@
 using System;
 
-namespace FullInt.Core
+namespace FullNumerics
 {
     /// <summary>
     /// Division through a Newton reciprocal (Barrett-style blocks), for long divisors: the

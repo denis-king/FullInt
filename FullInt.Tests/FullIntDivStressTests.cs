@@ -1,9 +1,9 @@
 using System.Buffers.Binary;
 using System.Numerics;
 using System.Text;
-using FullInt.Core;
+using FullNumerics;
 
-namespace FullInt.Tests
+namespace FullNumerics.Tests
 {
     /// <summary>
     /// Deterministic stress tests for multi-word division.
@@ -11,7 +11,7 @@ namespace FullInt.Tests
     /// The seed is fixed so a failure can always be replayed.
     /// </summary>
     [TestClass]
-    public class FullInt64DivStressTests
+    public class FullIntDivStressTests
     {
         public TestContext TestContext { get; set; } = null!;
 
@@ -181,8 +181,8 @@ namespace FullInt.Tests
             "879376197509531337395492")]
         public void Div_Engine_KnownFailures_MatchesBigInteger(string a, string b)
         {
-            FullInt64 fa = FullInt64.Parse(a);
-            FullInt64 fb = FullInt64.Parse(b);
+            FullInt fa = FullInt.Parse(a);
+            FullInt fb = FullInt.Parse(b);
             var ba = BigInteger.Parse(a);
             var bb = BigInteger.Parse(b);
 

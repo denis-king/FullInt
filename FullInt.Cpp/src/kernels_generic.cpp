@@ -433,7 +433,7 @@ int FULLINT_GENERIC(Fullint64CmpNWIN)(const uint64_t* a, const uint64_t* b, int6
 
 int Fullint64CmpObjWIN(const void*, const void*)
 {
-    NotHere();   // x64 only (FullInt64.h)
+    NotHere();   // x64 only (FullInt.h)
 }
 
 void FULLINT_GENERIC(Fullint64ToDecStringWin)(const uint64_t* value, uint64_t* valueBuf, uint8_t* resultBuf, int lenValue, int* lenResult)
@@ -584,7 +584,7 @@ void FULLINT_GENERIC(Fullint64MulLoWIN)(const uint64_t* a, const uint64_t* b, ui
 
 int FULLINT_GENERIC(Fullint64CpuFeatures)(void) { return 0; }   // (AArch64 asm: Cpu.s, for the .NET core)
 
-// the FullInt64-object kernels: not this case (the C++ paths take every case)
+// the FullInt-object kernels: not this case (the C++ paths take every case)
 int Fullint64AndObjWIN(void*, const void*, const void*) { return 1; }
 int Fullint64ShlObjWIN(void*, const void*, int) { return 1; }
 

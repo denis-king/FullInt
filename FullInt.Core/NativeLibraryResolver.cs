@@ -5,7 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 #endif
 
-namespace FullInt.Core
+namespace FullNumerics
 {
     /// <summary>
     /// The names the DllImports use. On .NET 5+ they are logical names, mapped to the file of the

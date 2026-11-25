@@ -1,17 +1,17 @@
 # Operations
 
-This document covers the public surface of `FullInt.Core.FullInt64` and `FullInt64Engine` **as currently implemented**. Behaviour marked ⚠️ is a known defect or a planned change. See [ANALYSIS.md](ANALYSIS.md) §3.
+This document covers the public surface of `FullNumerics.FullInt` and `FullIntEngine` **as currently implemented**. Behaviour marked ⚠️ is a known defect or a planned change. See [ANALYSIS.md](ANALYSIS.md) §3.
 
 ## Construction
 
 | Source | Example | Result |
 |---|---|---|
-| `int`, `long`, `byte` (implicit) | `FullInt64 x = -5;` | Binary storage, sign set from the value |
-| `ulong` | `new FullInt64(ulong.MaxValue)` | Binary storage |
-| Limbs | `new FullInt64(sign, new ulong[] { hi, lo })` | Wraps the array **without copying**. Index 0 is the most significant limb. |
-| String (implicit) | `FullInt64 x = "-0x1F";` | See [Parsing](#parsing) |
-| Copy | `new FullInt64(other)` | ⚠️ Shares the limb array with `other` |
-| Decimal mode | `new FullInt64(42, toBase.dec)` | Stores the value in radix 10¹⁹ per limb. ⚠️ Wrong results on the native (Windows x64) path. Avoid. |
+| `int`, `long`, `byte` (implicit) | `FullInt x = -5;` | Binary storage, sign set from the value |
+| `ulong` | `new FullInt(ulong.MaxValue)` | Binary storage |
+| Limbs | `new FullInt(sign, new ulong[] { hi, lo })` | Wraps the array **without copying**. Index 0 is the most significant limb. |
+| String (implicit) | `FullInt x = "-0x1F";` | See [Parsing](#parsing) |
+| Copy | `new FullInt(other)` | ⚠️ Shares the limb array with `other` |
+| Decimal mode | `new FullInt(42, toBase.dec)` | Stores the value in radix 10¹⁹ per limb. ⚠️ Wrong results on the native (Windows x64) path. Avoid. |
 
 ## Arithmetic
 
@@ -25,7 +25,7 @@ This document covers the public surface of `FullInt.Core.FullInt64` and `FullInt
 | `a % b` | `mod` | Remainder takes **the sign of the dividend**, like C# `%`. Satisfies `a == (a / b) * b + a % b`. |
 | `a ^ b` | `pow` | ⚠️ **Power, not XOR.** Square-and-multiply. A negative exponent is treated as positive. Will become `Pow(int)`. |
 | `++a`, `--a` | `add(a, 1)`, `sub(a, 1)` | Allocates a new value |
-| `abs(a)` | `FullInt64Engine.Instance.abs` | |
+| `abs(a)` | `FullIntEngine.Instance.abs` | |
 
 Every operation allocates a new result. Results are normalized: leading zero limbs are removed and at least one limb is kept.
 
@@ -36,7 +36,7 @@ Semantics match `System.Numerics.BigInteger`: a negative number behaves as an in
 | Operator / method | Semantics |
 |---|---|
 | `a & b`, `a \| b` | AND, OR |
-| `FullInt64.Xor(a, b)` | XOR. A method, because `^` is the power operator in `FullInt64` |
+| `FullInt.Xor(a, b)` | XOR. A method, because `^` is the power operator in `FullInt` |
 | `~a` | `-a - 1` |
 | `a << n` | `a · 2ⁿ`; a negative `n` shifts right |
 | `a >> n` | Arithmetic shift, rounds toward negative infinity (`-1 >> 100 == -1`); a negative `n` shifts left |
@@ -48,13 +48,13 @@ Bitwise operations require binary values and throw `NotSupportedException` for `
 | Operator / method | Semantics |
 |---|---|
 | `==`, `!=`, `<`, `<=`, `>`, `>=` | Numeric comparison by sign, then by magnitude. Operands in different radix modes are converted first. |
-| `Equals(object)` | Works for `FullInt64`. ⚠️ Throws `InvalidCastException` for boxed `int`, `long` or `byte`. |
+| `Equals(object)` | Works for `FullInt`. ⚠️ Throws `InvalidCastException` for boxed `int`, `long` or `byte`. |
 | `GetHashCode()` | ⚠️ Hashes the array reference: equal values can have different hash codes. Do not use as a dictionary key yet. |
-| `FullInt64Engine.Compare(a, b)` | Returns −1, 0 or +1 |
+| `FullIntEngine.Compare(a, b)` | Returns −1, 0 or +1 |
 
 ## Parsing
 
-`FullInt64 x = "...";` calls `FullInt64Engine.ToFullInt64(string)`:
+`FullInt x = "...";` calls `FullIntEngine.ToFullInt(string)`:
 
 | Input | Interpreted as |
 |---|---|
@@ -81,7 +81,7 @@ There is no whitespace trimming, no `+` sign, no digit separators and no validat
 | Call | Semantics |
 |---|---|
 | `(ulong[])x` | Returns the internal limb array (MSW first) without copying |
-| `FullInt64Engine.ConvertToBase(x, toBase)` | Converts between binary and decimal storage modes |
+| `FullIntEngine.ConvertToBase(x, toBase)` | Converts between binary and decimal storage modes |
 
 ## Low-level core (`IFullIntCore`)
 

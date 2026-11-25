@@ -1,10 +1,10 @@
 using System;
 using System.Threading;
 
-namespace FullInt.Core
+namespace FullNumerics
 {
     /// <summary>
-    /// Thresholds of the divide-and-conquer decimal conversions (FullInt64Engine.Decimal.cs).
+    /// Thresholds of the divide-and-conquer decimal conversions (FullIntEngine.Decimal.cs).
     /// </summary>
     public static class DecimalConversion
     {
@@ -48,11 +48,11 @@ namespace FullInt.Core
     ///   ToString(x):  x = q·P_k + r  ->  ToString(q) followed by ToString(r) padded to 19·2^k digits
     ///   Parse(t):     t = [high][low: 19·2^k digits]  ->  Parse(high)·P_k + Parse(low)
     /// </summary>
-    public partial class FullInt64Engine
+    public partial class FullIntEngine
     {
         private const ulong Pow10_19 = 10_000_000_000_000_000_000UL;   // 19 decimal digits a word
 
-        private static FullInt64[] _decimalPowers = Array.Empty<FullInt64>();   // [k] = P_k
+        private static FullInt[] _decimalPowers = Array.Empty<FullInt>();   // [k] = P_k
         // P_k = 10^(19·2^k) = 2^(19·2^k)·5^(19·2^k): its low 19·2^k bits are zero, about 30% of its
         // words. ToString divides by P_k without its zero low words (P'), the dividend's low words go
         // to the remainder as they are (GMP's power table does the same): x = xh·β^z + xl,
@@ -60,7 +60,7 @@ namespace FullInt.Core
         // when it is long enough.
         private sealed class ShiftedPower
         {
-            public FullInt64 P = null!;                  // P_k without its zero low words
+            public FullInt P = null!;                  // P_k without its zero low words
             public int Zeros;                            // those words
             public NewtonDivision.Prepared? Prepared;
         }
@@ -78,7 +78,7 @@ namespace FullInt.Core
                 Span<ulong> w = FullHelper.DeleteZeros(pk.value);
                 int z = 0;
                 while (z + 1 < w.Length && w[w.Length - 1 - z] == 0) z++;
-                var e = new ShiftedPower { P = new FullInt64(false, w.Slice(0, w.Length - z).ToArray()), Zeros = z };
+                var e = new ShiftedPower { P = new FullInt(false, w.Slice(0, w.Length - z).ToArray()), Zeros = z };
                 if (w.Length - z >= DecimalConversion.PreparedFrom)
                     e.Prepared = NewtonDivision.Prepare(_core, e.P.value);
                 var grown = new ShiftedPower?[Math.Max(shifted.Length, k + 1)];
@@ -92,7 +92,7 @@ namespace FullInt.Core
 
         private const double BitsPerPower0 = 63.11663380285988;   // 19·log2(10): bits of P_0; P_k has 2^k times as many
 
-        private FullInt64 DecimalPower(int k)
+        private FullInt DecimalPower(int k)
         {
             var powers = Volatile.Read(ref _decimalPowers);
             if (k < powers.Length) return powers[k];
@@ -100,12 +100,12 @@ namespace FullInt.Core
             {
                 powers = _decimalPowers;
                 if (k < powers.Length) return powers[k];
-                var grown = new FullInt64[k + 1];
+                var grown = new FullInt[k + 1];
                 Array.Copy(powers, grown, powers.Length);
                 for (int i = powers.Length; i <= k; i++)
                 {
                     grown[i] = i == 0
-                        ? new FullInt64(false, new ulong[] { Pow10_19 })
+                        ? new FullInt(false, new ulong[] { Pow10_19 })
                         : mult(grown[i - 1], grown[i - 1]);
                 }
                 Volatile.Write(ref _decimalPowers, grown);
@@ -118,9 +118,9 @@ namespace FullInt.Core
 
         #region ToString
 
-        private string ToDecStringRecursive(FullInt64 value)
+        private string ToDecStringRecursive(FullInt value)
         {
-            var magnitude = new FullInt64(false, value.value);   // read only here
+            var magnitude = new FullInt(false, value.value);   // read only here
             var trimmed = FullHelper.DeleteZeros(value.value);
             if (trimmed.Length == 1 && trimmed[0] == 0) return "0";   // a long array holding zero (in-place results)
             int words = trimmed.Length;
@@ -133,7 +133,7 @@ namespace FullInt.Core
 
         // x's digits right-aligned at text[.. end); width >= 0: exactly width digits (leading
         // zeros), -1: no padding (the top part). Returns the start index.
-        private int WriteDecimal(FullInt64 x, char[] text, int end, int width)
+        private int WriteDecimal(FullInt x, char[] text, int end, int width)
         {
             Span<ulong> w = FullHelper.DeleteZeros(x.value);
             if (w.Length <= DecimalConversion.ToStringThreshold)
@@ -151,7 +151,7 @@ namespace FullInt.Core
             var sp = ShiftedDecimalPower(k);
             int z = sp.Zeros;
             Span<ulong> pw = sp.P.value, xh = w.Slice(0, w.Length - z), xl = w.Slice(w.Length - z);
-            FullInt64 q;
+            FullInt q;
             Span<ulong> rh;
             if (sp.Prepared != null)
             {
@@ -160,12 +160,12 @@ namespace FullInt.Core
                 var qw = new ulong[xh.Length - pw.Length + 1];
                 var rw = new ulong[pw.Length + 2];
                 NewtonDivision.DivRem(_core, xh, sp.Prepared, qw, rw);
-                q = new FullInt64(false, qw);
+                q = new FullInt(false, qw);
                 rh = FullHelper.DeleteZeros(rw);
             }
             else
             {
-                var xd = z == 0 ? x : new FullInt64(false, xh.ToArray());
+                var xd = z == 0 ? x : new FullInt(false, xh.ToArray());
                 q = divRem(xd, sp.P, wantQuotient: true, wantRemainder: true, out var rr)!;
                 rh = FullHelper.DeleteZeros(rr!.value);
             }
@@ -173,7 +173,7 @@ namespace FullInt.Core
             var rWords = new ulong[rh.Length + z];
             rh.CopyTo(rWords);
             xl.CopyTo(rWords.AsSpan(rh.Length));
-            var r = new FullInt64(false, rWords);
+            var r = new FullInt(false, rWords);
             int low = 19 << k;
             WriteDecimal(r, text, end, low);
             return WriteDecimal(q, text, end - low, width < 0 ? -1 : width - low);
@@ -193,11 +193,11 @@ namespace FullInt.Core
             var e = Volatile.Read(ref _fractionReciprocals[n]);
             if (e != null) return e;
             int m = (int)(n * 64 * 0.30102999566398120 / 19) + 1;
-            var d = new FullInt64(1UL);
-            var p19 = new FullInt64(false, new ulong[] { Pow10_19 });
+            var d = new FullInt(1UL);
+            var p19 = new FullInt(false, new ulong[] { Pow10_19 });
             for (int i = 0; i < m; i++) d = mult(d, p19);
-            var num = shiftLeft(new FullInt64(1UL), 64 * (m + 1 + n));
-            var q = div(sub(add(num, d), new FullInt64(1UL)), d);
+            var num = shiftLeft(new FullInt(1UL), 64 * (m + 1 + n));
+            var q = div(sub(add(num, d), new FullInt(1UL)), d);
             e = new FractionReciprocal { M = m, R = FullHelper.DeleteZeros(q.value).ToArray() };
             Volatile.Write(ref _fractionReciprocals[n], e);   // a race makes the same value twice
             return e;
@@ -259,7 +259,7 @@ namespace FullInt.Core
         #region Parse
 
         // decimal digits (ASCII) to a non-negative number
-        private FullInt64 ParseDecimal(Span<byte> digits)
+        private FullInt ParseDecimal(Span<byte> digits)
         {
             if (digits.Length <= DecimalConversion.ParseThreshold) return ParseDecimalLeaf(digits);
 
@@ -272,7 +272,7 @@ namespace FullInt.Core
             return add(mult(high, DecimalPower(k)), lowValue);
         }
 
-        private FullInt64 ParseDecimalLeaf(Span<byte> digits)
+        private FullInt ParseDecimalLeaf(Span<byte> digits)
         {
             int resultWords = digits.Length / 19 + 1;
             ulong[]? rented = null;
@@ -280,7 +280,7 @@ namespace FullInt.Core
                 ? stackalloc ulong[resultWords]
                 : FullHelper.RentZeroed(resultWords, out rented);   // a work buffer: copied out below
             _core.FromDecString(digits, resultBuf, out var startPosition);
-            var parsed = new FullInt64(false, startPosition < resultWords ? resultBuf.Slice(startPosition).ToArray() : new ulong[] { 0 });
+            var parsed = new FullInt(false, startPosition < resultWords ? resultBuf.Slice(startPosition).ToArray() : new ulong[] { 0 });
             FullHelper.Return(rented);
             return parsed;
         }

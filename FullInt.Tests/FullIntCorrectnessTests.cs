@@ -1,8 +1,8 @@
 ﻿using System.Numerics;
 using System.Text;
-using FullInt.Core;
+using FullNumerics;
 
-namespace FullInt.Tests
+namespace FullNumerics.Tests
 {
     /// <summary>
     /// Regression tests for the C#-side correctness issues listed in docs/ANALYSIS.md (C3–C8, C2):
@@ -10,7 +10,7 @@ namespace FullInt.Tests
     /// and stack usage on very large numbers.
     /// </summary>
     [TestClass]
-    public class FullInt64CorrectnessTests
+    public class FullIntCorrectnessTests
     {
         // ---------------------------------------------------------------- core selection
 
@@ -46,7 +46,7 @@ namespace FullInt.Tests
         [TestMethod]
         public void NegativeZero_IsNeverProduced_AndEqualsZero()
         {
-            FullInt64 zero = 0, minusFive = -5, five = 5;
+            FullInt zero = 0, minusFive = -5, five = 5;
 
             var products = new[] { zero * minusFive, minusFive * zero };
             foreach (var p in products)
@@ -59,15 +59,15 @@ namespace FullInt.Tests
             Assert.IsFalse((-zero).Sing, "-0 must not be negative");
             Assert.IsTrue(-zero == zero);
             Assert.IsFalse((zero / minusFive).Sing, "0 / -5");
-            Assert.IsFalse(((FullInt64)(-10) % five).Sing, "-10 % 5 == 0, not -0");
-            Assert.AreEqual("0", ((FullInt64)(-10) % five).ToString(10));
+            Assert.IsFalse(((FullInt)(-10) % five).Sing, "-10 % 5 == 0, not -0");
+            Assert.AreEqual("0", ((FullInt)(-10) % five).ToString(10));
         }
 
         [TestMethod]
         public void NegativeZero_ConstructedExplicitly_ComparesEqualToZero()
         {
-            var negZero = new FullInt64(true, new ulong[] { 0 });
-            FullInt64 zero = 0;
+            var negZero = new FullInt(true, new ulong[] { 0 });
+            FullInt zero = 0;
             Assert.IsTrue(negZero == zero);
             Assert.IsFalse(negZero < zero);
             Assert.IsFalse(negZero > zero);
@@ -79,32 +79,32 @@ namespace FullInt.Tests
         [TestMethod]
         public void GetHashCode_EqualValues_HaveEqualHashes()
         {
-            FullInt64 a = FullInt64.Parse("123456789012345678901234567890");
-            FullInt64 b = FullInt64.Parse("123456789012345678901234567890");
-            var c = new FullInt64(false, new ulong[] { 0, 0 }.Concat(a.value).ToArray()); // leading zero words
+            FullInt a = FullInt.Parse("123456789012345678901234567890");
+            FullInt b = FullInt.Parse("123456789012345678901234567890");
+            var c = new FullInt(false, new ulong[] { 0, 0 }.Concat(a.value).ToArray()); // leading zero words
 
             Assert.IsTrue(a == b && a == c);
             Assert.AreEqual(a.GetHashCode(), b.GetHashCode());
             Assert.AreEqual(a.GetHashCode(), c.GetHashCode());
 
-            var set = new HashSet<FullInt64> { a };
+            var set = new HashSet<FullInt> { a };
             Assert.IsTrue(set.Contains(b), "HashSet must find an equal value");
             Assert.IsTrue(set.Contains(c), "HashSet must find an equal value with leading zero words");
 
-            var dict = new Dictionary<FullInt64, string> { [a] = "x" };
+            var dict = new Dictionary<FullInt, string> { [a] = "x" };
             Assert.AreEqual("x", dict[b]);
         }
 
         [TestMethod]
         public void Equals_WithBoxedPrimitives_DoesNotThrow()
         {
-            FullInt64 five = 5;
+            FullInt five = 5;
             Assert.IsTrue(five.Equals((object)5));
             Assert.IsTrue(five.Equals((object)5L));
             Assert.IsTrue(five.Equals((object)(byte)5));
             Assert.IsTrue(five.Equals((object)5UL));
             Assert.IsFalse(five.Equals((object)6));
-            // a string is not a number (string → FullInt64 is explicit, so this binds to Equals(object))
+            // a string is not a number (string → FullInt is explicit, so this binds to Equals(object))
             Assert.IsFalse(five.Equals("5"));
             Assert.IsFalse(five.Equals(null));
         }
@@ -112,8 +112,8 @@ namespace FullInt.Tests
         [TestMethod]
         public void EqualityOperators_HandleNull()
         {
-            FullInt64? n = null;
-            FullInt64 five = 5;
+            FullInt? n = null;
+            FullInt five = 5;
             Assert.IsTrue(n == null);
             Assert.IsFalse(five == n);
             Assert.IsFalse(n == five);
@@ -152,7 +152,7 @@ namespace FullInt.Tests
                     }
                     bool neg = rnd.Next(2) == 0;
                     var mag = e.ToByteArray();   // little-endian two's complement of a positive: the magnitude (+ a sign byte)
-                    var f = new FullInt64(mag, neg);
+                    var f = new FullInt(mag, neg);
                     Assert.AreEqual((neg ? -e : e).ToString(), f.ToString(10), $"n {n} shape {shape}");
                 }
         }
@@ -171,17 +171,17 @@ namespace FullInt.Tests
                 var expected = BigCompat.FromUnsignedLittleEndian(bytes);
                 if (neg) expected = -expected;
 
-                Assert.AreEqual(expected.ToString(), new FullInt64(bytes, neg).ToString(10));
+                Assert.AreEqual(expected.ToString(), new FullInt(bytes, neg).ToString(10));
                 if (!neg)
                 {
-                    FullInt64 implicitConv = bytes;
+                    FullInt implicitConv = bytes;
                     Assert.AreEqual(expected.ToString(), implicitConv.ToString(10));
                 }
             }
 
-            FullInt64 x = new byte[] { 0x01, 0x02 };       // 0x0201
+            FullInt x = new byte[] { 0x01, 0x02 };       // 0x0201
             Assert.AreEqual("513", x.ToString(10));
-            FullInt64 empty = new byte[0];
+            FullInt empty = new byte[0];
             Assert.IsTrue(empty == 0);
         }
 
@@ -190,7 +190,7 @@ namespace FullInt.Tests
         [TestMethod]
         public void Pow_NegativeExponent_Throws()
         {
-            FullInt64 two = 2;
+            FullInt two = 2;
             Assert.ThrowsException<ArgumentOutOfRangeException>(() => two ^ -3);
         }
 
@@ -202,7 +202,7 @@ namespace FullInt.Tests
             {
                 long b = rnd.Next(-1000, 1000);
                 int e = rnd.Next(0, 60);
-                FullInt64 fb = b;
+                FullInt fb = b;
                 Assert.AreEqual(BigInteger.Pow(b, e).ToString(), (fb ^ e).ToString(10), $"{b}^{e}");
             }
         }
@@ -225,8 +225,8 @@ namespace FullInt.Tests
                 for (int k = 0; k < w.Length; k++) w[k] = NextWord();
                 return w;
             }
-            static BigInteger Big(FullInt64 x) => BigInteger.Parse(x.ToString(10));
-            static void AssertNormalized(FullInt64 x, string what)
+            static BigInteger Big(FullInt x) => BigInteger.Parse(x.ToString(10));
+            static void AssertNormalized(FullInt x, string what)
             {
                 Assert.IsTrue(x.value.Length == 1 || x.value[0] != 0, what + ": leading zero word");
                 if (x.value.Length == 1 && x.value[0] == 0) Assert.IsFalse(x.Sing, what + ": negative zero");
@@ -236,8 +236,8 @@ namespace FullInt.Tests
             {
                 var aw = NextLimbs();
                 var bw = rnd.Next(4) == 0 ? (ulong[])aw.Clone() : NextLimbs();   // equal magnitudes
-                var fa = new FullInt64(rnd.Next(2) == 0, aw);
-                var fb = new FullInt64(rnd.Next(2) == 0, bw);
+                var fa = new FullInt(rnd.Next(2) == 0, aw);
+                var fb = new FullInt(rnd.Next(2) == 0, bw);
                 BigInteger A = Big(fa), B = Big(fb);
                 string ctx = $"a={A} b={B}";
 
@@ -265,8 +265,8 @@ namespace FullInt.Tests
             var rnd = new Random(31337);
             for (int i = 0; i < 40; i++) words.Add((ulong)rnd.NextInt64() ^ ((ulong)rnd.Next(2) << 63));
 
-            static BigInteger Big(FullInt64 x) => BigInteger.Parse(x.ToString(10));
-            static void AssertCanonical(FullInt64 x, string what)
+            static BigInteger Big(FullInt x) => BigInteger.Parse(x.ToString(10));
+            static void AssertCanonical(FullInt x, string what)
             {
                 Assert.IsTrue(x.value.Length == 1 || x.value[0] != 0, what + ": leading zero word");
                 if (x.value.Length == 1 && x.value[0] == 0) Assert.IsFalse(x.Sing, what + ": negative zero");
@@ -277,8 +277,8 @@ namespace FullInt.Tests
             foreach (bool an in new[] { false, true })
             foreach (bool bn in new[] { false, true })
             {
-                var fa = new FullInt64(an, new[] { aw });
-                var fb = new FullInt64(bn, new[] { bw });
+                var fa = new FullInt(an, new[] { aw });
+                var fb = new FullInt(bn, new[] { bw });
                 BigInteger A = an ? -(BigInteger)aw : aw, B = bn ? -(BigInteger)bw : bw;
                 string ctx = $"a={A} b={B}";
 
@@ -328,8 +328,8 @@ namespace FullInt.Tests
                 foreach (bool an in new[] { false, true })
                 foreach (bool dn in new[] { false, true })
                 {
-                    var fa = new FullInt64(an, new[] { hi, lo });
-                    var fd = new FullInt64(dn, new[] { d });
+                    var fa = new FullInt(an, new[] { hi, lo });
+                    var fd = new FullInt(dn, new[] { d });
                     BigInteger SA = an ? -A : A, SD = dn ? -D : D;
                     string ctx = $"a={SA} d={SD}";
                     Assert.AreEqual(SA / SD, BigInteger.Parse((fa / fd).ToString(10)), "div " + ctx);
@@ -374,7 +374,7 @@ namespace FullInt.Tests
 
             foreach (var (aw, an) in values)
             {
-                var fa = new FullInt64(an, aw);
+                var fa = new FullInt(an, aw);
                 var A = Big(aw, an);
                 Assert.AreEqual(A.ToString(), fa.ToString(10), $"ToString a={A}");
 
@@ -386,7 +386,7 @@ namespace FullInt.Tests
 
                 foreach (var (bw, bn) in values)
                 {
-                    var fb = new FullInt64(bn, bw);
+                    var fb = new FullInt(bn, bw);
                     var B = Big(bw, bn);
                     string ctx = $"a={A} b={B}";
                     Assert.AreEqual(A < B, fa < fb, "< " + ctx);
@@ -427,8 +427,8 @@ namespace FullInt.Tests
                     bw[at] = rnd.Next(3) switch { 0 => bw[at] + 1, 1 => bw[at] - 1, _ => (ulong)rnd.NextInt64() };
                 }
                 bool an = rnd.Next(2) == 0, bn = rnd.Next(4) == 0 ? !an : an;
-                var fa = new FullInt64(an, aw);
-                var fb = new FullInt64(bn, bw);
+                var fa = new FullInt(an, aw);
+                var fb = new FullInt(bn, bw);
                 BigInteger A = Big(aw, an), B = Big(bw, bn);
                 string ctx = $"n={n} it={it}";
                 Assert.AreEqual(A < B, fa < fb, "< " + ctx);
@@ -452,14 +452,14 @@ namespace FullInt.Tests
                 var bw = new ulong[rnd.Next(1, 6)];
                 for (int k = 0; k < aw.Length; k++) aw[k] = (ulong)rnd.NextInt64() ^ ((ulong)rnd.Next(2) << 63);
                 for (int k = 0; k < bw.Length; k++) bw[k] = (ulong)rnd.NextInt64() | 1;
-                var fa = new FullInt64(rnd.Next(2) == 0, aw);
-                var fb = new FullInt64(rnd.Next(2) == 0, bw);
+                var fa = new FullInt(rnd.Next(2) == 0, aw);
+                var fb = new FullInt(rnd.Next(2) == 0, bw);
                 var A = BigInteger.Parse(fa.ToString(10));
                 var B = BigInteger.Parse(fb.ToString(10));
 
                 var q = fa / fb;
                 var r = fa % fb;
-                var q2 = FullInt64Engine.Instance.div(fa, fb, out var r2);
+                var q2 = FullIntEngine.Instance.div(fa, fb, out var r2);
                 Assert.AreEqual((A / B).ToString(), q.ToString(10), $"q: {A} / {B}");
                 Assert.AreEqual((A % B).ToString(), r.ToString(10), $"r: {A} % {B}");
                 Assert.AreEqual(q2.ToString(10), q.ToString(10), "q vs divRem");
@@ -483,8 +483,8 @@ namespace FullInt.Tests
                 for (int k = 0; k < aw.Length; k++) aw[k] = (ulong)rnd.NextInt64() ^ ((ulong)rnd.Next(2) << 63);
                 for (int k = 0; k < bw.Length; k++) bw[k] = (ulong)rnd.NextInt64() ^ ((ulong)rnd.Next(2) << 63);
                 aw[0] |= 1; bw[0] |= 1;   // keep the lengths (no leading zero words)
-                var fa = new FullInt64(rnd.Next(2) == 0, aw);
-                var fb = new FullInt64(rnd.Next(2) == 0, bw);
+                var fa = new FullInt(rnd.Next(2) == 0, aw);
+                var fb = new FullInt(rnd.Next(2) == 0, bw);
                 var A = BigInteger.Parse(fa.ToString(10));
                 var B = BigInteger.Parse(fb.ToString(10));
 
@@ -495,7 +495,7 @@ namespace FullInt.Tests
         }
 
         /// <summary>
-        /// Decimal text by halves (FullInt64Engine.Decimal.cs): ToString(10) and Parse against
+        /// Decimal text by halves (FullIntEngine.Decimal.cs): ToString(10) and Parse against
         /// BigInteger, at the default thresholds and at tiny ones (deep recursion). The values
         /// stress the zero padding of the low halves: powers of ten and their neighbours, long
         /// zero blocks inside, and random digits.
@@ -538,7 +538,7 @@ namespace FullInt.Tests
                         foreach (var v in new[] { big, -big })
                         {
                             string text = v.ToString();
-                            var parsed = FullInt64.Parse(text);
+                            var parsed = FullInt.Parse(text);
                             Assert.AreEqual(text, parsed.ToString(10), $"thresholds {to}/{parse}, {text.Length} chars");
                         }
                     }
@@ -552,23 +552,23 @@ namespace FullInt.Tests
         }
 
         /// <summary>
-        /// The in-place API (FullInt64.Add(result, a, b) etc.) against BigInteger: result fresh,
+        /// The in-place API (FullInt.Add(result, a, b) etc.) against BigInteger: result fresh,
         /// reused, and the same object as a or b; signs; sizes across the Karatsuba threshold.
         /// </summary>
         [TestMethod]
         public void InPlaceApi_MatchesBigInteger()
         {
             var rnd = new Random(3131);
-            FullInt64 Make(int words)
+            FullInt Make(int words)
             {
                 var w = new ulong[words];
                 for (int k = 0; k < words; k++) w[k] = (ulong)rnd.NextInt64() ^ ((ulong)rnd.Next(2) << 63);
                 if (rnd.Next(4) == 0) w[0] = 0;   // a leading zero word
-                return new FullInt64(rnd.Next(2) == 0, w);
+                return new FullInt(rnd.Next(2) == 0, w);
             }
-            BigInteger Big(FullInt64 x) => BigInteger.Parse(x.ToString(10));
+            BigInteger Big(FullInt x) => BigInteger.Parse(x.ToString(10));
 
-            var result = new FullInt64(0);
+            var result = new FullInt(0);
             for (int i = 0; i < 600; i++)
             {
                 var a = Make(rnd.Next(1, i % 3 == 0 ? 90 : 12));
@@ -580,49 +580,49 @@ namespace FullInt.Tests
                 switch (rnd.Next(3))   // into the shared result, into a, into b
                 {
                     case 0:
-                        FullInt64.Add(result, a, b); Assert.AreEqual(A + B, Big(result), "add " + ctx);
-                        FullInt64.Subtract(result, a, b); Assert.AreEqual(A - B, Big(result), "sub " + ctx);
-                        FullInt64.Multiply(result, a, b); Assert.AreEqual(A * B, Big(result), "mul " + ctx);
-                        FullInt64.ShiftLeft(result, a, shift); Assert.AreEqual(A << shift, Big(result), "shl " + ctx);
-                        FullInt64.ShiftRight(result, a, shift); Assert.AreEqual(BigCompat.ShiftRightFloor(A, shift), Big(result), "shr " + ctx);
-                        FullInt64.And(result, a, b); Assert.AreEqual(A & B, Big(result), "and " + ctx);
-                        FullInt64.Or(result, a, b); Assert.AreEqual(A | B, Big(result), "or " + ctx);
-                        FullInt64.Xor(result, a, b); Assert.AreEqual(A ^ B, Big(result), "xor " + ctx);
+                        FullInt.Add(result, a, b); Assert.AreEqual(A + B, Big(result), "add " + ctx);
+                        FullInt.Subtract(result, a, b); Assert.AreEqual(A - B, Big(result), "sub " + ctx);
+                        FullInt.Multiply(result, a, b); Assert.AreEqual(A * B, Big(result), "mul " + ctx);
+                        FullInt.ShiftLeft(result, a, shift); Assert.AreEqual(A << shift, Big(result), "shl " + ctx);
+                        FullInt.ShiftRight(result, a, shift); Assert.AreEqual(BigCompat.ShiftRightFloor(A, shift), Big(result), "shr " + ctx);
+                        FullInt.And(result, a, b); Assert.AreEqual(A & B, Big(result), "and " + ctx);
+                        FullInt.Or(result, a, b); Assert.AreEqual(A | B, Big(result), "or " + ctx);
+                        FullInt.Xor(result, a, b); Assert.AreEqual(A ^ B, Big(result), "xor " + ctx);
                         if (!B.IsZero)
                         {
-                            FullInt64.Divide(result, a, b); Assert.AreEqual(BigInteger.Divide(A, B), Big(result), "div " + ctx);
-                            FullInt64.Remainder(result, a, b); Assert.AreEqual(BigInteger.Remainder(A, B), Big(result), "rem " + ctx);
+                            FullInt.Divide(result, a, b); Assert.AreEqual(BigInteger.Divide(A, B), Big(result), "div " + ctx);
+                            FullInt.Remainder(result, a, b); Assert.AreEqual(BigInteger.Remainder(A, B), Big(result), "rem " + ctx);
                         }
                         break;
                     case 1:
-                        var x = new FullInt64(a.Sing, (ulong[])a.value.Clone());
-                        FullInt64.Add(x, x, b); Assert.AreEqual(A + B, Big(x), "add into a " + ctx);
-                        FullInt64.Subtract(x, x, b); Assert.AreEqual(A, Big(x), "sub into a " + ctx);
-                        FullInt64.Multiply(x, x, b); Assert.AreEqual(A * B, Big(x), "mul into a " + ctx);
-                        FullInt64.ShiftLeft(x, x, shift); Assert.AreEqual((A * B) << shift, Big(x), "shl into a " + ctx);
-                        FullInt64.ShiftRight(x, x, shift); Assert.AreEqual(BigCompat.ShiftRightFloor((A * B) << shift, shift), Big(x), "shr into a " + ctx);
-                        FullInt64.And(x, x, b); Assert.AreEqual(A * B & B, Big(x), "and into a " + ctx);
-                        var x2 = new FullInt64(a.Sing, (ulong[])a.value.Clone());
-                        FullInt64.Xor(x2, x2, b); Assert.AreEqual(A ^ B, Big(x2), "xor into a " + ctx);
+                        var x = new FullInt(a.Sing, (ulong[])a.value.Clone());
+                        FullInt.Add(x, x, b); Assert.AreEqual(A + B, Big(x), "add into a " + ctx);
+                        FullInt.Subtract(x, x, b); Assert.AreEqual(A, Big(x), "sub into a " + ctx);
+                        FullInt.Multiply(x, x, b); Assert.AreEqual(A * B, Big(x), "mul into a " + ctx);
+                        FullInt.ShiftLeft(x, x, shift); Assert.AreEqual((A * B) << shift, Big(x), "shl into a " + ctx);
+                        FullInt.ShiftRight(x, x, shift); Assert.AreEqual(BigCompat.ShiftRightFloor((A * B) << shift, shift), Big(x), "shr into a " + ctx);
+                        FullInt.And(x, x, b); Assert.AreEqual(A * B & B, Big(x), "and into a " + ctx);
+                        var x2 = new FullInt(a.Sing, (ulong[])a.value.Clone());
+                        FullInt.Xor(x2, x2, b); Assert.AreEqual(A ^ B, Big(x2), "xor into a " + ctx);
                         if (!B.IsZero)
                         {
-                            var x3 = new FullInt64(a.Sing, (ulong[])a.value.Clone());
-                            FullInt64.Divide(x3, x3, b); Assert.AreEqual(BigInteger.Divide(A, B), Big(x3), "div into a " + ctx);
-                            var x4 = new FullInt64(a.Sing, (ulong[])a.value.Clone());
-                            FullInt64.Remainder(x4, x4, b); Assert.AreEqual(BigInteger.Remainder(A, B), Big(x4), "rem into a " + ctx);
+                            var x3 = new FullInt(a.Sing, (ulong[])a.value.Clone());
+                            FullInt.Divide(x3, x3, b); Assert.AreEqual(BigInteger.Divide(A, B), Big(x3), "div into a " + ctx);
+                            var x4 = new FullInt(a.Sing, (ulong[])a.value.Clone());
+                            FullInt.Remainder(x4, x4, b); Assert.AreEqual(BigInteger.Remainder(A, B), Big(x4), "rem into a " + ctx);
                         }
                         break;
                     default:
-                        var y = new FullInt64(b.Sing, (ulong[])b.value.Clone());
-                        FullInt64.Add(y, a, y); Assert.AreEqual(A + B, Big(y), "add into b " + ctx);
-                        FullInt64.Subtract(y, a, y); Assert.AreEqual(-B, Big(y), "sub into b " + ctx);
-                        FullInt64.Multiply(y, a, y); Assert.AreEqual(-A * B, Big(y), "mul into b " + ctx);
-                        var y2 = new FullInt64(b.Sing, (ulong[])b.value.Clone());
-                        FullInt64.Or(y2, a, y2); Assert.AreEqual(A | B, Big(y2), "or into b " + ctx);
+                        var y = new FullInt(b.Sing, (ulong[])b.value.Clone());
+                        FullInt.Add(y, a, y); Assert.AreEqual(A + B, Big(y), "add into b " + ctx);
+                        FullInt.Subtract(y, a, y); Assert.AreEqual(-B, Big(y), "sub into b " + ctx);
+                        FullInt.Multiply(y, a, y); Assert.AreEqual(-A * B, Big(y), "mul into b " + ctx);
+                        var y2 = new FullInt(b.Sing, (ulong[])b.value.Clone());
+                        FullInt.Or(y2, a, y2); Assert.AreEqual(A | B, Big(y2), "or into b " + ctx);
                         if (!B.IsZero)
                         {
-                            var y3 = new FullInt64(b.Sing, (ulong[])b.value.Clone());
-                            FullInt64.Divide(y3, a, y3); Assert.AreEqual(BigInteger.Divide(A, B), Big(y3), "div into b " + ctx);
+                            var y3 = new FullInt(b.Sing, (ulong[])b.value.Clone());
+                            FullInt.Divide(y3, a, y3); Assert.AreEqual(BigInteger.Divide(A, B), Big(y3), "div into b " + ctx);
                         }
                         break;
                 }
@@ -636,46 +636,46 @@ namespace FullInt.Tests
         [TestMethod]
         public void InPlaceApi_SharedArraysAndLoops()
         {
-            var a = FullInt64.Parse("123456789012345678901234567890");
-            var b = FullInt64.Parse("987654321098765432109876543210");
+            var a = FullInt.Parse("123456789012345678901234567890");
+            var b = FullInt.Parse("987654321098765432109876543210");
 
             // an owned result handed to a copy: the next in-place call must not change the copy
-            var r = new FullInt64(0);
-            FullInt64.Add(r, a, b);
-            var copy = new FullInt64(r);
+            var r = new FullInt(0);
+            FullInt.Add(r, a, b);
+            var copy = new FullInt(r);
             string before = copy.ToString(10);
-            FullInt64.Add(r, r, b);
+            FullInt.Add(r, r, b);
             Assert.AreEqual(before, copy.ToString(10), "copy constructor shares the array");
 
-            var r2 = new FullInt64(0);
-            FullInt64.Multiply(r2, a, b);
+            var r2 = new FullInt(0);
+            FullInt.Multiply(r2, a, b);
             var words = (ulong[])r2;
             var snapshot = (ulong[])words.Clone();
-            FullInt64.Add(r2, r2, a);
+            FullInt.Add(r2, r2, a);
             CollectionAssert.AreEqual(snapshot, words, "(ulong[]) hands the array out");
 
             // an operand made by the engine (shares nothing): the result gets its own array
             var sum = a + b;
             var keep = sum.ToString(10);
-            var target = new FullInt64(sum);   // shares sum's array: written in place it would change sum
-            FullInt64.Add(target, target, b);
+            var target = new FullInt(sum);   // shares sum's array: written in place it would change sum
+            FullInt.Add(target, target, b);
             Assert.AreEqual(keep, sum.ToString(10), "an operand's array shared by the result");
 
             // r = r + 1 a thousand times: the array keeps its size
-            var acc = new FullInt64(0);
-            FullInt64.Add(acc, a, a);
+            var acc = new FullInt(0);
+            FullInt.Add(acc, a, a);
             int length = 0;
             for (int i = 0; i < 1000; i++)
             {
-                FullInt64.Add(acc, acc, 1);
+                FullInt.Add(acc, acc, 1);
                 if (i == 10) length = acc.value.Length;
             }
             Assert.AreEqual(length, acc.value.Length, "the reused array grows");
 
             // zero in a long reused array prints as "0" (the long-number text path)
-            var big = new FullInt64(0);
-            FullInt64.Multiply(big, FullInt64.Parse(new string('9', 2000)), FullInt64.Parse(new string('7', 2000)));
-            FullInt64.Subtract(big, big, big);
+            var big = new FullInt(0);
+            FullInt.Multiply(big, FullInt.Parse(new string('9', 2000)), FullInt.Parse(new string('7', 2000)));
+            FullInt.Subtract(big, big, big);
             Assert.AreEqual("0", big.ToString(10), "zero in a long array");
             Assert.AreEqual((BigInteger.Parse("123456789012345678901234567890") * 2 + 1000).ToString(), acc.ToString(10));
         }
@@ -696,8 +696,8 @@ namespace FullInt.Tests
                 for (int k = 0; k < aw.Length; k++) aw[k] = (ulong)rnd.NextInt64() ^ ((ulong)rnd.Next(2) << 63);
                 for (int k = 0; k < bw.Length; k++) bw[k] = (ulong)rnd.NextInt64() ^ ((ulong)rnd.Next(2) << 63);
                 aw[0] |= 1; bw[0] |= 1;   // keep the lengths (no leading zero words)
-                var fa = new FullInt64(rnd.Next(2) == 0, aw);
-                var fb = new FullInt64(rnd.Next(2) == 0, bw);
+                var fa = new FullInt(rnd.Next(2) == 0, aw);
+                var fb = new FullInt(rnd.Next(2) == 0, bw);
                 var A = BigInteger.Parse(fa.ToString(10));
                 var B = BigInteger.Parse(fb.ToString(10));
 
@@ -716,12 +716,12 @@ namespace FullInt.Tests
         public void DivMod_PooledWorkBuffers_MatchBigInteger()
         {
             var rnd = new Random(1717);
-            FullInt64 Make(int words, out BigInteger big)
+            FullInt Make(int words, out BigInteger big)
             {
                 var w = new ulong[words];
                 for (int k = 0; k < words; k++) w[k] = (ulong)rnd.NextInt64() ^ ((ulong)rnd.Next(2) << 63);
                 w[0] |= 1;
-                var f = new FullInt64(rnd.Next(2) == 0, w);
+                var f = new FullInt(rnd.Next(2) == 0, w);
                 big = BigInteger.Parse(f.ToString(10));
                 return f;
             }
@@ -755,8 +755,8 @@ namespace FullInt.Tests
                 for (int k = 0; k < dWords.Length; k++) dWords[k] = (ulong)rnd.NextInt64() | 1;
                 var dPadded = new ulong[rnd.Next(1, 3)].Concat(dWords).ToArray(); // leading zero words
 
-                var fa = new FullInt64(rnd.Next(2) == 0, a);
-                var fd = new FullInt64(rnd.Next(2) == 0, dPadded);
+                var fa = new FullInt(rnd.Next(2) == 0, a);
+                var fd = new FullInt(rnd.Next(2) == 0, dPadded);
                 var A = BigInteger.Parse(fa.ToString(10));
                 var D = BigInteger.Parse(fd.ToString(10));
 
@@ -786,7 +786,7 @@ namespace FullInt.Tests
             {
                 try
                 {
-                    FullInt64 big = FullInt64.Parse(digits);
+                    FullInt big = FullInt.Parse(digits);
                     result = big.ToString(10);
                 }
                 catch (Exception ex) { error = ex; }

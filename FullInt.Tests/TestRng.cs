@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
 
-namespace FullInt.Tests
+namespace FullNumerics.Tests
 {
     /// <summary>
     /// Reproducible replacement for RandomNumberGenerator in the randomized tests (same GetBytes

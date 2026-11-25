@@ -2,7 +2,7 @@
 // same inputs, both linked statically - no interop and no memory management on either side.
 //
 // It shows where the asm itself (or the algorithm in it) stands against GMP; the API level
-// (FullInt64 vs mpz_class, and the .NET package) is a separate benchmark.
+// (FullInt vs mpz_class, and the .NET package) is a separate benchmark.
 //
 // Note: our Mult/Div/ToDec/FromDec kernels are the basecase (schoolbook) algorithms; the C#
 // layer adds Karatsuba/Toom-3 on top. GMP's mpn_mul_n / tdiv_qr / get_str / set_str switch to
@@ -346,7 +346,7 @@ int main(int argc, char** argv)
 
         if (want(ops, "todec"))
         {
-            // ours: the buffer size of FullInt64Engine.ToDecString; GMP clobbers its input, so
+            // ours: the buffer size of FullIntEngine.ToDecString; GMP clobbers its input, so
             // it gets a fresh copy per call (ours copies into valueBuf inside the kernel)
             int resultBytes = int(n * 1.014 + 1) * 19 + 1;
             std::vector<uint8_t> obuf(resultBytes);

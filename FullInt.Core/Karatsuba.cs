@@ -1,7 +1,7 @@
 using System;
 using System.Buffers;
 
-namespace FullInt.Core
+namespace FullNumerics
 {
     /// <summary>
     /// Karatsuba multiplication on top of the core's basecase Mult (the hand-written asm on win-x64).

@@ -1,7 +1,7 @@
 using System.Diagnostics;
-using FullInt.Core;
+using FullNumerics;
 
-namespace FullInt.Benchmarks
+namespace FullNumerics.Benchmarks
 {
     /// <summary>
     /// Picks the Burnikel–Ziegler threshold: 2N / N word divisions, the core's Div alone (the asm
@@ -36,14 +36,14 @@ namespace FullInt.Benchmarks
                     var w = new ulong[n];
                     for (int i = 0; i < n; i++) w[i] = (ulong)rnd.NextInt64() ^ ((ulong)rnd.Next(2) << 63);
                     w[0] |= 1;
-                    var x = new FullInt64(false, w);
+                    var x = new FullInt(false, w);
                     string text = x.ToString(10);
                     Console.Write($"{"",-9}{n,6}");
                     foreach (int t in thresholds)
                     {
                         DecimalConversion.ToStringThreshold = t;
                         DecimalConversion.ParseThreshold = t * 19;
-                        Action f = what == "ToString" ? () => x.ToString(10) : () => FullInt64.Parse(text);
+                        Action f = what == "ToString" ? () => x.ToString(10) : () => FullInt.Parse(text);
                         f();
                         double best = double.MaxValue;
                         for (int r = 0; r < rounds; r++)
@@ -181,7 +181,7 @@ namespace FullInt.Benchmarks
                 var w = new ulong[n];
                 for (int i = 0; i < n; i++) w[i] = (ulong)rnd.NextInt64() ^ ((ulong)rnd.Next(2) << 63);
                 w[0] |= 1;
-                var x = new FullInt64(false, w);
+                var x = new FullInt(false, w);
                 x.ToString(10);
                 var t = new double[configs.Length];
                 for (int c = 0; c < configs.Length; c++)

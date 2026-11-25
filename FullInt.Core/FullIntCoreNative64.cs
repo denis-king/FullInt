@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace FullInt.Core
+namespace FullNumerics
 {
     public sealed class FullIntCoreNative64 : FullIntCoreBase
     {

@@ -1,7 +1,7 @@
 using System.Diagnostics;
-using FullInt.Core;
+using FullNumerics;
 
-namespace FullInt.Benchmarks
+namespace FullNumerics.Benchmarks
 {
     /// <summary>
     /// Picks the Karatsuba threshold: N×N products on the native core, basecase (the asm column

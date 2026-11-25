@@ -1,8 +1,8 @@
 using System.Buffers.Binary;
 using System.Numerics;
-using FullInt.Core;
+using FullNumerics;
 
-namespace FullInt.Tests
+namespace FullNumerics.Tests
 {
     /// <summary>
     /// Bitwise operations (&amp;, |, xor, ~, &lt;&lt;, &gt;&gt;) checked against System.Numerics.BigInteger,
@@ -10,7 +10,7 @@ namespace FullInt.Tests
     /// Core-level tests run on both the native (asm) core and the managed fallback.
     /// </summary>
     [TestClass]
-    public class FullInt64BitwiseTests
+    public class FullIntBitwiseTests
     {
         private static readonly ulong[] SpecialWords =
         {
@@ -38,7 +38,7 @@ namespace FullInt.Tests
             return BigCompat.FromUnsignedLittleEndian(bytes);
         }
 
-        private static FullInt64 ToFull(BigInteger v) => new FullInt64(v.Sign < 0, ToLimbs(BigInteger.Abs(v)));
+        private static FullInt ToFull(BigInteger v) => new FullInt(v.Sign < 0, ToLimbs(BigInteger.Abs(v)));
 
         private static BigInteger NextValue(Random rnd)
         {
@@ -131,11 +131,11 @@ namespace FullInt.Tests
                 var x = NextValue(rnd);
                 var y = NextValue(rnd);
                 int shift = rnd.Next(0, 300);
-                FullInt64 fx = ToFull(x), fy = ToFull(y);
+                FullInt fx = ToFull(x), fy = ToFull(y);
 
                 Assert.AreEqual((x & y).ToString(), (fx & fy).ToString(10), $"{x} & {y}");
                 Assert.AreEqual((x | y).ToString(), (fx | fy).ToString(10), $"{x} | {y}");
-                Assert.AreEqual((x ^ y).ToString(), FullInt64.Xor(fx, fy).ToString(10), $"{x} xor {y}");
+                Assert.AreEqual((x ^ y).ToString(), FullInt.Xor(fx, fy).ToString(10), $"{x} xor {y}");
                 Assert.AreEqual((~x).ToString(), (~fx).ToString(10), $"~{x}");
                 Assert.AreEqual((x << shift).ToString(), (fx << shift).ToString(10), $"{x} << {shift}");
                 Assert.AreEqual(BigCompat.ShiftRightFloor(x, shift).ToString(), (fx >> shift).ToString(10), $"{x} >> {shift}");
@@ -145,11 +145,11 @@ namespace FullInt.Tests
         [TestMethod]
         public void Operators_EdgeCases()
         {
-            FullInt64 zero = 0, one = 1, minusOne = -1;
+            FullInt zero = 0, one = 1, minusOne = -1;
 
             Assert.AreEqual("0", (zero & minusOne).ToString(10));
             Assert.AreEqual("-1", (zero | minusOne).ToString(10));
-            Assert.AreEqual("0", FullInt64.Xor(minusOne, minusOne).ToString(10));
+            Assert.AreEqual("0", FullInt.Xor(minusOne, minusOne).ToString(10));
             Assert.AreEqual("-1", (~zero).ToString(10));
             Assert.AreEqual("0", (~minusOne).ToString(10));
             Assert.AreEqual("-1", (minusOne >> 1000).ToString(10), "negative >> large shift is -1");
@@ -159,7 +159,7 @@ namespace FullInt.Tests
             Assert.AreEqual("1", (2 >> 1 == 1 ? one : zero).ToString(10));
             Assert.AreEqual((BigInteger.One << 64).ToString(), (one << 64).ToString(10));
             Assert.AreEqual("4", (one << -(-2)).ToString(10));
-            Assert.AreEqual("1", ((FullInt64)4 << -2).ToString(10), "negative shift = shift the other way");
+            Assert.AreEqual("1", ((FullInt)4 << -2).ToString(10), "negative shift = shift the other way");
         }
     }
 }

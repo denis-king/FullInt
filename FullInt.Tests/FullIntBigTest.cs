@@ -1,4 +1,4 @@
-﻿using FullInt.Core;
+﻿using FullNumerics;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
 using System.Collections.Generic;
@@ -6,19 +6,19 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Security.Cryptography;
 using System.Linq;
-using FullIntCore = FullInt.Core.FullInt64;
+using FullIntCore = FullNumerics.FullInt;
 
-namespace FullInt.Tests
+namespace FullNumerics.Tests
 {
     [TestClass]
     public class FullIntBigTests
     {
         public TestContext TestContext { get; set; }
-        private static FullInt64Engine _engine;
+        private static FullIntEngine _engine;
 		[ClassInitialize]
 		public static void InitClass(TestContext testContext)
 		{
-			_engine = FullInt64Engine.Instance;
+			_engine = FullIntEngine.Instance;
 			
 			//todo warm up operations
 		}
@@ -313,9 +313,9 @@ namespace FullInt.Tests
                 {
                     sign = false;
                 }
-                fullintC[i] = new FullInt64(sign, FullHelper.DeleteZeros(resultBuf).ToArray());
+                fullintC[i] = new FullInt(sign, FullHelper.DeleteZeros(resultBuf).ToArray());
                 for (int j = 0; j < remainderBuf.Length; j++) remainderBuf[j] = 0;
-                //remainder = new FullInt64(value1.Sing, deleteZeros(remainderBuf).ToArray(), Base);
+                //remainder = new FullInt(value1.Sing, deleteZeros(remainderBuf).ToArray(), Base);
 
                 //return result;
                 //fullintC[i] = _engine.div(fullintA[i], fullintB[i]);

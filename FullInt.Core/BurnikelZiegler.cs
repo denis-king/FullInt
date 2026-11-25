@@ -1,6 +1,6 @@
 using System;
 
-namespace FullInt.Core
+namespace FullNumerics
 {
     /// <summary>
     /// Burnikel–Ziegler recursive division (Burnikel, Ziegler: "Fast Recursive Division", 1998)

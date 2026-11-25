@@ -66,7 +66,7 @@ Results (markdown/html/csv) go to `BenchmarkDotNet.Artifacts/` (git-ignored).
 | Suite | Level | Compares |
 |---|---|---|
 | `CoreBenchmarks` | `IFullIntCore` on preallocated buffers: no allocation, no sign handling | native asm core vs managed fallback, N = 1…1024 limbs |
-| `ApiBenchmarks` | `FullInt64` operators (allocation, signs, normalization included) | FullInt64 vs `System.Numerics.BigInteger` (baseline) |
+| `ApiBenchmarks` | `FullInt` operators (allocation, signs, normalization included) | FullInt vs `System.Numerics.BigInteger` (baseline) |
 
 `ApiBenchmarks` sizes: N = 1…4096 limbs.
 
@@ -85,6 +85,6 @@ Operands are generated from fixed seeds (`Data.Limbs`), so numbers are comparabl
 Full runs worth keeping go to [docs/benchmarks/](../docs/benchmarks/) (summary + raw report + csv):
 
 - [2026-11-13-core-baseline.md](../docs/benchmarks/2026-11-13-core-baseline.md) — the original algorithms and asm before any optimization
-- [2026-11-14-api-vs-biginteger.md](../docs/benchmarks/2026-11-14-api-vs-biginteger.md) — FullInt64 vs `BigInteger` (Add, Mult, Div), after the Mult inner-loop fix
+- [2026-11-14-api-vs-biginteger.md](../docs/benchmarks/2026-11-14-api-vs-biginteger.md) — FullInt vs `BigInteger` (Add, Mult, Div), after the Mult inner-loop fix
 - [2026-11-14-karatsuba.md](../docs/benchmarks/2026-11-14-karatsuba.md) — Karatsuba threshold tuning and Mult vs `BigInteger` up to 4096 limbs
-- [2026-11-14-api-after-optimizations.md](../docs/benchmarks/2026-11-14-api-after-optimizations.md) — FullInt64 vs `BigInteger` (Add, Mult, Div, up to 4096 limbs) after all optimizations of the day
+- [2026-11-14-api-after-optimizations.md](../docs/benchmarks/2026-11-14-api-after-optimizations.md) — FullInt vs `BigInteger` (Add, Mult, Div, up to 4096 limbs) after all optimizations of the day

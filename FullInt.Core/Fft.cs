@@ -1,7 +1,7 @@
 using System;
 using System.Buffers;
 
-namespace FullInt.Core
+namespace FullNumerics
 {
     public static partial class Karatsuba
     {

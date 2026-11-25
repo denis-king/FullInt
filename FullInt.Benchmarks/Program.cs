@@ -1,5 +1,5 @@
 using BenchmarkDotNet.Running;
-using FullInt.Benchmarks;
+using FullNumerics.Benchmarks;
 
 // ab <base.dll> <cur.dll> [filter] [rounds]  → precise A/B of two native builds (see AbCompare)
 // anything else                              → BenchmarkDotNet (--filter, --list flat, ...)

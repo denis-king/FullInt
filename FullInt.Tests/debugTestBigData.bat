@@ -8,6 +8,6 @@ if %errorlevel%==0 (
         g
     " "C:\Program Files\Microsoft Visual Studio\2022\TestAgent\Common7\IDE\Extensions\TestPlatform\vstest.console.exe" ^
     "C:\Users\Denis\source\repos\FullInt\FullInt.Tests\bin\Debug\net8.0\FullInt.Tests.dll" ^
-    "/TestCaseFilter:FullyQualifiedName~FullInt.Tests.FullIntBigTests.BigTestHex" ^
+    "/TestCaseFilter:FullyQualifiedName~FullNumerics.Tests.FullIntBigTests.BigTestHex" ^
     "/Logger:console;verbosity=detailed"
 )

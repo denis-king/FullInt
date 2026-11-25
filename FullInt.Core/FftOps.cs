@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace FullInt.Core
+namespace FullNumerics
 {
     /// <summary>
     /// The two halves of a Schönhage–Strassen butterfly modulo p = 2^N + 1, N = 64·(n1 - 1),
