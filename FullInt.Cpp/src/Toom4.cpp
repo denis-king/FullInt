@@ -15,12 +15,12 @@
 //   c3 = (15·O1 - V - U)/9,  c5 = (U - 3c3)/15,  c1 = O1 - c3 - c5
 // Every division is exact; every difference is >= 0 (checked). Needs lb > 3k (checked by
 // the caller).
-#include <fullint/Karatsuba.h>
+#include <fullnumerics/Karatsuba.h>
 
 #include <cstring>
 #include <stdexcept>
 
-namespace fullint {
+namespace fullnumerics {
 
 
 void Karatsuba::Toom4(CSpan a, CSpan b, Span r, Span scratch, const Limits& lim)
@@ -145,4 +145,4 @@ void Karatsuba::Evaluate4(CSpan x0, CSpan x1, CSpan x2, CSpan x3, Span p1, Span 
     FullIntCore::Add(ph, x3, ph);
 }
 
-}  // namespace fullint
+}  // namespace fullnumerics

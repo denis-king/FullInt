@@ -8,12 +8,12 @@
 //   a·b = r(0) + r1·X + r2·X² + r3·X³ + r(inf)·X⁴
 // Values at -1 and -2 and the interpolation temporaries are signed (sign-magnitude: a span
 // plus a bool); the final r1, r2, r3 are never negative. Needs lb > 2k (checked by the caller).
-#include <fullint/Karatsuba.h>
+#include <fullnumerics/Karatsuba.h>
 
 #include <cstring>
 #include <stdexcept>
 
-namespace fullint {
+namespace fullnumerics {
 
 void Karatsuba::Toom3(CSpan a, CSpan b, Span r, Span scratch, const Limits& lim)
 {
@@ -102,4 +102,4 @@ bool Karatsuba::SignedAdd(CSpan x, bool xNegative, CSpan y, bool yNegative, Span
     return c > 0 ? xNegative : c < 0 ? yNegative : false;
 }
 
-}  // namespace fullint
+}  // namespace fullnumerics

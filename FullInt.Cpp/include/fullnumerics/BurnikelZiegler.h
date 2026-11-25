@@ -2,9 +2,9 @@
 // The leaves are the kernel Div (asm Knuth), the products go through Karatsuba.
 #pragma once
 
-#include <fullint/FullIntCore.h>
+#include <fullnumerics/FullIntCore.h>
 
-namespace fullint {
+namespace fullnumerics {
 
 struct BurnikelZiegler
 {
@@ -58,4 +58,4 @@ private:
     static size_t ScratchWords(size_t n, int threshold) { return 10 * n + 2 * (size_t)threshold + 128; }
 };
 
-}  // namespace fullint
+}  // namespace fullnumerics

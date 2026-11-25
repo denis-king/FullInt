@@ -14,13 +14,13 @@
 #define FULLINT_NOINLINE __attribute__((noinline))
 #endif
 
-#include <fullint/kernels.h>
+#include <fullnumerics/kernels.h>
 
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
-namespace fullint {
+namespace fullnumerics {
 
 struct Cpu
 {
@@ -116,4 +116,4 @@ struct Cpu
     }
 };
 
-}  // namespace fullint
+}  // namespace fullnumerics

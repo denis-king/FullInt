@@ -13,7 +13,7 @@
 // in Montgomery's (MulW). Dif2 / Dit2 run two
 // levels, Dif3 / Dit3 the last (first) three - here level by level: the permuted order the
 // forward transform leaves is undone by the inverse, the pointwise product does not care.
-#include <fullint/kernels.h>
+#include <fullnumerics/kernels.h>
 
 #if FULLINT_ARM64
 

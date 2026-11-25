@@ -8,15 +8,15 @@
 //   Quotient blocks of t <= s words from the top: X = [R, next t words of A'] < B'·β^t,
 //     q̂ = (top t words of X)·(top t + 1 words of I) / β^t  (a few units off the true q),
 //     R = X - q̂·B', then q̂ -= 1 while that is negative, q̂ += 1 while R >= B'.
-#include <fullint/NewtonDivision.h>
-#include <fullint/FullHelper.h>
-#include <fullint/Karatsuba.h>
+#include <fullnumerics/NewtonDivision.h>
+#include <fullnumerics/FullHelper.h>
+#include <fullnumerics/Karatsuba.h>
 
 #include <algorithm>
 #include <cstring>
 #include <stdexcept>
 
-namespace fullint {
+namespace fullnumerics {
 
 namespace {
 
@@ -384,4 +384,4 @@ std::vector<uint64_t> NewtonDivision::Inverse(CSpan d, int inverseBase, size_t c
     return inv;
 }
 
-}  // namespace fullint
+}  // namespace fullnumerics

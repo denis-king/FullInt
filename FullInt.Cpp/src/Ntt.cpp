@@ -10,8 +10,8 @@
 // Transforms: radix-2 levels two at a time, depth-first above Block values; the last three
 // levels inside the registers. Twiddles in Montgomery form, W[h + j] = w_2h^j·2^32 mod p for
 // every level h, with Wq = W·p^-1 mod 2^32; the inverse transform has its own tables.
-#include <fullint/Karatsuba.h>
-#include <fullint/kernels.h>
+#include <fullnumerics/Karatsuba.h>
+#include <fullnumerics/kernels.h>
 
 #include <algorithm>
 #include <atomic>
@@ -20,7 +20,7 @@
 #include <stdexcept>
 #include <vector>
 
-namespace fullint {
+namespace fullnumerics {
 
 namespace {
 
@@ -394,4 +394,4 @@ void Karatsuba::NttMultiplyImage(CSpan a, const NttImage& b, Span r)
     if (b.cyclic) WrapCarry(r, carry);
 }
 
-}  // namespace fullint
+}  // namespace fullnumerics

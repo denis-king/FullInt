@@ -14,8 +14,8 @@
 // Limbs: 64-bit words, index 0 = most significant word (as in C# and the asm kernels).
 #pragma once
 
-#include <fullint/FullHelper.h>
-#include <fullint/FullIntCore.h>
+#include <fullnumerics/FullHelper.h>
+#include <fullnumerics/FullIntCore.h>
 
 #include <compare>
 #include <concepts>
@@ -27,7 +27,7 @@
 #include <string>
 #include <string_view>
 
-namespace fullint {
+namespace fullnumerics {
 
 class FullIntEngine;
 
@@ -579,12 +579,12 @@ inline FullInt Abs(const FullInt& value) { return FullIntEngine::abs(value); }
 
 std::ostream& operator<<(std::ostream& os, const FullInt& value);
 
-}  // namespace fullint
+}  // namespace fullnumerics
 
 template <>
-struct std::hash<fullint::FullInt>
+struct std::hash<fullnumerics::FullInt>
 {
-    size_t operator()(const fullint::FullInt& v) const noexcept
+    size_t operator()(const fullnumerics::FullInt& v) const noexcept
     {
         size_t h = v.neg_ ? 0x9E3779B97F4A7C15ull : 0;
         const uint64_t* p = v.Data();

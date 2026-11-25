@@ -14,7 +14,7 @@
 // vector - the vectors are reached through a slot table, so the spare and the shifted vector
 // swap slots instead of a copy back. Both passes: the x64 kernels (FftAdx.asm, BMI2 + ADX),
 // otherwise the portable code below.
-#include <fullint/Karatsuba.h>
+#include <fullnumerics/Karatsuba.h>
 
 #include <algorithm>
 #include <climits>
@@ -24,7 +24,7 @@
 #include <stdexcept>
 #include <vector>
 
-namespace fullint {
+namespace fullnumerics {
 
 namespace {
 
@@ -466,4 +466,4 @@ void Karatsuba::Convolve(CSpan a, CSpan b, Span r, int k, size_t m, int nBits, c
     }
 }
 
-}  // namespace fullint
+}  // namespace fullnumerics

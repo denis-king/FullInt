@@ -7,16 +7,16 @@
 //   Div3n2n(A, B):  A (3k words) < B·β^k, B = [B1 B2] (k words each)
 //     A1 < B1:  Q̂, R1 = Div2n1n([A1 A2], B1)      otherwise  Q̂ = β^k - 1, R1 = A2 + B1
 //     R̂ = [R1 A3] - Q̂·B2;  while R̂ < 0: R̂ += B, Q̂ -= 1   (at most twice)
-#include <fullint/BurnikelZiegler.h>
-#include <fullint/FullHelper.h>
-#include <fullint/Karatsuba.h>
+#include <fullnumerics/BurnikelZiegler.h>
+#include <fullnumerics/FullHelper.h>
+#include <fullnumerics/Karatsuba.h>
 
 #include <algorithm>
 #include <cstring>
 #include <stdexcept>
 #include <vector>
 
-namespace fullint {
+namespace fullnumerics {
 
 namespace {
 
@@ -373,4 +373,4 @@ void BurnikelZiegler::Basecase(CSpan a, CSpan b, Span q, Span r, Span scratch)
     std::copy(rb.begin() + 2, rb.end(), r.begin());
 }
 
-}  // namespace fullint
+}  // namespace fullnumerics

@@ -4,11 +4,11 @@
 // every subproduct chooses again by its own size.
 #pragma once
 
-#include <fullint/FullIntCore.h>
+#include <fullnumerics/FullIntCore.h>
 
 #include <vector>
 
-namespace fullint {
+namespace fullnumerics {
 
 struct Karatsuba
 {
@@ -199,4 +199,4 @@ private:
     static bool SignedAdd(CSpan x, bool xNegative, CSpan y, bool yNegative, Span r);
 };
 
-}  // namespace fullint
+}  // namespace fullnumerics

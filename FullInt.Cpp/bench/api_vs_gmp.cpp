@@ -13,10 +13,10 @@
 //
 // usage: fullint_bench_api [--ops add,mul,...] [--max N] [--cpu K (the core to pin to; default 2)] [--set name=value ...] [--quick] [--net file.csv] [--csv file]
 //   --quick: 1 ms batches and 3 rounds - a fast "did it help" check, noisier than the full run
-#include <fullint/BurnikelZiegler.h>
-#include <fullint/FullInt.h>
-#include <fullint/Karatsuba.h>
-#include <fullint/NewtonDivision.h>
+#include <fullnumerics/BurnikelZiegler.h>
+#include <fullnumerics/FullInt.h>
+#include <fullnumerics/Karatsuba.h>
+#include <fullnumerics/NewtonDivision.h>
 #include <gmp.h>
 
 #include <algorithm>
@@ -40,7 +40,7 @@
 #include <sched.h>
 #endif
 
-using fullint::FullInt;
+using fullnumerics::FullInt;
 
 namespace {
 
@@ -57,7 +57,7 @@ uint64_t Next()   // splitmix64 (the .NET side has the same)
 // rebuild); false on an unknown name
 bool SetThreshold(const std::string& kv)
 {
-    using namespace fullint;
+    using namespace fullnumerics;
     const std::map<std::string, int*> names = {
         { "kara", &Karatsuba::Threshold }, { "toom3", &Karatsuba::Toom3Threshold },
         { "toom4", &Karatsuba::Toom4Threshold }, { "toom6", &Karatsuba::Toom6Threshold },
@@ -205,7 +205,7 @@ int main(int argc, char** argv)
 
     const int sizes[] = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 1024, 4096, 16384, 65536 };
 
-    std::printf("FullInt kernels: %s\n", fullint::Cpu::Describe());
+    std::printf("FullInt kernels: %s\n", fullnumerics::Cpu::Describe());
     std::printf("GMP %s; time per operation (min over rounds); x = time / GMP time (< 1: faster than GMP)\n", gmp_version);
     if (withNet)
         std::printf("%-6s %6s  %10s  %18s  %18s  %18s\n", "op", "words", "GMP", "FullInt C++", "FullInt .NET", "BigInteger");
@@ -219,7 +219,7 @@ int main(int argc, char** argv)
         auto wa = Words(n), wb = Words(n), wc = Words(2 * n);
         if (n > maxN) break;
 
-        FullInt a(false, fullint::CSpan(wa)), b(false, fullint::CSpan(wb)), c(false, fullint::CSpan(wc)), a2(a);
+        FullInt a(false, fullnumerics::CSpan(wa)), b(false, fullnumerics::CSpan(wb)), c(false, fullnumerics::CSpan(wc)), a2(a);
         mpz_t ga, gb, gc, ga2, gr;
         mpz_inits(ga, gb, gc, ga2, gr, nullptr);
         mpz_import(ga, wa.size(), 1, 8, 0, 0, wa.data());
@@ -269,21 +269,21 @@ int main(int argc, char** argv)
         FullInt ri;   // into an existing result: the same call shape as GMP's mpz_op(r, a, b)
 
         row("add", [&] { r = a + b; }, [&] { fresh([&](mpz_ptr t) { mpz_add(t, ga, gb); }); });
-        row("addto", [&] { fullint::Add(ri, a, b); }, [&] { mpz_add(gr, ga, gb); });
+        row("addto", [&] { fullnumerics::Add(ri, a, b); }, [&] { mpz_add(gr, ga, gb); });
         row("sub", [&] { r = a - b; }, [&] { fresh([&](mpz_ptr t) { mpz_sub(t, ga, gb); }); });
-        row("subto", [&] { fullint::Subtract(ri, a, b); }, [&] { mpz_sub(gr, ga, gb); });
+        row("subto", [&] { fullnumerics::Subtract(ri, a, b); }, [&] { mpz_sub(gr, ga, gb); });
         row("mul", [&] { r = a * b; }, [&] { fresh([&](mpz_ptr t) { mpz_mul(t, ga, gb); }); });
-        row("multo", [&] { fullint::Multiply(ri, a, b); }, [&] { mpz_mul(gr, ga, gb); });
+        row("multo", [&] { fullnumerics::Multiply(ri, a, b); }, [&] { mpz_mul(gr, ga, gb); });
         row("div", [&] { r = c / b; }, [&] { fresh([&](mpz_ptr t) { mpz_tdiv_q(t, gc, gb); }); });
-        row("divto", [&] { fullint::Divide(ri, c, b); }, [&] { mpz_tdiv_q(gr, gc, gb); });
+        row("divto", [&] { fullnumerics::Divide(ri, c, b); }, [&] { mpz_tdiv_q(gr, gc, gb); });
         row("mod", [&] { r = c % b; }, [&] { fresh([&](mpz_ptr t) { mpz_tdiv_r(t, gc, gb); }); });
-        row("modto", [&] { fullint::Remainder(ri, c, b); }, [&] { mpz_tdiv_r(gr, gc, gb); });
+        row("modto", [&] { fullnumerics::Remainder(ri, c, b); }, [&] { mpz_tdiv_r(gr, gc, gb); });
         row("shl", [&] { r = a << 13; }, [&] { fresh([&](mpz_ptr t) { mpz_mul_2exp(t, ga, 13); }); });
-        row("shlto", [&] { fullint::ShiftLeft(ri, a, 13); }, [&] { mpz_mul_2exp(gr, ga, 13); });
+        row("shlto", [&] { fullnumerics::ShiftLeft(ri, a, 13); }, [&] { mpz_mul_2exp(gr, ga, 13); });
         row("shr", [&] { r = a >> 13; }, [&] { fresh([&](mpz_ptr t) { mpz_fdiv_q_2exp(t, ga, 13); }); });
-        row("shrto", [&] { fullint::ShiftRight(ri, a, 13); }, [&] { mpz_fdiv_q_2exp(gr, ga, 13); });
+        row("shrto", [&] { fullnumerics::ShiftRight(ri, a, 13); }, [&] { mpz_fdiv_q_2exp(gr, ga, 13); });
         row("and", [&] { r = a & b; }, [&] { fresh([&](mpz_ptr t) { mpz_and(t, ga, gb); }); });
-        row("andto", [&] { fullint::And(ri, a, b); }, [&] { mpz_and(gr, ga, gb); });
+        row("andto", [&] { fullnumerics::And(ri, a, b); }, [&] { mpz_and(gr, ga, gb); });
         row("cmp", [&] { sink = a > a2; }, [&] { sink = mpz_cmp(ga, ga2); });
         row("todec", [&] { s = a.ToString(); }, [&] { mpz_get_str(gbuf.data(), 10, ga); s = std::string(gbuf.data()); });
         row("parse", [&] { r = FullInt::Parse(text); }, [&] { fresh([&](mpz_ptr t) { mpz_set_str(t, text.c_str(), 10); }); });

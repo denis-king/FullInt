@@ -8,7 +8,7 @@
 //   fullint_kara_tune toom4      Toom-4 threshold: base = Karatsuba + Toom-3 (--kara, default Toom-3)
 //   fullint_kara_tune fft        FFT threshold: base = the Toom levels (default thresholds)
 //   --cpu K: the core to pin to (default 2; the S21+'s big core: 7)
-#include <fullint/Karatsuba.h>
+#include <fullnumerics/Karatsuba.h>
 
 #include <algorithm>
 #include <chrono>
@@ -27,7 +27,7 @@
 #include <sched.h>
 #endif
 
-using namespace fullint;
+using namespace fullnumerics;
 
 namespace {
 

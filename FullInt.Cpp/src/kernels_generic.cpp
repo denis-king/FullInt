@@ -8,8 +8,8 @@
 // Limbs big-endian: index 0 = the most significant word. Cpu::Detect() gives no x86 feature bits
 // on these CPUs, so the engine never calls the x86 vector kernels (NTT): they are here only so the
 // library links. The reciprocal entries here: the baseline under their names (DivQ: "saturated").
-#include <fullint/kernels.h>
-#include <fullint/FullHelper.h>
+#include <fullnumerics/kernels.h>
+#include <fullnumerics/FullHelper.h>
 
 #include <cstdlib>
 #include <cstring>
@@ -28,7 +28,7 @@
 #define FULLINT_GENERIC(name) name
 #endif
 
-using fullint::FullHelper;
+using fullnumerics::FullHelper;
 
 namespace {
 

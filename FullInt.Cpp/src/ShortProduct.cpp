@@ -5,13 +5,13 @@
 //   k = 0.7n: one full product of k words and two short ones of l words - about 0.8 of the
 //   full n x n product over Karatsuba / Toom (0.7^1.58 + 2·0.3^1.58·0.8), about 0.55 at the
 //   basecase sizes (the MulLoAdx.asm kernel: the triangle of the column multiply).
-#include <fullint/Karatsuba.h>
+#include <fullnumerics/Karatsuba.h>
 
 #include <algorithm>
 #include <cstring>
 #include <vector>
 
-namespace fullint {
+namespace fullnumerics {
 
 namespace {
 
@@ -83,4 +83,4 @@ void Karatsuba::MultiplyLow(CSpan a, CSpan b, Span r)
     }
 }
 
-}  // namespace fullint
+}  // namespace fullnumerics

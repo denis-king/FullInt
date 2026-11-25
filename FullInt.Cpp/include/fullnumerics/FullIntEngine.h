@@ -2,4 +2,4 @@
 // one-word paths of both need each other. This header exists to keep the C# file layout.
 #pragma once
 
-#include <fullint/FullInt.h>
+#include <fullnumerics/FullInt.h>

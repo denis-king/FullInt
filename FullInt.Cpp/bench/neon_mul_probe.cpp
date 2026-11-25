@@ -11,7 +11,7 @@
 // As the narrow cores' basecase (Karatsuba from 24 / 32 / 48 over it) the products were 1.05-1.24
 // times slower than Karatsuba from 12 over the scalar kernel: not adopted.
 //   fullint_neon_mul_probe [--cpu K]
-#include <fullint/kernels.h>
+#include <fullnumerics/kernels.h>
 
 #include <arm_neon.h>
 

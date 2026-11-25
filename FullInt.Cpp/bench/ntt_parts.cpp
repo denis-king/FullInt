@@ -2,7 +2,7 @@
 // values: where a product's time goes. The twiddles are arbitrary values below p (the time
 // does not depend on them).
 //   fullint_ntt_parts [L] [--cpu K]
-#include <fullint/kernels.h>
+#include <fullnumerics/kernels.h>
 
 #include <algorithm>
 #include <chrono>

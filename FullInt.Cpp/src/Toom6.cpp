@@ -27,12 +27,12 @@
 //   d0 = (u - x)/2, d4 = (u + x)/2, d1 = (v - y)/2, d3 = (v + y)/2
 // Every division is exact; values that must be >= 0 are checked. Needs lb > 5k (checked by
 // the caller).
-#include <fullint/Karatsuba.h>
+#include <fullnumerics/Karatsuba.h>
 
 #include <cstring>
 #include <stdexcept>
 
-namespace fullint {
+namespace fullnumerics {
 
 namespace {
 
@@ -295,4 +295,4 @@ int Karatsuba::Evaluate6(CSpan x0, CSpan x1, CSpan x2, CSpan x3, CSpan x4, CSpan
     return signs;
 }
 
-}  // namespace fullint
+}  // namespace fullnumerics

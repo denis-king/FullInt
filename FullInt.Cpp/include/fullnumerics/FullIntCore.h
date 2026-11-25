@@ -16,19 +16,19 @@
 //   shifts:    ShiftLeft r >= a + shift / 64 + 1; ShiftRight r >= max(a - shift / 64, 1), r may alias a
 #pragma once
 
-#include <fullint/Cpu.h>
-#include <fullint/FullHelper.h>
+#include <fullnumerics/Cpu.h>
+#include <fullnumerics/FullHelper.h>
 
 #include <utility>
 #include <vector>
-#include <fullint/kernels.h>
+#include <fullnumerics/kernels.h>
 
 #include <cstdint>
 #include <iterator>
 #include <memory>
 #include <span>
 
-namespace fullint {
+namespace fullnumerics {
 
 using Span = std::span<uint64_t>;
 using CSpan = std::span<const uint64_t>;
@@ -445,4 +445,4 @@ private:
     static int Signs(bool negA, bool negB) noexcept { return (negA ? 1 : 0) | (negB ? 2 : 0); }
 };
 
-}  // namespace fullint
+}  // namespace fullnumerics

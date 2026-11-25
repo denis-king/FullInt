@@ -13,7 +13,7 @@
 // once before it is timed.
 //
 // usage: fullint_bench_kernels [--ops add,sub,...] [--max N] [--csv file]
-#include <fullint/kernels.h>
+#include <fullnumerics/kernels.h>
 #include <gmp.h>
 
 #include <algorithm>

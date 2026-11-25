@@ -1,11 +1,11 @@
 // FullInt C++ against GMP (mpz) as the reference: every operation on random and edge values,
 // sizes from one word to Toom-3 range, all sign combinations; plus the C# semantics that GMP
 // does not define the same way (parse prefixes, hex format).
-#include <fullint/BurnikelZiegler.h>
-#include <fullint/NewtonDivision.h>
-#include <fullint/FullInt.h>
-#include <fullint/Karatsuba.h>
-#include <fullint/kernels.h>
+#include <fullnumerics/BurnikelZiegler.h>
+#include <fullnumerics/NewtonDivision.h>
+#include <fullnumerics/FullInt.h>
+#include <fullnumerics/Karatsuba.h>
+#include <fullnumerics/kernels.h>
 #include <gmp.h>
 
 #include <cstdio>
@@ -15,7 +15,7 @@
 #include <string>
 #include <vector>
 
-using fullint::FullInt;
+using fullnumerics::FullInt;
 
 namespace {
 
@@ -74,7 +74,7 @@ FullInt RandomValue(int words)
     if (kind == 1) { for (auto& x : w) x = 0; w[0] = 1ull << (rng() % 64); }   // a power of two
     if (kind == 2 && words > 1) w[words - 1] = 0;                        // low zero word
     if (w[0] == 0) w[0] = 1;
-    return FullInt((rng() & 1) != 0, fullint::CSpan(w));
+    return FullInt((rng() & 1) != 0, fullnumerics::CSpan(w));
 }
 
 std::string Desc(const char* op, const FullInt& a, const FullInt& b)
@@ -102,7 +102,7 @@ void CheckPair(const FullInt& a, const FullInt& b)
         CHECK(Same(a / b, e.v), Desc("div", a, b));
         CHECK(Same(a % b, e2.v), Desc("mod", a, b));
         FullInt r;
-        FullInt q = fullint::FullIntEngine::div(a, b, r);
+        FullInt q = fullnumerics::FullIntEngine::div(a, b, r);
         CHECK(Same(q, e.v) && Same(r, e2.v), Desc("divrem", a, b));
     }
 
@@ -115,7 +115,7 @@ void CheckPair(const FullInt& a, const FullInt& b)
 
     int c = mpz_cmp(ma.v, mb.v);
     c = c < 0 ? -1 : c > 0 ? 1 : 0;
-    CHECK(fullint::FullIntEngine::Compare(a, b) == c, Desc("compare", a, b));
+    CHECK(fullnumerics::FullIntEngine::Compare(a, b) == c, Desc("compare", a, b));
     CHECK((a == b) == (c == 0) && (a < b) == (c < 0) && (a > b) == (c > 0), Desc("relational", a, b));
 }
 
@@ -229,7 +229,7 @@ void MultiplyThresholds()
         int threshold = 2 + (int)(rng() % 10), toom3 = 3 + (int)(rng() % 20);
         int toom4 = rng() % 3 == 0 ? 1 << 30 : 4 + (int)(rng() % 40);   // Toom-4 levels too
         int toom6 = rng() % 3 == 0 ? 1 << 30 : 6 + (int)(rng() % 60);   // Toom-6 levels too (from 36 words)
-        fullint::Karatsuba::Multiply(a.Words(), b.Words(), r, threshold, toom3, toom4, toom6, fullint::Karatsuba::FftThreshold);
+        fullnumerics::Karatsuba::Multiply(a.Words(), b.Words(), r, threshold, toom3, toom4, toom6, fullnumerics::Karatsuba::FftThreshold);
         Mpz ma, mb, e, got;
         ToMpz(Abs(a), ma.v);
         ToMpz(Abs(b), mb.v);
@@ -250,7 +250,7 @@ void FftProducts()
         FullInt a = RandomValue(la), b = RandomValue(lb);
         std::vector<uint64_t> r(a.Length() + b.Length());
         int k = 1 + (int)(rng() % 9);
-        fullint::Karatsuba::FftMultiply(a.Words(), b.Words(), r, k);
+        fullnumerics::Karatsuba::FftMultiply(a.Words(), b.Words(), r, k);
         Mpz ma, mb, e, got;
         ToMpz(Abs(a), ma.v);
         ToMpz(Abs(b), mb.v);
@@ -264,7 +264,7 @@ void FftProducts()
         FullInt a = RandomValue(la), b = RandomValue(lb);
         std::vector<uint64_t> r(a.Length() + b.Length());
         int fft = round % 3 == 0 ? 24 : round % 3 == 1 ? 48 : 100;
-        fullint::Karatsuba::Multiply(a.Words(), b.Words(), r, 8, 24, 48, fft);
+        fullnumerics::Karatsuba::Multiply(a.Words(), b.Words(), r, 8, 24, 48, fft);
         Mpz ma, mb, e, got;
         ToMpz(Abs(a), ma.v);
         ToMpz(Abs(b), mb.v);
@@ -294,7 +294,7 @@ void DivideThresholds()
         if (b[0] == 0) b[0] = 1;
 
         std::vector<uint64_t> q(la - lb + 1, 0xDEADBEEFDEADBEEFull), r(lb + 2, 0xDEADBEEFDEADBEEFull);
-        fullint::BurnikelZiegler::DivRem(a, b, q, r, threshold);
+        fullnumerics::BurnikelZiegler::DivRem(a, b, q, r, threshold);
 
         Mpz ma, mb, eq, er, gq, gr;
         mpz_import(ma.v, a.size(), 1, 8, 0, 0, a.data());
@@ -334,8 +334,8 @@ void SquaresCheck()
         std::vector<uint64_t> r(2 * n, 0xDEADBEEFDEADBEEFull);
         int t2 = 2 + (int)(rng() % 18), t3 = 3 + (int)(rng() % 57), t4 = 4 + (int)(rng() % 86), t6 = 6 + (int)(rng() % 114);
         if (rng() % 3 == 0) t3 = t4 = t6 = 1 << 30;
-        int fft = rng() % 4 == 0 ? 8 + (int)(rng() % 56) : fullint::Karatsuba::FftThreshold;
-        fullint::Karatsuba::Multiply(a, a, r, t2, t3, t4, t6, fft);
+        int fft = rng() % 4 == 0 ? 8 + (int)(rng() % 56) : fullnumerics::Karatsuba::FftThreshold;
+        fullnumerics::Karatsuba::Multiply(a, a, r, t2, t3, t4, t6, fft);
         check(a, r, "square thresholds " + std::to_string(t2) + "/" + std::to_string(t3) + "/" + std::to_string(t4) + "/" +
                         std::to_string(t6) + "/" + std::to_string(fft));
     }
@@ -344,9 +344,9 @@ void SquaresCheck()
         size_t n = 1 + rng() % 199;
         auto a = shaped(n);
         std::vector<uint64_t> r(2 * n);
-        fullint::Karatsuba::FftMultiply(a, a, r, 1 + (int)(rng() % 5));
+        fullnumerics::Karatsuba::FftMultiply(a, a, r, 1 + (int)(rng() % 5));
         check(a, r, "FFT square");
-        fullint::FullIntCore::Sqr(a, r);
+        fullnumerics::FullIntCore::Sqr(a, r);
         check(a, r, "Sqr kernel");
     }
     for (int round = 0; round < 40; round++)
@@ -367,7 +367,7 @@ void NttCheck()
 {
     std::vector<uint64_t> probe(2);
     uint64_t one = 1;
-    if (!fullint::Karatsuba::NttMultiply(fullint::CSpan(&one, 1), fullint::CSpan(&one, 1), probe)) return;
+    if (!fullnumerics::Karatsuba::NttMultiply(fullnumerics::CSpan(&one, 1), fullnumerics::CSpan(&one, 1), probe)) return;
     auto shaped = [](size_t len) {
         std::vector<uint64_t> v(len);
         int kind = (int)(rng() % 6);
@@ -382,8 +382,8 @@ void NttCheck()
         auto b = round % 4 == 0 ? a : shaped(lb);
         bool square = round % 4 == 0;
         std::vector<uint64_t> r(a.size() + b.size(), 0xDEADBEEFDEADBEEFull);
-        fullint::CSpan sb = square ? fullint::CSpan(a) : fullint::CSpan(b);
-        CHECK(fullint::Karatsuba::NttMultiply(a, sb, r), "NttMultiply available");
+        fullnumerics::CSpan sb = square ? fullnumerics::CSpan(a) : fullnumerics::CSpan(b);
+        CHECK(fullnumerics::Karatsuba::NttMultiply(a, sb, r), "NttMultiply available");
         Mpz ma, mb, e, got;
         mpz_import(ma.v, a.size(), 1, 8, 0, 0, a.data());
         mpz_import(mb.v, b.size(), 1, 8, 0, 0, b.data());
@@ -396,7 +396,7 @@ void NttCheck()
         auto a = shaped(1000 + rng() % 8000);
         auto b = round == 0 ? a : shaped(1000 + rng() % 8000);
         std::vector<uint64_t> r(a.size() + b.size());
-        fullint::Karatsuba::Multiply(a, round == 0 ? fullint::CSpan(a) : fullint::CSpan(b), r);
+        fullnumerics::Karatsuba::Multiply(a, round == 0 ? fullnumerics::CSpan(a) : fullnumerics::CSpan(b), r);
         Mpz ma, mb, e, got;
         mpz_import(ma.v, a.size(), 1, 8, 0, 0, a.data());
         mpz_import(mb.v, b.size(), 1, 8, 0, 0, b.data());
@@ -409,7 +409,7 @@ void NttCheck()
 // the low half of a product (MulLoAdx.asm and Mulders' recursion), against GMP mod β^n
 void MultiplyLowCheck()
 {
-    int saved = fullint::Karatsuba::MulLoThreshold;
+    int saved = fullnumerics::Karatsuba::MulLoThreshold;
     for (int round = 0; round < 1500; round++)
     {
         size_t la = 1 + rng() % 599, lb = 1 + rng() % 599;
@@ -419,8 +419,8 @@ void MultiplyLowCheck()
         for (auto& x : b) x = rng();
         if (round % 5 == 0) std::fill(a.begin(), a.end(), ~0ull);
         if (round % 7 == 0) std::fill(b.begin(), b.end(), ~0ull);
-        fullint::Karatsuba::MulLoThreshold = round % 2 == 0 ? saved : 4 + (int)(rng() % 60);
-        fullint::Karatsuba::MultiplyLow(a, b, r);
+        fullnumerics::Karatsuba::MulLoThreshold = round % 2 == 0 ? saved : 4 + (int)(rng() % 60);
+        fullnumerics::Karatsuba::MultiplyLow(a, b, r);
         Mpz ma, mb, e, got;
         mpz_import(ma.v, la, 1, 8, 0, 0, a.data());
         mpz_import(mb.v, lb, 1, 8, 0, 0, b.data());
@@ -429,7 +429,7 @@ void MultiplyLowCheck()
         mpz_import(got.v, n, 1, 8, 0, 0, r.data());
         CHECK(mpz_cmp(e.v, got.v) == 0, "MultiplyLow " + std::to_string(la) + "x" + std::to_string(lb) + " n " + std::to_string(n));
     }
-    fullint::Karatsuba::MulLoThreshold = saved;
+    fullnumerics::Karatsuba::MulLoThreshold = saved;
 }
 
 // products modulo β^m - 1: the cyclic FFT forced from small sizes and the folded full product;
@@ -440,7 +440,7 @@ void MultiplyModCheck()
     {
         size_t minWords = 8 + rng() % 392;
         size_t cyclicFrom = rng() % 3 == 0 ? (size_t)1 << 30 : 8;
-        size_t m = fullint::Karatsuba::MulModLength(minWords, cyclicFrom);
+        size_t m = fullnumerics::Karatsuba::MulModLength(minWords, cyclicFrom);
         CHECK(m >= minWords, "MulModLength");
         std::vector<uint64_t> a(1 + rng() % m), b(1 + rng() % m), r(m, 0xDEADBEEFDEADBEEFull);
         for (auto& x : a) x = rng();
@@ -448,7 +448,7 @@ void MultiplyModCheck()
         if (rng() % 5 == 0) std::fill(a.begin(), a.end(), ~0ull);
         if (rng() % 5 == 0) std::fill(b.begin(), b.end(), ~0ull);
         if (rng() % 4 == 0) b = a;   // a square (the same words: one transform)
-        fullint::Karatsuba::MultiplyMod(a, b == a ? fullint::CSpan(a) : fullint::CSpan(b), r, cyclicFrom);
+        fullnumerics::Karatsuba::MultiplyMod(a, b == a ? fullnumerics::CSpan(a) : fullnumerics::CSpan(b), r, cyclicFrom);
         Mpz ma, mb, mod, e, got;
         mpz_import(ma.v, a.size(), 1, 8, 0, 0, a.data());
         mpz_import(mb.v, b.size(), 1, 8, 0, 0, b.data());
@@ -504,10 +504,10 @@ void QuotientOnly()
         }
         if (a.size() < b.size()) continue;
         std::vector<uint64_t> q(a.size() - b.size() + 1, 0xDEADBEEFDEADBEEFull);
-        int savedSplit = fullint::BurnikelZiegler::QuotientSplitFrom;
-        if (round % 2) fullint::BurnikelZiegler::QuotientSplitFrom = 2 + (int)(rng() % 40);   // splits on small numbers
-        fullint::BurnikelZiegler::Quotient(a, b, q, threshold);
-        fullint::BurnikelZiegler::QuotientSplitFrom = savedSplit;
+        int savedSplit = fullnumerics::BurnikelZiegler::QuotientSplitFrom;
+        if (round % 2) fullnumerics::BurnikelZiegler::QuotientSplitFrom = 2 + (int)(rng() % 40);   // splits on small numbers
+        fullnumerics::BurnikelZiegler::Quotient(a, b, q, threshold);
+        fullnumerics::BurnikelZiegler::QuotientSplitFrom = savedSplit;
         mpz_tdiv_q(mq.v, ma.v, mb.v);
         mpz_import(got.v, q.size(), 1, 8, 0, 0, q.data());
         CHECK(mpz_cmp(mq.v, got.v) == 0, "quotient alone threshold " + std::to_string(threshold) + " kind " + std::to_string(kind) +
@@ -521,7 +521,7 @@ void NewtonDivide()
 {
     auto check = [](const std::vector<uint64_t>& a, const std::vector<uint64_t>& b, int split, int base, size_t cyclicFrom = 0) {
         std::vector<uint64_t> q(a.size() - b.size() + 1, 0xDEADBEEFDEADBEEFull), r(b.size() + 2, 0xDEADBEEFDEADBEEFull);
-        fullint::NewtonDivision::DivRem(a, b, q, r, split, base, cyclicFrom);
+        fullnumerics::NewtonDivision::DivRem(a, b, q, r, split, base, cyclicFrom);
         Mpz ma, mb, eq, er, gq, gr;
         mpz_import(ma.v, a.size(), 1, 8, 0, 0, a.data());
         mpz_import(mb.v, b.size(), 1, 8, 0, 0, b.data());
@@ -551,19 +551,19 @@ void NewtonDivide()
         if (rng() % 4 == 0) std::copy(b.begin(), b.end(), a.begin());
         check(a, b, split, base, rng() % 2 ? 0 : 8 + rng() % 56);   // the products modulo β^m - 1 on small numbers
     }
-    check(shaped(20000), shaped(9000), 0, fullint::NewtonDivision::InverseBase);
-    check(shaped(30000), shaped(8200), 0, fullint::NewtonDivision::InverseBase);
+    check(shaped(20000), shaped(9000), 0, fullnumerics::NewtonDivision::InverseBase);
+    check(shaped(30000), shaped(8200), 0, fullnumerics::NewtonDivision::InverseBase);
 
     // the quotient alone (a guard word, the last block's remainder skipped): random operands,
     // exact multiples A = B·Q (guard word 0: the fallback) and B·Q - 1 (the top boundary)
     {
-        int savedSplit = fullint::NewtonDivision::Split, savedBase = fullint::NewtonDivision::InverseBase;
-        int savedCyclic = fullint::NewtonDivision::CyclicFrom;
+        int savedSplit = fullnumerics::NewtonDivision::Split, savedBase = fullnumerics::NewtonDivision::InverseBase;
+        int savedCyclic = fullnumerics::NewtonDivision::CyclicFrom;
         for (int round = 0; round < 1500; round++)
         {
-            fullint::NewtonDivision::Split = (int)(rng() % 4);
-            fullint::NewtonDivision::InverseBase = bases[rng() % 7];
-            fullint::NewtonDivision::CyclicFrom = rng() % 2 ? 1 << 30 : 8 + (int)(rng() % 56);
+            fullnumerics::NewtonDivision::Split = (int)(rng() % 4);
+            fullnumerics::NewtonDivision::InverseBase = bases[rng() % 7];
+            fullnumerics::NewtonDivision::CyclicFrom = rng() % 2 ? 1 << 30 : 8 + (int)(rng() % 56);
             size_t lb = 1 + rng() % 120, la = lb + rng() % 300;
             auto a = shaped(la), b = shaped(lb);
             int kind = (int)(rng() % 4);
@@ -587,14 +587,14 @@ void NewtonDivide()
             }
             if (a.size() < b.size()) continue;
             std::vector<uint64_t> q(a.size() - b.size() + 1, 0xDEADBEEFDEADBEEFull);
-            fullint::NewtonDivision::Quotient(a, b, q);
+            fullnumerics::NewtonDivision::Quotient(a, b, q);
             mpz_tdiv_q(eq.v, ma.v, mb.v);
             mpz_import(gq.v, q.size(), 1, 8, 0, 0, q.data());
             CHECK(mpz_cmp(eq.v, gq.v) == 0, "Newton quotient kind " + std::to_string(kind) + " " + std::to_string(a.size()) + "/" + std::to_string(b.size()));
         }
-        fullint::NewtonDivision::Split = savedSplit;
-        fullint::NewtonDivision::InverseBase = savedBase;
-        fullint::NewtonDivision::CyclicFrom = savedCyclic;
+        fullnumerics::NewtonDivision::Split = savedSplit;
+        fullnumerics::NewtonDivision::InverseBase = savedBase;
+        fullnumerics::NewtonDivision::CyclicFrom = savedCyclic;
     }
 
     for (int round = 0; round < 300; round++)
@@ -602,7 +602,7 @@ void NewtonDivide()
         size_t s = 1 + rng() % 200;
         auto d = shaped(s);
         d[0] |= 1ull << 63;
-        auto inv = fullint::NewtonDivision::Inverse(d, bases[rng() % 7], rng() % 2 ? (size_t)1 << 30 : 8 + rng() % 56);
+        auto inv = fullnumerics::NewtonDivision::Inverse(d, bases[rng() % 7], rng() % 2 ? (size_t)1 << 30 : 8 + rng() % 56);
         Mpz md, exact, got;
         mpz_import(md.v, d.size(), 1, 8, 0, 0, d.data());
         mpz_set_ui(exact.v, 1);
@@ -633,12 +633,12 @@ void AndLeadingZeros()
                     wb[ib] = ~wa[ia];
                     if (ib == 0) wb[0] |= 1;   // keep b's top word nonzero
                 }
-                FullInt a(false, fullint::CSpan(wa)), b(false, fullint::CSpan(wb));
+                FullInt a(false, fullnumerics::CSpan(wa)), b(false, fullnumerics::CSpan(wb));
                 Mpz ma, mb, e;
                 ToMpz(a, ma.v);
                 ToMpz(b, mb.v);
                 mpz_and(e.v, ma.v, mb.v);
-                fullint::And(shared, a, b);
+                fullnumerics::And(shared, a, b);
                 CHECK(Same(shared, e.v), "And leading zeros " + std::to_string(la) + "/" + std::to_string(lb) + "/" + std::to_string(k));
             }
 }
@@ -672,7 +672,7 @@ void ToStringShapes()
             size_t cnt = 0;
             std::vector<uint64_t> words((mpz_sizeinbase(e.v, 2) + 63) / 64 + 1);
             mpz_export(words.data(), &cnt, 1, 8, 0, 0, e.v);
-            FullInt a(mpz_sgn(e.v) < 0, fullint::CSpan(words.data(), cnt));
+            FullInt a(mpz_sgn(e.v) < 0, fullnumerics::CSpan(words.data(), cnt));
             buf = mpz_get_str(nullptr, 10, e.v);
             CHECK(a.ToString() == buf, "ToString " + std::to_string(n) + " words shape " + std::to_string(shape));
             void (*freefunc)(void*, size_t);
@@ -723,11 +723,11 @@ void ShiftLeftIntoAll()
             std::vector<uint64_t> w(la);
             for (auto& x : w) x = rng();
             w[0] = shift % 3 == 0 ? 1 + (rng() & 0xFF) : w[0] | 1ull << 63;
-            FullInt a(shift % 2 == 0, fullint::CSpan(w));
+            FullInt a(shift % 2 == 0, fullnumerics::CSpan(w));
             Mpz ma, e;
             ToMpz(a, ma.v);
             mpz_mul_2exp(e.v, ma.v, shift);
-            fullint::ShiftLeft(shared, a, shift);
+            fullnumerics::ShiftLeft(shared, a, shift);
             CHECK(Same(shared, e.v), "ShiftLeft into " + std::to_string(la) + " by " + std::to_string(shift));
         }
 }
@@ -760,19 +760,19 @@ void AddSubIntoShapes()
         else if (shape == 4) { for (auto& x : wa) x = 0; la = 1; wa.resize(1); }   // zero
         if (wa[0] == 0 && la > 1) wa[0] = 1;
         if (wb[0] == 0 && lb > 1) wb[0] = 1;
-        FullInt a(rng() & 1, fullint::CSpan(wa)), b(rng() & 1, fullint::CSpan(wb));
+        FullInt a(rng() & 1, fullnumerics::CSpan(wa)), b(rng() & 1, fullnumerics::CSpan(wb));
         Mpz ma, mb, e;
         ToMpz(a, ma.v);
         ToMpz(b, mb.v);
         std::string ctx = std::to_string(la) + "/" + std::to_string(lb) + " shape " + std::to_string(shape);
         mpz_add(e.v, ma.v, mb.v);
-        fullint::Add(shared, a, b);
+        fullnumerics::Add(shared, a, b);
         CHECK(Same(shared, e.v), "Add into " + ctx);
         mpz_sub(e.v, ma.v, mb.v);
-        fullint::Subtract(shared, a, b);
+        fullnumerics::Subtract(shared, a, b);
         CHECK(Same(shared, e.v), "Subtract into " + ctx);
         FullInt fresh;   // a fresh (inline) result
-        fullint::Subtract(fresh, b, a);
+        fullnumerics::Subtract(fresh, b, a);
         mpz_sub(e.v, mb.v, ma.v);
         CHECK(Same(fresh, e.v), "Subtract into fresh " + ctx);
     }
@@ -790,34 +790,34 @@ void InPlaceApi()
         int shift = (int)(rng() % 200);
         std::string ctx = std::to_string(la) + "/" + std::to_string(lb) + " round " + std::to_string(round);
 
-        fullint::Add(shared, a, b);
+        fullnumerics::Add(shared, a, b);
         CHECK(shared == a + b, "Add " + ctx);
-        fullint::Subtract(shared, a, b);
+        fullnumerics::Subtract(shared, a, b);
         CHECK(shared == a - b, "Subtract " + ctx);
-        fullint::Multiply(shared, a, b);
+        fullnumerics::Multiply(shared, a, b);
         CHECK(shared == a * b, "Multiply " + ctx);
-        fullint::ShiftLeft(shared, a, shift);
+        fullnumerics::ShiftLeft(shared, a, shift);
         CHECK(shared == (a << shift), "ShiftLeft " + ctx);
-        fullint::ShiftRight(shared, a, shift);
+        fullnumerics::ShiftRight(shared, a, shift);
         CHECK(shared == (a >> shift), "ShiftRight " + ctx);
-        fullint::And(shared, a, b);
+        fullnumerics::And(shared, a, b);
         CHECK(shared == (a & b), "And " + ctx);
-        fullint::Or(shared, a, b);
+        fullnumerics::Or(shared, a, b);
         CHECK(shared == (a | b), "Or " + ctx);
-        fullint::Xor(shared, a, b);
+        fullnumerics::Xor(shared, a, b);
         CHECK(shared == (a ^ b), "Xor " + ctx);
         if (!b.IsZero())
         {
-            fullint::Divide(shared, a, b);
+            fullnumerics::Divide(shared, a, b);
             CHECK(shared == a / b, "Divide " + ctx);
-            fullint::Remainder(shared, a, b);
+            fullnumerics::Remainder(shared, a, b);
             CHECK(shared == a % b, "Remainder " + ctx);
             FullInt d(a), m(a), e(b);
-            fullint::Divide(d, d, b);
+            fullnumerics::Divide(d, d, b);
             CHECK(d == a / b, "Divide into a " + ctx);
-            fullint::Remainder(m, m, b);
+            fullnumerics::Remainder(m, m, b);
             CHECK(m == a % b, "Remainder into a " + ctx);
-            fullint::Divide(e, a, e);
+            fullnumerics::Divide(e, a, e);
             CHECK(e == a / b, "Divide into b " + ctx);
         }
         FullInt g(a), h(b);
@@ -827,19 +827,19 @@ void InPlaceApi()
         CHECK(h == (a ^ b), "^= " + ctx);
 
         FullInt x(a);   // into a
-        fullint::Add(x, x, b);
+        fullnumerics::Add(x, x, b);
         CHECK(x == a + b, "Add into a " + ctx);
-        fullint::Subtract(x, x, b);
+        fullnumerics::Subtract(x, x, b);
         CHECK(x == a, "Subtract into a " + ctx);
-        fullint::Multiply(x, x, b);
+        fullnumerics::Multiply(x, x, b);
         CHECK(x == a * b, "Multiply into a " + ctx);
         FullInt y(b);   // into b
-        fullint::Add(y, a, y);
+        fullnumerics::Add(y, a, y);
         CHECK(y == a + b, "Add into b " + ctx);
-        fullint::Subtract(y, a, y);
+        fullnumerics::Subtract(y, a, y);
         CHECK(y == -b, "Subtract into b " + ctx);
         FullInt z(a);   // both operands are the result
-        fullint::Add(z, z, z);
+        fullnumerics::Add(z, z, z);
         CHECK(z == a + a, "Add z = z + z " + ctx);
 
         FullInt c(a);   // compound operators, a few steps in a row (the carry room is reused)
@@ -874,14 +874,14 @@ void DecimalByHalves()
         texts.push_back(t);
     }
 
-    int savedTo = fullint::DecimalConversion::ToStringThreshold, savedParse = fullint::DecimalConversion::ParseThreshold;
-    int savedPrepared = fullint::DecimalConversion::PreparedFrom;
+    int savedTo = fullnumerics::DecimalConversion::ToStringThreshold, savedParse = fullnumerics::DecimalConversion::ParseThreshold;
+    int savedPrepared = fullnumerics::DecimalConversion::PreparedFrom;
     for (auto [to, parse] : { std::pair{ savedTo, savedParse }, std::pair{ 2, 20 }, std::pair{ 3, 39 }, std::pair{ 5, 100 } })
     {
-        fullint::DecimalConversion::ToStringThreshold = to;
-        fullint::DecimalConversion::ParseThreshold = parse;
+        fullnumerics::DecimalConversion::ToStringThreshold = to;
+        fullnumerics::DecimalConversion::ParseThreshold = parse;
         // small thresholds: the division by prepared powers from small powers too
-        fullint::DecimalConversion::PreparedFrom = to == savedTo ? savedPrepared : 2 + to;
+        fullnumerics::DecimalConversion::PreparedFrom = to == savedTo ? savedPrepared : 2 + to;
         for (auto& t : texts)
         {
             if (to != savedTo && t.size() > 5000) continue;
@@ -896,9 +896,9 @@ void DecimalByHalves()
             }
         }
     }
-    fullint::DecimalConversion::ToStringThreshold = savedTo;
-    fullint::DecimalConversion::ParseThreshold = savedParse;
-    fullint::DecimalConversion::PreparedFrom = savedPrepared;
+    fullnumerics::DecimalConversion::ToStringThreshold = savedTo;
+    fullnumerics::DecimalConversion::ParseThreshold = savedParse;
+    fullnumerics::DecimalConversion::PreparedFrom = savedPrepared;
 }
 
 }  // namespace
@@ -998,7 +998,7 @@ static void CompareKernels()
                 }
                 CHECK(Fullint64CompareWIN(a.data(), b.data(), n, n) == expect, "Compare kernel");
 #if FULLINT_X64
-                if (fullint::Cpu::Has(fullint::Cpu::Avx2))
+                if (fullnumerics::Cpu::Has(fullnumerics::Cpu::Avx2))
                     CHECK(Fullint64CompareWIN_avx2(a.data(), b.data(), n, n) == expect, "CompareAvx2 kernel");
                 CHECK(Fullint64CmpNWIN(a.data(), b.data(), n) == expect, "CmpN kernel");
                 // the whole compare on the objects (x64: CmpObj): both signs, and mixed signs
@@ -1006,12 +1006,12 @@ static void CompareKernels()
                 {
                     bool na = sg & 1, nb = (sg >> 1) & 1;
                     if (a[0] == 0 || b[0] == 0) continue;   // normalized numbers only
-                    FullInt fa(na, fullint::CSpan(a)), fb(nb, fullint::CSpan(b));
+                    FullInt fa(na, fullnumerics::CSpan(a)), fb(nb, fullnumerics::CSpan(b));
                     int want = na != nb ? (na ? -1 : 1) : (na ? -expect : expect);
-                    CHECK(fullint::FullIntEngine::Compare(fa, fb) == want, "Compare objects");
+                    CHECK(fullnumerics::FullIntEngine::Compare(fa, fb) == want, "Compare objects");
                 }
 #elif FULLINT_X86
-                if (fullint::Cpu::Has(fullint::Cpu::Sse2))
+                if (fullnumerics::Cpu::Has(fullnumerics::Cpu::Sse2))
                     CHECK(Fullint64CompareWIN_sse2(a.data(), b.data(), n, n) == expect, "CompareSse2 kernel");
 #endif
             }

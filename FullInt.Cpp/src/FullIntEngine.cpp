@@ -1,8 +1,8 @@
 // Port of FullInt.Core/FullIntEngine.cs: the general (out-of-line) paths.
-#include <fullint/FullInt.h>
-#include <fullint/BurnikelZiegler.h>
-#include <fullint/NewtonDivision.h>
-#include <fullint/Karatsuba.h>
+#include <fullnumerics/FullInt.h>
+#include <fullnumerics/BurnikelZiegler.h>
+#include <fullnumerics/NewtonDivision.h>
+#include <fullnumerics/Karatsuba.h>
 
 #include <algorithm>
 #include <cstddef>
@@ -19,7 +19,7 @@
 #define FULLINT_SSE2 0
 #endif
 
-namespace fullint {
+namespace fullnumerics {
 
 // a few words zeroed / copied in place: MSVC turns the plain loops into memset / memcpy calls, whose
 // entry outweighs a few words; long runs still use them. Two words a store (SSE2; the plain loops
@@ -560,13 +560,13 @@ void FullIntEngine::shiftLeftInto(FullInt& result, const FullInt& value, int shi
 }
 
 #if defined(_M_X64) && defined(_WIN32)
-}  // namespace fullint
+}  // namespace fullnumerics
 // IntoObj.asm's ShlObj jumps here when the case is not its own (the arguments as they came)
 extern "C" void Fullint64ShlIntoGeneral(void* r, const void* a, int shift)
 {
-    fullint::FullIntEngine::shiftLeftInto(*static_cast<fullint::FullInt*>(r), *static_cast<const fullint::FullInt*>(a), shift);
+    fullnumerics::FullIntEngine::shiftLeftInto(*static_cast<fullnumerics::FullInt*>(r), *static_cast<const fullnumerics::FullInt*>(a), shift);
 }
-namespace fullint {
+namespace fullnumerics {
 #endif
 
 void FullIntEngine::shiftLeftIntoGeneral(FullInt& result, const FullInt& value, int shift)
@@ -1177,4 +1177,4 @@ FullInt FullInt::FromBytes(std::span<const uint8_t> magnitude, bool negative)
 
 std::ostream& operator<<(std::ostream& os, const FullInt& value) { return os << value.ToString(); }
 
-}  // namespace fullint
+}  // namespace fullnumerics

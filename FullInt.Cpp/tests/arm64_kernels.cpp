@@ -4,7 +4,7 @@
 // one-bit and carry / borrow runs), guard words around the outputs. No GMP: quick to build and
 // to run under QEMU (docker/test-linux-arm64.ps1 -Kernels); fullint_tests then checks the whole
 // library against GMP.
-#include <fullint/kernels.h>
+#include <fullnumerics/kernels.h>
 
 #include <algorithm>
 #include <atomic>

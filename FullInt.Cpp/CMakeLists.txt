@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 
 # FullInt C++ library: the same asm kernels as the .NET package (FullInt.Asm/Sources),
 # linked statically into the C++ binary - no DLL and no interop on a kernel call.
-# The upper layer (src/, include/fullint/) is a port of FullInt.Core (C# is the master).
+# The upper layer (src/, include/fullnumerics/) is a port of FullInt.Core (C# is the master).
 project(FullIntCpp LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)

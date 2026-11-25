@@ -4,8 +4,8 @@
 //   ToString(x):  x = q·P_k + r  ->  ToString(q) followed by ToString(r) padded to 19·2^k digits
 //   Parse(t):     t = [high][low: 19·2^k digits]  ->  Parse(high)·P_k + Parse(low)
 // Leaves below DecimalConversion thresholds are the ToDecString / FromDecString kernels.
-#include <fullint/FullInt.h>
-#include <fullint/NewtonDivision.h>
+#include <fullnumerics/FullInt.h>
+#include <fullnumerics/NewtonDivision.h>
 
 #include <atomic>
 #include <cmath>
@@ -14,7 +14,7 @@
 #include <mutex>
 #include <vector>
 
-namespace fullint {
+namespace fullnumerics {
 
 namespace {
 
@@ -259,4 +259,4 @@ FullInt FullIntEngine::ParseDecimalLeaf(std::string_view digits)
     return result;
 }
 
-}  // namespace fullint
+}  // namespace fullnumerics

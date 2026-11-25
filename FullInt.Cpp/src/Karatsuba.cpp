@@ -4,7 +4,7 @@
 //   a = a1·B^m + a0,  b = b1·B^m + b0          (a0, b0: the low m words)
 //   z0 = a0·b0,  z2 = a1·b1,  zm = |a1 - a0| · |b1 - b0|
 //   a·b = z2·B^2m + (z0 + z2 ∓ zm)·B^m + z0    (∓: minus when (a1-a0) and (b1-b0) have the same sign)
-#include <fullint/Karatsuba.h>
+#include <fullnumerics/Karatsuba.h>
 
 #include <algorithm>
 #include <climits>
@@ -12,7 +12,7 @@
 #include <memory>
 #include <stdexcept>
 
-namespace fullint {
+namespace fullnumerics {
 
 namespace {
 
@@ -198,4 +198,4 @@ void Karatsuba::MulUnbalanced(CSpan a, CSpan b, Span r, Span scratch, const Limi
     }
 }
 
-}  // namespace fullint
+}  // namespace fullnumerics

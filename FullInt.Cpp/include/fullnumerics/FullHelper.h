@@ -3,7 +3,7 @@
 // are written straight into the result objects.)
 #pragma once
 
-#include <fullint/Cpu.h>
+#include <fullnumerics/Cpu.h>
 
 #include <bit>
 #include <cstdint>
@@ -12,7 +12,7 @@
 #include <intrin.h>
 #endif
 
-namespace fullint {
+namespace fullnumerics {
 
 struct FullHelper
 {
@@ -149,4 +149,4 @@ struct FullHelper
     }
 };
 
-}  // namespace fullint
+}  // namespace fullnumerics

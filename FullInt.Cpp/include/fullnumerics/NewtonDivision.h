@@ -1,12 +1,12 @@
 // Port of FullInt.Core/NewtonDivision.cs: division through a Newton reciprocal for long divisors.
 #pragma once
 
-#include <fullint/FullIntCore.h>
-#include <fullint/Karatsuba.h>
+#include <fullnumerics/FullIntCore.h>
+#include <fullnumerics/Karatsuba.h>
 
 #include <vector>
 
-namespace fullint {
+namespace fullnumerics {
 
 struct NewtonDivision
 {
@@ -99,4 +99,4 @@ private:
                     size_t cyclicFrom, Span q, Span r, bool quotientOnly = false, const Prepared* prepared = nullptr);
 };
 
-}  // namespace fullint
+}  // namespace fullnumerics
