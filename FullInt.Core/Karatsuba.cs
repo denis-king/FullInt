@@ -30,7 +30,12 @@ namespace FullInt.Core
         /// basecase. GMP uses ~30; ours is higher because the column asm is fast for its size
         /// and each core call from C# still costs ~10-15 ns.
         /// </summary>
-        public static int Threshold { get; set; } = Environment.Is64BitProcess ? 64 : 32;
+        public static int Threshold { get; set; } = !Environment.Is64BitProcess ? 32 : ArmCpu.Narrow ? 32 : 64;
+
+        // AArch64 with a narrow multiplier (ArmCpu; `kara` on a Neoverse-N1, the AArch64 kernels
+        // through the .so, 2026-11-25): of the basecase with 64 / 32: 48 words 0.98 / 0.77, 64 0.78 /
+        // 0.64, 128 0.59 / 0.48, 1024 0.19 / 0.16; 24 is as good from 64 words but splits 24-31 into
+        // 12-word halves 1.2 times slower than the basecase there.
 
         // x86 (a 32-bit process): a word product is four 32x32 multiplies, so every level pays
         // off earlier. `kara`, `kara toom`, `kara toom4` in a 32-bit .NET 8 process (Zen 3):

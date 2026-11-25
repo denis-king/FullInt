@@ -86,8 +86,13 @@ struct Karatsuba
     // from 64 words). Toom-3 from 192 (of Karatsuba alone: 192 0.96, 768 0.90, 2048 0.83, 4096
     // 0.78; from 128 it loses 5% at 128). Toom-4 from 256 (512 0.94, 1024-4096 0.90, 8192 0.83).
     // Toom-6 from 512, as on x64 (768 0.92, 1024-1536 0.95, 3072-8192 0.86-0.91).
-    static inline int Threshold = 24;
-    static inline int Toom3Threshold = 192;
+    // A narrow-multiplier core (Cpu::ArmNarrow; fullint_kara_tune on a Neoverse-N1, Oracle
+    // Ampere A1, 2026-11-24: 7 cycles a word product): Karatsuba from 12 words (of the basecase:
+    // 16 0.87, 32 0.68, 64 0.53, 128 0.40, 1024 0.17; 24 was 0.12-0.14 worse from 32), Toom-3 from
+    // 96 (of Karatsuba alone: 192 0.96, 512 0.89, 1024 0.82, 4096 0.71; from 64 it loses 7% at
+    // 64); Toom-4 / Toom-6 the same as on the wide cores (N1: 192-256 / 384-512 equal).
+    static inline int Threshold = Cpu::ArmNarrow() ? 12 : 24;
+    static inline int Toom3Threshold = Cpu::ArmNarrow() ? 96 : 192;
     static inline int Toom4Threshold = 256;
     static inline int Toom6Threshold = 512;
 #elif FULLINT_WORD64

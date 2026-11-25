@@ -9,7 +9,10 @@ namespace FullInt.Core
         /// unbalanced), a level splits in three (Toom-3) instead of two. Tuned with
         /// `FullInt.Benchmarks kara`; see docs/benchmarks.
         /// </summary>
-        public static int Toom3Threshold { get; set; } = Environment.Is64BitProcess ? 256 : 128;   // x86: see Karatsuba.Threshold
+        public static int Toom3Threshold { get; set; } = !Environment.Is64BitProcess ? 128 : ArmCpu.Narrow ? 192 : 256;   // x86: see Karatsuba.Threshold
+
+        // AArch64 with a narrow multiplier (ArmCpu; `kara toom` on a Neoverse-N1, Karatsuba at 32):
+        // from 192, of Karatsuba alone 0.81 at 384, 768 and 4096 words (from 256: 0.98 at 4096).
 
         // Toom-3 (Toom-Cook 3-way), evaluation points 0, 1, -1, -2, inf; Bodrato's interpolation:
         //   a = a2·X² + a1·X + a0,  b likewise,  X = B^k  (a0, a1: k words, a2: the rest)

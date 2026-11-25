@@ -205,6 +205,7 @@ int main(int argc, char** argv)
 
     const int sizes[] = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 1024, 4096, 16384, 65536 };
 
+    std::printf("FullInt kernels: %s\n", fullint::Cpu::Describe());
     std::printf("GMP %s; time per operation (min over rounds); x = time / GMP time (< 1: faster than GMP)\n", gmp_version);
     if (withNet)
         std::printf("%-6s %6s  %10s  %18s  %18s  %18s\n", "op", "words", "GMP", "FullInt C++", "FullInt .NET", "BigInteger");

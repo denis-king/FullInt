@@ -10,7 +10,11 @@ namespace FullInt.Core
         /// `FullInt.Benchmarks kara toom4` on win-x64 (Zen 3): no gain up to 384 words, from 512
         /// words 0.92-0.95 of Karatsuba + Toom-3, 0.85 at 8192; thresholds 384..1024 within noise.
         /// </summary>
-        public static int Toom4Threshold { get; set; } = Environment.Is64BitProcess ? 512 : 256;   // x86: see Karatsuba.Threshold
+        public static int Toom4Threshold { get; set; } = !Environment.Is64BitProcess ? 256 : ArmCpu.Narrow ? 256 : 512;   // x86: see Karatsuba.Threshold
+
+        // AArch64 with a narrow multiplier (ArmCpu; `kara toom4` on a Neoverse-N1): from 256, of
+        // Karatsuba + Toom-3 0.83 at 512 words, 0.74 at 1024, 0.73 at 2048, 0.76 at 8192 (from 512:
+        // 0.81-0.87).
 
         // Toom-4 (Toom-Cook 4-way): 7 products of about k words instead of Toom-3's 5 of k·4/3.
         //   a = a3·X³ + a2·X² + a1·X + a0,  b likewise,  X = B^k  (a0..a2: k words, a3: the rest)
