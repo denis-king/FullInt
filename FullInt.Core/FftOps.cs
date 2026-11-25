@@ -78,7 +78,7 @@ namespace FullInt.Core
         // inlined: compiling AddSub / ShlMod must not bind the x64 DLL in a 32-bit process.
         private static class Native
         {
-            private const string Dll = "FullIntOperations_win_x64.dll";
+            private const string Dll = NativeNames.Lib64;
 
             [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
 #if NET5_0_OR_GREATER

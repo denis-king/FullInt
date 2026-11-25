@@ -23,7 +23,7 @@ namespace FullInt.Core
     {
         // x86 with the NTT kernels (AVX2): the products are 5-10 times faster there, and Newton
         // pays off as early as on x64 (read before the thresholds below are initialized)
-        private static readonly bool X86Ntt = !Environment.Is64BitProcess && FullIntCoreWindowsX86.NttAvailable();
+        private static readonly bool X86Ntt = !Environment.Is64BitProcess && FullIntCoreNative32.NttAvailable();
 
         /// <summary>
         /// The engine divides through the Newton reciprocal from this many words of divisor and

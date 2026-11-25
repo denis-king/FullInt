@@ -22,7 +22,7 @@ namespace FullInt.Tests
         }
 
         private static IFullIntCore GetCore(string name) =>
-            name == "managed" ? new FullInt64CoreDefault() : FullIntCoreFactory.Create();
+            name == "managed" ? new FullIntCoreManaged() : FullIntCoreFactory.Create();
 
         private static readonly ulong[] SpecialWords =
         {

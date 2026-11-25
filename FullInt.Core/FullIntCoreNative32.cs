@@ -8,11 +8,11 @@ namespace FullInt.Core
     /// kernels to 32-bit registers), cdecl. Every operation has an x86 kernel; small sizes and
     /// Compare go to the managed core, where the native call would cost more than the work.
     /// </summary>
-    public sealed class FullIntCoreWindowsX86 : FullIntCoreBase, IFullIntCore   // re-implements a few members, see below
+    public sealed class FullIntCoreNative32 : FullIntCoreBase, IFullIntCore   // re-implements a few members, see below
     {
-        const string dll = "FullIntOperations_win_x86.dll";
+        const string dll = NativeNames.Lib32;
 
-        private static readonly FullInt64CoreDefault Managed = new FullInt64CoreDefault();
+        private static readonly FullIntCoreManaged Managed = new FullIntCoreManaged();
 
         [DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern ulong Fullint64AddWIN(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR);

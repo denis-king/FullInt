@@ -314,7 +314,7 @@ namespace FullInt.Core
 
         /// <summary>
         /// (hi:lo) / d with hi &lt; d (the quotient fits 64 bits), the contract of x64 `div r64`.
-        /// Hacker's Delight divlu, as FullInt64CoreDefault.Div128: two 64/32 steps on the normalized
+        /// Hacker's Delight divlu, as FullIntCoreManaged.Div128: two 64/32 steps on the normalized
         /// divisor. ~7 ns on x64 (.NET 8 and .NET Framework); UInt128 division measured 36 ns.
         /// </summary>
         public static ulong Div128(ulong hi, ulong lo, ulong d, out ulong remainder)

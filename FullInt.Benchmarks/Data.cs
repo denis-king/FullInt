@@ -29,8 +29,8 @@ namespace FullInt.Benchmarks
 
         public static IFullIntCore CreateCore(string name) => name switch
         {
-            "native" => new FullIntCoreWindowsX64(),
-            "managed" => new FullInt64CoreDefault(),
+            "native" => new FullIntCoreNative64(),
+            "managed" => new FullIntCoreManaged(),
             _ => throw new ArgumentException(name),
         };
 

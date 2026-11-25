@@ -13,7 +13,7 @@ namespace FullInt.Core
 		{
 			if (Environment.GetEnvironmentVariable(ForceManagedEnvVar) == "1")
 			{
-				return new FullInt64CoreDefault();
+				return new FullIntCoreManaged();
 			}
 
 			var os = Environment.OSVersion.Platform;
@@ -23,11 +23,11 @@ namespace FullInt.Core
 			{
 				if (arch == Architecture.X64)
 				{
-					return NativeOrManaged(() => new FullIntCoreWindowsX64());
+					return NativeOrManaged(() => new FullIntCoreNative64());
 				}
 				else if (arch == Architecture.X86)
 				{
-					return NativeOrManaged(() => new FullIntCoreWindowsX86());
+					return NativeOrManaged(() => new FullIntCoreNative32());
 				}
 				else if (arch == Architecture.Arm64)
 				{
@@ -42,12 +42,8 @@ namespace FullInt.Core
 					{
 #if NET5_0_OR_GREATER
 						// the same x64 kernels (their entries take the System V arguments on Linux,
-						// abi.inc): the x64 core, its library name resolved to the .so
-						return NativeOrManaged(() =>
-						{
-							LinuxNativeLibrary.Register();
-							return new FullIntCoreWindowsX64();
-						});
+						// abi.inc): the 64-bit core (NativeLibraryResolver maps its library to the .so)
+						return NativeOrManaged(() => new FullIntCoreNative64());
 #endif
 					}
 					else if (arch == Architecture.Arm64)
@@ -56,11 +52,7 @@ namespace FullInt.Core
 						// the AArch64 kernels (Sources/arm64: the x64 entries' names and contracts,
 						// libFullIntOperations_linux_arm64.so); no x86 feature bits, so the 64-bit
 						// core takes the baseline entries and the division by reciprocal
-						return NativeOrManaged(() =>
-						{
-							LinuxNativeLibrary.Register();
-							return new FullIntCoreWindowsX64();
-						});
+						return NativeOrManaged(() => new FullIntCoreNative64());
 #endif
 					}
 				}
@@ -77,7 +69,7 @@ namespace FullInt.Core
 				}
 			}
 
-			return new FullInt64CoreDefault();
+			return new FullIntCoreManaged();
 		}
 
 		// The native library may be missing or unusable on a given machine (another platform
@@ -99,7 +91,7 @@ namespace FullInt.Core
 			catch (DllNotFoundException) { }
 			catch (EntryPointNotFoundException) { }
 			catch (BadImageFormatException) { }
-			return new FullInt64CoreDefault();
+			return new FullIntCoreManaged();
 		}
     }
 }

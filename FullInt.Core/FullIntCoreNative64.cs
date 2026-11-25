@@ -5,9 +5,9 @@ using System.Text;
 
 namespace FullInt.Core
 {
-    public sealed class FullIntCoreWindowsX64 : FullIntCoreBase
+    public sealed class FullIntCoreNative64 : FullIntCoreBase
     {
-		const string dll = "FullIntOperations_win_x64.dll";
+		const string dll = NativeNames.Lib64;
 		
 		[DllImport(dll, CallingConvention = CallingConvention.Cdecl)]
         private static extern ulong Fullint64AddWIN(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR);
@@ -466,41 +466,41 @@ namespace FullInt.Core
         private static class Slow
         {
             [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-            public static ulong Fullint64AddWIN(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR) => FullIntCoreWindowsX64.Fullint64AddWIN(a, b, r, lenA, lenB, lenR);
+            public static ulong Fullint64AddWIN(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR) => FullIntCoreNative64.Fullint64AddWIN(a, b, r, lenA, lenB, lenR);
             [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-            public static int Fullint64SubWIN(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR) => FullIntCoreWindowsX64.Fullint64SubWIN(a, b, r, lenA, lenB, lenR);
+            public static int Fullint64SubWIN(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR) => FullIntCoreNative64.Fullint64SubWIN(a, b, r, lenA, lenB, lenR);
             [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-            public static unsafe ulong Fullint64AddNWIN(ulong* a, ulong* b, ulong* r, long n) => FullIntCoreWindowsX64.Fullint64AddNWIN(a, b, r, n);
+            public static unsafe ulong Fullint64AddNWIN(ulong* a, ulong* b, ulong* r, long n) => FullIntCoreNative64.Fullint64AddNWIN(a, b, r, n);
             [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-            public static unsafe ulong Fullint64SubCmpNWIN(ulong* a, ulong* b, ulong* r, long n) => FullIntCoreWindowsX64.Fullint64SubCmpNWIN(a, b, r, n);
+            public static unsafe ulong Fullint64SubCmpNWIN(ulong* a, ulong* b, ulong* r, long n) => FullIntCoreNative64.Fullint64SubCmpNWIN(a, b, r, n);
             [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-            public static ulong Fullint64MultWIN(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR) => FullIntCoreWindowsX64.Fullint64MultWIN(a, b, r, lenA, lenB, lenR);
+            public static ulong Fullint64MultWIN(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR) => FullIntCoreNative64.Fullint64MultWIN(a, b, r, lenA, lenB, lenR);
             [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-            public static void Fullint64MultWIN_adx(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR) => FullIntCoreWindowsX64.Fullint64MultWIN_adx(a, b, r, lenA, lenB, lenR);
+            public static void Fullint64MultWIN_adx(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR) => FullIntCoreNative64.Fullint64MultWIN_adx(a, b, r, lenA, lenB, lenR);
             [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-            public static int Fullint64CompareWIN(IntPtr a, IntPtr b, int lenA, int lenB) => FullIntCoreWindowsX64.Fullint64CompareWIN(a, b, lenA, lenB);
+            public static int Fullint64CompareWIN(IntPtr a, IntPtr b, int lenA, int lenB) => FullIntCoreNative64.Fullint64CompareWIN(a, b, lenA, lenB);
             [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-            public static int Fullint64CompareWIN_avx2(IntPtr a, IntPtr b, int lenA, int lenB) => FullIntCoreWindowsX64.Fullint64CompareWIN_avx2(a, b, lenA, lenB);
+            public static int Fullint64CompareWIN_avx2(IntPtr a, IntPtr b, int lenA, int lenB) => FullIntCoreNative64.Fullint64CompareWIN_avx2(a, b, lenA, lenB);
             [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-            public static int Fullint64AndWIN(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => FullIntCoreWindowsX64.Fullint64AndWIN(a, b, r, lenA, lenB, lenR, signs);
+            public static int Fullint64AndWIN(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => FullIntCoreNative64.Fullint64AndWIN(a, b, r, lenA, lenB, lenR, signs);
             [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-            public static int Fullint64AndWIN_avx2(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => FullIntCoreWindowsX64.Fullint64AndWIN_avx2(a, b, r, lenA, lenB, lenR, signs);
+            public static int Fullint64AndWIN_avx2(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => FullIntCoreNative64.Fullint64AndWIN_avx2(a, b, r, lenA, lenB, lenR, signs);
             [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-            public static int Fullint64OrWIN(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => FullIntCoreWindowsX64.Fullint64OrWIN(a, b, r, lenA, lenB, lenR, signs);
+            public static int Fullint64OrWIN(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => FullIntCoreNative64.Fullint64OrWIN(a, b, r, lenA, lenB, lenR, signs);
             [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-            public static int Fullint64OrWIN_avx2(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => FullIntCoreWindowsX64.Fullint64OrWIN_avx2(a, b, r, lenA, lenB, lenR, signs);
+            public static int Fullint64OrWIN_avx2(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => FullIntCoreNative64.Fullint64OrWIN_avx2(a, b, r, lenA, lenB, lenR, signs);
             [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-            public static int Fullint64XorWIN(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => FullIntCoreWindowsX64.Fullint64XorWIN(a, b, r, lenA, lenB, lenR, signs);
+            public static int Fullint64XorWIN(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => FullIntCoreNative64.Fullint64XorWIN(a, b, r, lenA, lenB, lenR, signs);
             [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-            public static int Fullint64XorWIN_avx2(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => FullIntCoreWindowsX64.Fullint64XorWIN_avx2(a, b, r, lenA, lenB, lenR, signs);
+            public static int Fullint64XorWIN_avx2(IntPtr a, IntPtr b, IntPtr r, int lenA, int lenB, int lenR, int signs) => FullIntCoreNative64.Fullint64XorWIN_avx2(a, b, r, lenA, lenB, lenR, signs);
             [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-            public static void Fullint64ShlWIN(IntPtr a, IntPtr r, int lenA, int lenR, int shift) => FullIntCoreWindowsX64.Fullint64ShlWIN(a, r, lenA, lenR, shift);
+            public static void Fullint64ShlWIN(IntPtr a, IntPtr r, int lenA, int lenR, int shift) => FullIntCoreNative64.Fullint64ShlWIN(a, r, lenA, lenR, shift);
             [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-            public static void Fullint64ShlWIN_avx2(IntPtr a, IntPtr r, int lenA, int lenR, int shift) => FullIntCoreWindowsX64.Fullint64ShlWIN_avx2(a, r, lenA, lenR, shift);
+            public static void Fullint64ShlWIN_avx2(IntPtr a, IntPtr r, int lenA, int lenR, int shift) => FullIntCoreNative64.Fullint64ShlWIN_avx2(a, r, lenA, lenR, shift);
             [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-            public static void Fullint64ShrWIN(IntPtr a, IntPtr r, int lenA, int lenR, int shift) => FullIntCoreWindowsX64.Fullint64ShrWIN(a, r, lenA, lenR, shift);
+            public static void Fullint64ShrWIN(IntPtr a, IntPtr r, int lenA, int lenR, int shift) => FullIntCoreNative64.Fullint64ShrWIN(a, r, lenA, lenR, shift);
             [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-            public static void Fullint64ShrWIN_avx2(IntPtr a, IntPtr r, int lenA, int lenR, int shift) => FullIntCoreWindowsX64.Fullint64ShrWIN_avx2(a, r, lenA, lenR, shift);
+            public static void Fullint64ShrWIN_avx2(IntPtr a, IntPtr r, int lenA, int lenR, int shift) => FullIntCoreNative64.Fullint64ShrWIN_avx2(a, r, lenA, lenR, shift);
         }
     }
 }

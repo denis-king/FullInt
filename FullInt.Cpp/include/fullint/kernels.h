@@ -1,6 +1,6 @@
 // FullInt asm kernels (FullInt.Asm/Sources/x64, x86), linked statically.
 //
-// The same entry points the .NET core calls through DllImport (FullIntCoreWindowsX64.cs),
+// The same entry points the .NET core calls through DllImport (FullIntCoreNative64.cs),
 // with the same contracts:
 //   - limbs are 64-bit words, index 0 = most significant word;
 //   - lengths are word counts;

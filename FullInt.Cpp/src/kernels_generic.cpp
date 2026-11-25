@@ -1,7 +1,7 @@
 // The kernels' entry points in portable C++ (kernels.h, the same names and contracts as the asm
 // ones), on AArch64: the reference the AArch64 kernels (FullInt.Asm/Sources/arm64) are tested and
 // timed against, and the kernels themselves in the build without them (FULLINT_ARM64_ASM=OFF). A port of the C#
-// managed core (FullInt.Core/FullInt64CoreDefault.cs) plus the entries it has no counterpart for
+// managed core (FullInt.Core/FullIntCoreManaged.cs) plus the entries it has no counterpart for
 // (the equal-length add / sub forms, the header forms, the fraction digits). Speed is not the
 // point here: these are the reference the AArch64 kernels replace one by one (A/B against them).
 //

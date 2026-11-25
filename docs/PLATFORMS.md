@@ -46,7 +46,7 @@ from 32-bit operations: a 64-bit word is two dwords (low first); `mul r64` is fo
 `fi_div128` (Div128.asm, Knuth with a two-digit divisor); `shld r64` is a small helper. Register maps are in
 the file headers; what does not fit the 7 registers lives on the stack.
 
-On .NET Framework x86 a native call costs ~40-45 ns, so `FullIntCoreWindowsX86` sends Compare and
+On .NET Framework x86 a native call costs ~40-45 ns, so `FullIntCoreNative32` sends Compare and
 add/sub/logic/shifts up to 4 words to the managed core. Measured in a 32-bit process (.NET Framework 4.8),
 x86 asm vs the managed core:
 
@@ -165,7 +165,7 @@ The fallback must be **complete and correct on every platform**. It is both the 
 
 On .NET 8+ the managed kernels typically reach 30–60% of the speed of good asm for multiplication. The gap is mostly carry propagation.
 
-**Current implementation** (`FullInt64CoreDefault`, same code in both builds): 64×64 → 128 via four 32-bit products, 128/64 via Hacker's Delight `divlu`, multi-word division is a 1:1 port of `Div.asm` (same digit estimate and buffer contract, so both cores give identical results). Speed was not a goal yet.
+**Current implementation** (`FullIntCoreManaged`, same code in both builds): 64×64 → 128 via four 32-bit products, 128/64 via Hacker's Delight `divlu`, multi-word division is a 1:1 port of `Div.asm` (same digit estimate and buffer contract, so both cores give identical results). Speed was not a goal yet.
 
 ## Testing on other platforms
 

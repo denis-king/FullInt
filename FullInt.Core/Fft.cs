@@ -39,7 +39,7 @@ namespace FullInt.Core
 
         // an instance property: a static field of the x64 core named here would be initialized
         // when this method is compiled - in a 32-bit process too, loading the x64 DLL
-        private static bool NativeFft(IFullIntCore core) => core is FullIntCoreWindowsX64 x64 && x64.HasFftKernels;
+        private static bool NativeFft(IFullIntCore core) => core is FullIntCoreNative64 x64 && x64.HasFftKernels;
 
         /// <summary>
         /// From this many words in the shorter operand (and when the operands are not too
@@ -72,7 +72,7 @@ namespace FullInt.Core
 
         // the same rule as NativeFft: the x64 core's flag through an instance property
         private static bool NativeNtt(IFullIntCore core) =>
-            core is FullIntCoreWindowsX64 x64 ? x64.HasNttKernels : core is FullIntCoreWindowsX86 x86 && x86.HasNttKernels;
+            core is FullIntCoreNative64 x64 ? x64.HasNttKernels : core is FullIntCoreNative32 x86 && x86.HasNttKernels;
 
         /// <summary>
         /// The words of a product modulo β^m - 1 that <see cref="MultiplyMod"/> takes for at least

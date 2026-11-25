@@ -17,20 +17,24 @@ This document describes the code as it is today. The target design is summarized
                                │ IFullIntCore (magnitude-only, Span<ulong>)
              ┌─────────────────┴───────────────────┐
 ┌────────────▼─────────────┐          ┌────────────▼─────────────┐
-│ FullIntCoreBase          │          │ FullInt64CoreDefault     │
+│ FullIntCoreBase          │          │ FullIntCoreManaged       │
 │  pins spans → IntPtr     │          │  managed C# fallback     │
-│ └ FullIntCoreWindowsX64  │          │  (incomplete)            │
-│    [DllImport] ...WIN    │          └──────────────────────────┘
+│ ├ FullIntCoreNative64    │          └──────────────────────────┘
+│ └ FullIntCoreNative32    │
+│    [DllImport] ...WIN    │
 └────────────┬─────────────┘
-             │ P/Invoke (Windows x64 ABI)
+             │ P/Invoke, logical names FullIntOperations64 / 32
+             │ (NativeLibraryResolver maps them to the platform's file)
 ┌────────────▼─────────────────────────────────────────────────┐
-│ FullIntOperations_win_x64.dll   (FullInt.Asm/Sources/x64)     │
-│  *WIN wrappers: remap Win64 args → System V registers        │
-│  Fullint64Add/Sub/Mult/Div/Div2long/Compare/To/FromDecString │
+│ FullIntOperations_win_x64.dll        (Sources/x64)           │
+│ FullIntOperations_win_x86.dll        (Sources/x86)           │
+│ libFullIntOperations_linux_x64.so    (Sources/x64, System V) │
+│ libFullIntOperations_linux_arm64.so  (Sources/arm64)         │
+│  the same entry names and contracts on every platform        │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-`FullIntCoreFactory.Create()` picks the core from `Environment.OSVersion` and `RuntimeInformation.ProcessArchitecture`. Today only `Win32NT + X64` returns the native core. Every other combination falls through to `FullInt64CoreDefault`.
+`FullIntCoreFactory.Create()` picks the core from `Environment.OSVersion` and `RuntimeInformation.ProcessArchitecture`: Windows x64 and Linux x64 / arm64 get `FullIntCoreNative64`, Windows x86 gets `FullIntCoreNative32`. Every other combination, a library that fails to load, or `FULLINT_FORCE_MANAGED=1` falls back to `FullIntCoreManaged`.
 
 ## Data representation
 
@@ -63,7 +67,7 @@ All core methods work on **magnitudes** (unsigned limb spans, MSW first). Signs 
 - **Calling convention bridge.** The kernels are written for the System V AMD64 ABI (arguments in `rdi, rsi, rdx, rcx, r8, r9`). Each `…WIN` entry point moves the Windows x64 arguments (`rcx, rdx, r8, r9`, then the stack at `[rsp+28h]`, `[rsp+30h]`) into System V registers and `call`s the shared body. The same body is meant to be exported unchanged on Linux and macOS.
 - **Register preservation is missing.** See ANALYSIS A3. Windows treats `rdi`, `rsi`, `rbx`, `rbp` and `r12–r15` as non-volatile, and System V treats `rbx`, `rbp` and `r12–r15` as non-volatile. The kernels must save every one of these they use.
 - **Pinning.** `FullIntCoreBase` pins each span with `fixed` and passes raw pointers as `IntPtr`, together with lengths as `int`.
-- **Library loading.** The default `DllImport` search finds `FullIntOperations_win_x64.dll`, which the build copies flat into the output folder.
+- **Library loading.** The `DllImport`s use the logical names `FullIntOperations64` / `FullIntOperations32` (`NativeNames`). On .NET 5+ `NativeLibraryResolver`, registered by a module initializer, maps them to the file of the OS and architecture. The netstandard2.0 build (.NET Framework, Windows only) has no resolver API and uses the Windows file names directly. The build copies the libraries flat into the output folder.
 
 ## Build pipeline
 

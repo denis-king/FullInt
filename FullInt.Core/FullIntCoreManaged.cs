@@ -2,7 +2,7 @@
 
 namespace FullInt.Core
 {
-    public class FullInt64CoreDefault : IFullIntCore
+    public class FullIntCoreManaged : IFullIntCore
     {
 
 

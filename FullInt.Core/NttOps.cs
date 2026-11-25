@@ -423,7 +423,7 @@ namespace FullInt.Core
 
         private static unsafe class Native64
         {
-            private const string Dll = "FullIntOperations_win_x64.dll";
+            private const string Dll = NativeNames.Lib64;
             [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
             public static extern void Fullint64NttDif1WIN_avx2(uint* x, long L, long h, uint* w, uint* wq, uint p);
             [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
@@ -450,11 +450,11 @@ namespace FullInt.Core
             public static extern ulong Fullint64NttCrtWIN(uint* x0, uint* x1, uint* x2, long nd, ulong* r, long len, ulong* k);
         }
 
-        // AArch64 (arm64/NttNeon.s in libFullIntOperations_linux_arm64.so, reached under the x64 name:
-        // LinuxNativeLibrary)
+        // AArch64 (arm64/NttNeon.s in libFullIntOperations_linux_arm64.so, reached under the 64-bit name:
+        // NativeLibraryResolver)
         private static unsafe class NativeArm
         {
-            private const string Dll = "FullIntOperations_win_x64.dll";
+            private const string Dll = NativeNames.Lib64;
             [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
             public static extern void Fullint64NttDif1WIN_neon(uint* x, long L, long h, uint* w, uint* wq, uint p);
             [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
@@ -483,7 +483,7 @@ namespace FullInt.Core
 
         private static unsafe class Native86
         {
-            private const string Dll = "FullIntOperations_win_x86.dll";
+            private const string Dll = NativeNames.Lib32;
             [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
             public static extern void Fullint64NttDif1WIN_avx2(uint* x, long L, long h, uint* w, uint* wq, uint p);
             [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]

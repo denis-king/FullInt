@@ -31,12 +31,12 @@ namespace FullInt.Tests
             // Linux x64 / arm64 (.NET 5+): the 64-bit asm core, its library resolved to the .so
             bool linuxX64 = linux && (arch == System.Runtime.InteropServices.Architecture.X64
                 || arch == System.Runtime.InteropServices.Architecture.Arm64) && Environment.Version.Major >= 5;
-            var expected = forced ? typeof(FullInt64CoreDefault)
-                : linuxX64 ? typeof(FullIntCoreWindowsX64)
-                : !windows ? typeof(FullInt64CoreDefault)
-                : arch == System.Runtime.InteropServices.Architecture.X64 ? typeof(FullIntCoreWindowsX64)
-                : arch == System.Runtime.InteropServices.Architecture.X86 ? typeof(FullIntCoreWindowsX86)
-                : typeof(FullInt64CoreDefault);
+            var expected = forced ? typeof(FullIntCoreManaged)
+                : linuxX64 ? typeof(FullIntCoreNative64)
+                : !windows ? typeof(FullIntCoreManaged)
+                : arch == System.Runtime.InteropServices.Architecture.X64 ? typeof(FullIntCoreNative64)
+                : arch == System.Runtime.InteropServices.Architecture.X86 ? typeof(FullIntCoreNative32)
+                : typeof(FullIntCoreManaged);
             Assert.AreEqual(expected, core.GetType(),
                 $"process: {System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture}, framework: {System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}");
         }

@@ -5,7 +5,7 @@ using FullInt.Core;
 namespace FullInt.Tests
 {
     /// <summary>
-    /// The x86 asm kernels called directly (FullIntCoreWindowsX86.Kernels), bypassing the routing
+    /// The x86 asm kernels called directly (FullIntCoreNative32.Kernels), bypassing the routing
     /// that sends small sizes and Compare to the managed core: every length 1..12 goes through
     /// the asm here. Runs only in a 32-bit Windows process (net48 with TargetPlatform=x86).
     /// </summary>
@@ -59,7 +59,7 @@ namespace FullInt.Tests
             }
 
             var rnd = new Random(9393);
-            var managed = new FullInt64CoreDefault();
+            var managed = new FullIntCoreManaged();
             for (int it = 0; it < 20_000; it++)
             {
                 int n = rnd.Next(1, 7), m = rnd.Next(1, 11);
@@ -74,7 +74,7 @@ namespace FullInt.Tests
                 var rm = new ulong[n + 2];
                 using (Pinned pa = new Pinned(a), pd = new Pinned(d), pq = new Pinned(q), pr = new Pinned(r))
                 {
-                    FullIntCoreWindowsX86.Kernels.Div(pa.P, pd.P, pq.P, pr.P, m, n);
+                    FullIntCoreNative32.Kernels.Div(pa.P, pd.P, pq.P, pr.P, m, n);
                 }
                 managed.Div(a, d, qm, rm);
 
@@ -116,7 +116,7 @@ namespace FullInt.Tests
                 var work = new ulong[m + n + 2];
                 using (Pinned pa = new Pinned(a), pd = new Pinned(d), pq = new Pinned(q), pr = new Pinned(r), pw = new Pinned(work))
                 {
-                    FullIntCoreWindowsX86.Kernels.DivRecip(pa.P, pd.P, pq.P, pr.P, m, n, pw.P);
+                    FullIntCoreNative32.Kernels.DivRecip(pa.P, pd.P, pq.P, pr.P, m, n, pw.P);
                 }
                 BigInteger A = Big(a), D = Big(d);
                 string ctx = $"m={m} n={n} a={A:X} d={D:X}";
@@ -128,10 +128,10 @@ namespace FullInt.Tests
                 var inPlace = (ulong[])a.Clone();
                 using (Pinned pa = new Pinned(a), pq = new Pinned(qw), pi = new Pinned(inPlace))
                 {
-                    FullIntCoreWindowsX86.Kernels.DivByWordRecip(pa.P, w, pq.P, out ulong rem, m);
+                    FullIntCoreNative32.Kernels.DivByWordRecip(pa.P, w, pq.P, out ulong rem, m);
                     Assert.AreEqual(A / w, Big(qw), $"div by word d={w:X} " + ctx);
                     Assert.AreEqual(A % w, (BigInteger)rem, $"rem by word d={w:X} " + ctx);
-                    FullIntCoreWindowsX86.Kernels.DivByWordRecip(pi.P, w, pi.P, out ulong rem2, m);
+                    FullIntCoreNative32.Kernels.DivByWordRecip(pi.P, w, pi.P, out ulong rem2, m);
                     Assert.AreEqual(A / w, Big(inPlace), $"div by word in place d={w:X} " + ctx);
                     Assert.AreEqual(A % w, (BigInteger)rem2, $"rem by word in place d={w:X} " + ctx);
                 }
@@ -150,7 +150,7 @@ namespace FullInt.Tests
                 Assert.Inconclusive("x86 kernels run only in a 32-bit Windows process");
                 return;
             }
-            if ((FullIntCoreWindowsX86.Kernels.CpuFeatures() & 3) != 3)
+            if ((FullIntCoreNative32.Kernels.CpuFeatures() & 3) != 3)
             {
                 Assert.Inconclusive("the CPU has no BMI2 + ADX");
                 return;
@@ -167,7 +167,7 @@ namespace FullInt.Tests
                     for (int i = 0; i < lr; i++) r[i] = 0xDEAD_BEEF_DEAD_BEEFUL;   // must be fully overwritten
                     using (Pinned pa = new Pinned(a), pb = new Pinned(b), pr = new Pinned(r))
                     {
-                        FullIntCoreWindowsX86.Kernels.MultAdx(pa.P, pb.P, pr.P, la, lb, lr);
+                        FullIntCoreNative32.Kernels.MultAdx(pa.P, pb.P, pr.P, la, lb, lr);
                     }
                     Assert.AreEqual(Big(a) * Big(b), Big(r), $"mult adx {la}x{lb} lenR={lr}");
                 }
@@ -187,7 +187,7 @@ namespace FullInt.Tests
                 return;
             }
 
-            IFullIntCore core = new FullIntCoreWindowsX86();
+            IFullIntCore core = new FullIntCoreNative32();
             var rnd = new Random(1919);
             for (int it = 0; it < 4_000; it++)
             {
@@ -235,15 +235,15 @@ namespace FullInt.Tests
                 var r = new ulong[lenR];
                 using (Pinned pa = new Pinned(a), pb = new Pinned(b), pr = new Pinned(r))
                 {
-                    ulong carry = FullIntCoreWindowsX86.Kernels.Add(pa.P, pb.P, pr.P, a.Length, b.Length, lenR);
+                    ulong carry = FullIntCoreNative32.Kernels.Add(pa.P, pb.P, pr.P, a.Length, b.Length, lenR);
                     Assert.AreEqual((A + B) % mod, Big(r), "add " + ctx);
                     Assert.AreEqual((ulong)((A % mod + B % mod) / mod), carry, "add carry " + ctx);
 
-                    int sign = FullIntCoreWindowsX86.Kernels.Sub(pa.P, pb.P, pr.P, a.Length, b.Length, lenR);
+                    int sign = FullIntCoreNative32.Kernels.Sub(pa.P, pb.P, pr.P, a.Length, b.Length, lenR);
                     Assert.AreEqual(A.CompareTo(B), sign, "sub sign " + ctx);
                     Assert.AreEqual(BigInteger.Abs(A - B) % mod, Big(r), "sub " + ctx);
 
-                    Assert.AreEqual(A.CompareTo(B), FullIntCoreWindowsX86.Kernels.Compare(pa.P, pb.P, a.Length, b.Length), "compare " + ctx);
+                    Assert.AreEqual(A.CompareTo(B), FullIntCoreNative32.Kernels.Compare(pa.P, pb.P, a.Length, b.Length), "compare " + ctx);
                 }
 
                 // bitwise with signs (lenR >= max + 1), against the managed core (same semantics, tested elsewhere)
@@ -251,29 +251,29 @@ namespace FullInt.Tests
                 int lr = Math.Max(a.Length, b.Length) + 1;
                 var rx = new ulong[lr];
                 var rm = new ulong[lr];
-                var managed = new FullInt64CoreDefault();
+                var managed = new FullIntCoreManaged();
                 using (Pinned pa = new Pinned(a), pb = new Pinned(b), px = new Pinned(rx))
                 {
-                    int nx = FullIntCoreWindowsX86.Kernels.And(pa.P, pb.P, px.P, a.Length, b.Length, lr, signs);
+                    int nx = FullIntCoreNative32.Kernels.And(pa.P, pb.P, px.P, a.Length, b.Length, lr, signs);
                     int nm = managed.And(a, (signs & 1) != 0, b, (signs & 2) != 0, rm);
                     Assert.AreEqual(Big(rm), Big(rx), "and " + ctx); Assert.AreEqual(nm, nx, "and sign " + ctx);
-                    nx = FullIntCoreWindowsX86.Kernels.Or(pa.P, pb.P, px.P, a.Length, b.Length, lr, signs);
+                    nx = FullIntCoreNative32.Kernels.Or(pa.P, pb.P, px.P, a.Length, b.Length, lr, signs);
                     nm = managed.Or(a, (signs & 1) != 0, b, (signs & 2) != 0, rm);
                     Assert.AreEqual(Big(rm), Big(rx), "or " + ctx); Assert.AreEqual(nm, nx, "or sign " + ctx);
-                    nx = FullIntCoreWindowsX86.Kernels.Xor(pa.P, pb.P, px.P, a.Length, b.Length, lr, signs);
+                    nx = FullIntCoreNative32.Kernels.Xor(pa.P, pb.P, px.P, a.Length, b.Length, lr, signs);
                     nm = managed.Xor(a, (signs & 1) != 0, b, (signs & 2) != 0, rm);
                     Assert.AreEqual(Big(rm), Big(rx), "xor " + ctx); Assert.AreEqual(nm, nx, "xor sign " + ctx);
 
                     // the SSE2 versions (LogicSse2.asm), where the CPU has SSE2
-                    if ((FullIntCoreWindowsX86.Kernels.CpuFeatures() & 16) != 0)
+                    if ((FullIntCoreNative32.Kernels.CpuFeatures() & 16) != 0)
                     {
-                        nx = FullIntCoreWindowsX86.Kernels.AndSse2(pa.P, pb.P, px.P, a.Length, b.Length, lr, signs);
+                        nx = FullIntCoreNative32.Kernels.AndSse2(pa.P, pb.P, px.P, a.Length, b.Length, lr, signs);
                         nm = managed.And(a, (signs & 1) != 0, b, (signs & 2) != 0, rm);
                         Assert.AreEqual(Big(rm), Big(rx), "and sse2 " + ctx); Assert.AreEqual(nm, nx, "and sse2 sign " + ctx);
-                        nx = FullIntCoreWindowsX86.Kernels.OrSse2(pa.P, pb.P, px.P, a.Length, b.Length, lr, signs);
+                        nx = FullIntCoreNative32.Kernels.OrSse2(pa.P, pb.P, px.P, a.Length, b.Length, lr, signs);
                         nm = managed.Or(a, (signs & 1) != 0, b, (signs & 2) != 0, rm);
                         Assert.AreEqual(Big(rm), Big(rx), "or sse2 " + ctx); Assert.AreEqual(nm, nx, "or sse2 sign " + ctx);
-                        nx = FullIntCoreWindowsX86.Kernels.XorSse2(pa.P, pb.P, px.P, a.Length, b.Length, lr, signs);
+                        nx = FullIntCoreNative32.Kernels.XorSse2(pa.P, pb.P, px.P, a.Length, b.Length, lr, signs);
                         nm = managed.Xor(a, (signs & 1) != 0, b, (signs & 2) != 0, rm);
                         Assert.AreEqual(Big(rm), Big(rx), "xor sse2 " + ctx); Assert.AreEqual(nm, nx, "xor sse2 sign " + ctx);
                     }
@@ -291,14 +291,14 @@ namespace FullInt.Tests
                 var q = new ulong[a.Length];
                 using (Pinned pa = new Pinned(a), pq = new Pinned(q))
                 {
-                    FullIntCoreWindowsX86.Kernels.DivByWord(pa.P, d, pq.P, out ulong rem, a.Length);
+                    FullIntCoreNative32.Kernels.DivByWord(pa.P, d, pq.P, out ulong rem, a.Length);
                     Assert.AreEqual(A / d, Big(q), $"div by word d={d:X} " + ctx);
                     Assert.AreEqual(A % d, (BigInteger)rem, $"rem by word d={d:X} " + ctx);
                 }
                 var inPlace = (ulong[])a.Clone();
                 using (Pinned pi = new Pinned(inPlace))
                 {
-                    FullIntCoreWindowsX86.Kernels.DivByWord(pi.P, d, pi.P, out ulong rem2, a.Length);   // quotient over the dividend
+                    FullIntCoreNative32.Kernels.DivByWord(pi.P, d, pi.P, out ulong rem2, a.Length);   // quotient over the dividend
                     Assert.AreEqual(A / d, Big(inPlace), $"div by word in place d={d:X} " + ctx);
                     Assert.AreEqual(A % d, (BigInteger)rem2, $"rem by word in place d={d:X} " + ctx);
                 }
@@ -309,9 +309,9 @@ namespace FullInt.Tests
                 var sr = new ulong[Math.Max(a.Length - shift / 64, 1)];
                 using (Pinned pa = new Pinned(a), pl = new Pinned(sl), ps = new Pinned(sr))
                 {
-                    FullIntCoreWindowsX86.Kernels.ShiftLeft(pa.P, pl.P, a.Length, sl.Length, shift);
+                    FullIntCoreNative32.Kernels.ShiftLeft(pa.P, pl.P, a.Length, sl.Length, shift);
                     Assert.AreEqual(A << shift, Big(sl), $"shl {shift} " + ctx);
-                    FullIntCoreWindowsX86.Kernels.ShiftRight(pa.P, ps.P, a.Length, sr.Length, shift);
+                    FullIntCoreNative32.Kernels.ShiftRight(pa.P, ps.P, a.Length, sr.Length, shift);
                     Assert.AreEqual(A >> shift, Big(sr), $"shr {shift} " + ctx);
                 }
             }

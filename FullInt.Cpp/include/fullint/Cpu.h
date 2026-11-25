@@ -1,4 +1,4 @@
-// Which kernel versions this CPU can run (C#: CpuFeatures in FullIntCoreWindowsX64.cs).
+// Which kernel versions this CPU can run (C#: CpuFeatures in FullIntCoreNative64.cs).
 // Detected once at start-up by the Cpu.asm kernel (cpuid / xgetbv).
 // FULLINT_CPU=baseline in the environment forces the baseline kernels (x86-64 as on a Core 2):
 // tests run both, and a "how does an old CPU do" measurement on a new one.
