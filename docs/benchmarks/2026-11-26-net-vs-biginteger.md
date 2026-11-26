@@ -28,9 +28,21 @@ The same machine and build; only `BigInteger` differs. Its division on .NET 8 is
 | `Parse` | 2.2 | 2.8 | 2.6 | 2.8 | 3.0 | 7.3 | 15 | 26 |
 | `a + b` | 1.5 | 1.1 | 1.4 | 2.4 | 2.8 | 2.7 | 2.8 | 3.1 |
 
+## Linux ARM64, .NET 10.0.15
+
+Oracle Ampere A1 (Neoverse-N1), one core, Docker; the .NET 10 SDK unpacked into the project folder. Below 1 in three cells: `ToString` at 2 and 4 words (0.79, 0.86) and addition at 2 words (1.0); everything else is faster.
+
+| Operation | 1 | 4 | 16 | 64 | 256 | 1024 | 4096 | 16384 |
+|---|---|---|---|---|---|---|---|---|
+| `a * b` | 1.3 | 1.7 | 2.5 | 2.9 | 3.5 | 6.1 | 12 | 25 |
+| `c / b` | 1.1 | 1.3 | 4.0 | 5.3 | 3.8 | 4.6 | 7.5 | 15 |
+| `ToString()` | 1.7 | 0.9 | 1.1 | 2.2 | 4.7 | 8.4 | 19 | 53 |
+| `Parse` | 1.5 | 2.2 | 2.6 | 3.1 | 3.2 | 3.6 | 4.8 | 7.5 |
+| `a + b` | 1.2 | 1.1 | 1.7 | 2.9 | 3.4 | 3.5 | 4.3 | 7.1 |
+
 ## Linux ARM64, .NET 8.0.34
 
-Oracle Ampere A1 (Neoverse-N1), one core, Docker. This machine has no .NET 10 yet, so the comparison is against .NET 8 and overstates the division ratios in the same way. At 2–4 words, addition, subtraction and `ToString` are on par (0.92–0.99); everything else is faster.
+The same machine against .NET 8; the division ratios are inflated the same way as on x64. At 2–4 words, addition, subtraction and `ToString` are on par (0.92–0.99).
 
 | Operation | 1 | 4 | 16 | 64 | 256 | 1024 | 4096 | 16384 |
 |---|---|---|---|---|---|---|---|---|
@@ -44,6 +56,7 @@ Oracle Ampere A1 (Neoverse-N1), one core, Docker. This machine has no .NET 10 ye
 
 - `2026-11-26-net-vs-biginteger-win-x64-net10.csv`
 - `2026-11-26-net-vs-biginteger-win-x64-net8.csv`
+- `2026-11-26-net-vs-biginteger-arm64-net10.csv`
 - `2026-11-26-net-vs-biginteger-arm64-net8.csv`
 
 Reproduce: `dotnet run -c Release --project FullInt.Benchmarks -p:BenchTfm=net10.0 -- cross --max 16384 --csv <file>`.

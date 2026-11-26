@@ -32,7 +32,7 @@ How many times faster than `BigInteger` on .NET 10 (Windows x64, Ryzen 7 7730U; 
 | `Parse` | 1.7 | 2.1 | 2.6 | 2.8 | 3.9 | 4.7 | 6.9 | 10 |
 | `a + b` | 1.5 | 1.4 | 2.3 | 2.4 | 3.7 | 3.4 | 2.7 | 2.6 |
 
-FullInt is at least as fast in every measured cell, from a single word up. The gain grows with the size, because the algorithms differ in complexity. Against .NET 8's `BigInteger` the division gains are far larger (219× at 4096 words), because .NET 10 sped its division up. On ARM64 (Neoverse-N1, against .NET 8) the gains are a little smaller, and at 2–4 words addition and `ToString` are on par. The full tables, the other operations and the raw times are in [docs/benchmarks/2026-11-26-net-vs-biginteger.md](docs/benchmarks/2026-11-26-net-vs-biginteger.md).
+FullInt is at least as fast in every measured cell, from a single word up. The gain grows with the size, because the algorithms differ in complexity. Against .NET 8's `BigInteger` the division gains are far larger (219× at 4096 words), because .NET 10 sped its division up. On ARM64 (Neoverse-N1, .NET 10) the gains are smaller: multiplication 1.3–25×, division 1.1–15×, `ToString` up to 53×; at 2–4 words `ToString` takes 1.2–1.3 times as long as `BigInteger`'s. The full tables, the other operations and the raw times are in [docs/benchmarks/2026-11-26-net-vs-biginteger.md](docs/benchmarks/2026-11-26-net-vs-biginteger.md).
 
 For values that fit in 64 or 128 bits, `long` and `Int128` beat both.
 
