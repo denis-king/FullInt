@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- A consumer of the FullInt package from out/nuget (pack/test/run.ps1): checks that it installs,
+       that the native core is the one loaded, and a few results against BigInteger. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFrameworks>net8.0;net48</TargetFrameworks>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <FullIntVersion Condition="'$(FullIntVersion)' == ''">1.0.0-preview.1</FullIntVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="FullInt" Version="$(FullIntVersion)" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <Reference Include="System.Numerics" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

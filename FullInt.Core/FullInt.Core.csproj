@@ -7,9 +7,36 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <!-- the project folder keeps its name; the assembly and the package are FullInt, the
+         namespace FullNumerics -->
+    <AssemblyName>FullInt</AssemblyName>
+    <RootNamespace>FullNumerics</RootNamespace>
   </PropertyGroup>
 
- 
+  <!-- the NuGet package (pack/pack-nuget.ps1 builds the native libraries of every platform and
+       packs them; a plain `dotnet pack` without them stops with FULLINT002) -->
+  <PropertyGroup>
+    <PackageId>FullInt</PackageId>
+    <Version>1.0.0-preview.1</Version>
+    <Authors>Denys Omelianenko</Authors>
+    <Description>Arbitrary-precision integers for .NET with hand-written assembly kernels (x64, x86, ARM64): the API of System.Numerics.BigInteger (operators, parsing, formatting, bytes, generic math), with 64-bit limbs and sub-quadratic multiplication and division. A managed core runs everywhere else.</Description>
+    <PackageTags>bigint;biginteger;arbitrary-precision;bignum;integer;math;numerics;assembly;simd</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/denis-king/FullInt</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/denis-king/FullInt</PackageProjectUrl>
+    <!-- the license is not chosen yet: set PackageLicenseExpression before publishing -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- not every public member has an XML comment yet -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <Deterministic>true</Deterministic>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <!-- the native libraries to pack: <dir>/<rid>/<file> -->
+    <FullIntNativePackDir Condition="'$(FullIntNativePackDir)' == ''">$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', 'out', 'native'))</FullIntNativePackDir>
+  </PropertyGroup>
 
   <!-- Span, MemoryMarshal, ArrayPool for netstandard2.0 (built into net8.0) -->
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
@@ -17,8 +44,10 @@
     <PackageReference Include="Microsoft.Bcl.HashCode" Version="1.1.1" />
   </ItemGroup>
 
+  <!-- builds the native library of this machine for the tests and the benchmarks; not a package
+       dependency (the package carries the libraries in runtimes/) -->
   <ItemGroup>
-    <ProjectReference Include="..\FullInt.AsmForNet\FullInt.AsmForNet.csproj" />
+    <ProjectReference Include="..\FullInt.AsmForNet\FullInt.AsmForNet.csproj" PrivateAssets="all" />
   </ItemGroup>
 
   <!-- the public surface is FullInt (and WordOrder, FullIntJsonConverter); the engine, the cores and
@@ -27,5 +56,24 @@
     <InternalsVisibleTo Include="FullInt.Tests" />
     <InternalsVisibleTo Include="FullInt.Benchmarks" />
   </ItemGroup>
+
+  <!-- ===================== package content ===================== -->
+  <ItemGroup>
+    <FullIntNativeAsset Include="$(FullIntNativePackDir)win-x64\FullIntOperations_win_x64.dll" Rid="win-x64" />
+    <FullIntNativeAsset Include="$(FullIntNativePackDir)win-x86\FullIntOperations_win_x86.dll" Rid="win-x86" />
+    <FullIntNativeAsset Include="$(FullIntNativePackDir)linux-x64\libFullIntOperations_linux_x64.so" Rid="linux-x64" />
+    <FullIntNativeAsset Include="$(FullIntNativePackDir)linux-arm64\libFullIntOperations_linux_arm64.so" Rid="linux-arm64" />
+
+    <None Include="@(FullIntNativeAsset)" Pack="true" PackagePath="runtimes/%(Rid)/native/" Visible="false" />
+    <None Include="..\pack\README.md" Pack="true" PackagePath="/" Visible="false" />
+    <!-- .NET Framework reads no runtimes/ folder: these copy the Windows libraries next to the app -->
+    <None Include="..\pack\FullInt.targets" Pack="true" PackagePath="build/;buildTransitive/" Visible="false" />
+  </ItemGroup>
+
+  <Target Name="FullIntCheckNativeForPack" BeforeTargets="GenerateNuspec">
+    <Error Code="FULLINT002"
+           Condition="!Exists('%(FullIntNativeAsset.Identity)')"
+           Text="FullInt: the native library %(FullIntNativeAsset.Identity) is missing; build the package with pack/pack-nuget.ps1 (it builds the libraries of every platform)." />
+  </Target>
 
 </Project>

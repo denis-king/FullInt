@@ -86,6 +86,8 @@ dotnet test  FullInt.Tests/FullInt.Tests.csproj
 | `-p:FullIntNativeRid=<rid>` | Build for another RID (non-Windows targets are stubs for now) |
 | `-p:FullIntSkipNative=true` | Skip the native build; the managed fallback is used |
 
+The NuGet package (`FullInt`, every native library in `runtimes/<rid>/native`): `powershell -File pack/pack-nuget.ps1`, output in `out/nuget/`; it needs Docker for the Linux libraries. See [docs/PLATFORMS.md](docs/PLATFORMS.md#native-packaging-for-nuget).
+
 On platforms without a native backend yet (`linux-*`, `osx-*`, `win-arm64`), the build succeeds with warning `FULLINT001` and the managed fallback core is used.
 
 ## Repository layout

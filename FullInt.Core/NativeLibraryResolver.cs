@@ -9,7 +9,7 @@ namespace FullNumerics
 {
     /// <summary>
     /// The names the DllImports use. On .NET 5+ they are logical names, mapped to the file of the
-    /// process's OS and architecture by <see cref="NativeLibraryResolver"/>:
+    /// process's OS and architecture by NativeLibraryResolver:
     ///   FullIntOperations64: Windows x64  FullIntOperations_win_x64.dll
     ///                        Linux x64    libFullIntOperations_linux_x64.so   (the x64 sources, NASM
     ///                                     elf64, the System V entries of abi.inc)

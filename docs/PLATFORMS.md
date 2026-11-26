@@ -5,7 +5,7 @@ speed it up where they exist. The managed core (C#) is the guarantee, asm is the
 
 ## Target frameworks
 
-One code base, two builds of `FullInt.Core`. NuGet gives each app the closest one:
+One code base, two builds of the `FullInt` assembly (project `FullInt.Core`). NuGet gives each app the closest one:
 
 | Build | Runs on | Differences |
 |---|---|---|
@@ -240,22 +240,58 @@ Mounting the Windows working tree shares `bin/` and `obj/` between Windows and L
 ### Package layout
 
 ```
-FullInt.nupkg
-├── lib/net8.0/FullInt.dll
-├── lib/netstandard2.0/FullInt.dll            (.NET Framework, Xamarin, Mono, Unity)
-└── runtimes/
-    ├── win-x64/native/fullint_native.dll
-    ├── win-arm64/native/fullint_native.dll
-    ├── linux-x64/native/libfullint_native.so
-    ├── linux-arm64/native/libfullint_native.so
-    ├── osx-x64/native/libfullint_native.dylib
-    └── osx-arm64/native/libfullint_native.dylib
+FullInt.<version>.nupkg
+├── lib/net8.0/FullInt.dll, FullInt.xml
+├── lib/netstandard2.0/FullInt.dll, FullInt.xml      (.NET Framework, Mono, Unity)
+├── runtimes/
+│   ├── win-x64/native/FullIntOperations_win_x64.dll
+│   ├── win-x86/native/FullIntOperations_win_x86.dll
+│   ├── linux-x64/native/libFullIntOperations_linux_x64.so
+│   └── linux-arm64/native/libFullIntOperations_linux_arm64.so
+├── build/FullInt.targets, buildTransitive/FullInt.targets
+└── README.md                                        (pack/README.md)
 ```
 
-- Use **one logical library name** (`fullint_native`) on every platform, with `[LibraryImport("fullint_native")]`. The runtime resolves the `lib` prefix and the extension, and NuGet picks the folder that matches the app's RID. No per-platform `DllImport` classes or a `FullIntCoreFactory` OS switch are needed.
-- On load failure (`DllNotFoundException`, `EntryPointNotFoundException`), switch silently to the managed kernels. Let users opt out with an `AppContext` switch, for example `FullInt.DisableNative`.
-- .NET Framework does not read `runtimes/<rid>/native` by itself: the package needs a small `build/FullInt.targets` that copies the native library next to the app (for x64 processes).
-- macOS: build a universal binary (`lipo`) or separate `osx-x64` and `osx-arm64` files. Sign it if it is distributed outside NuGet.
+- The package and the assembly are `FullInt` (the project folder stays `FullInt.Core`), the namespace `FullNumerics`. `FullInt.AsmForNet` is not a dependency (`PrivateAssets="all"`).
+- The DllImports use the logical names `FullIntOperations64` / `FullIntOperations32`. On .NET 5+ `NativeLibraryResolver` maps them to the file of the process and loads it with `NativeLibrary.TryLoad(file, assembly, …)`, which finds `runtimes/<rid>/native` through the app's `deps.json`.
+- .NET Framework does not read `runtimes/`. `FullInt.targets` copies both Windows libraries next to the app: an AnyCPU exe gets `RuntimeIdentifier = win-x86` from the SDK but may run as a 64-bit process. The library that the RID already brings is not added twice.
+- If a library is missing or does not load, the managed core is used.
+
+### Building the package
+
+```powershell
+powershell -File pack/pack-nuget.ps1              # out/native/<rid>/ and out/nuget/*.nupkg, *.snupkg
+powershell -File pack/pack-nuget.ps1 -SkipLinux   # reuse out/native/linux-* from an earlier run
+```
+
+The script builds:
+- `win-x64` and `win-x86` here;
+- `linux-x64` in Docker (the `docker/linux-x64` image);
+- `linux-arm64` in Docker under QEMU (`docker/linux-arm64`).
+
+Then it runs `dotnet pack`. A plain `dotnet pack` without the four libraries stops with `FULLINT002`. Nothing is published. The license is not set yet: `PackageLicenseExpression` comes before the first push.
+
+### Checking the package
+
+`pack/test` is a consumer project. It takes the package from `out/nuget`, keeps its own packages folder in `out/pkgtest/packages` (a rebuilt package of the same version is never taken from the cache), prints the core that was loaded, fails unless it is the native one (`EXPECT_CORE` overrides), and checks the arithmetic against `BigInteger`.
+
+```powershell
+dotnet run --project pack/test -c Release -f net8.0             # win-x64
+dotnet run --project pack/test -c Release -f net8.0 -a x86      # win-x86
+dotnet build pack/test -c Release -f net48 -o out/pkgtest/any; out/pkgtest/any/PackageTest.exe
+dotnet build pack/test -c Release -f net48 -p:Platform=x86 -o out/pkgtest/x86; out/pkgtest/x86/PackageTest.exe
+```
+
+On Linux: `dotnet run -c Release -p:TargetFrameworks=net8.0 -f net8.0` in `pack/test`.
+
+`1.0.0-preview.1` (2026-11-26) loaded the native core everywhere:
+- .NET 8 on Windows x64 and x86;
+- .NET Framework 4.8 AnyCPU (64-bit process) and x86;
+- .NET 8 on Linux x64 (Docker) and Linux ARM64 (Neoverse-N1).
+
+`FULLINT_FORCE_MANAGED=1` gives the managed core.
+
+macOS (`osx-arm64`, `osx-x64`) and `win-arm64` would add their own `runtimes/<rid>/native` folders. They need a Mac or CI runners.
 
 ### CI (GitHub Actions sketch)
 

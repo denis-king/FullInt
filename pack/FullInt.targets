@@ -1,0 +1,18 @@
+<Project>
+  <!--
+    FullInt package, build/ and buildTransitive/: .NET Framework does not load from runtimes/<rid>/native
+    by itself, so the Windows libraries are copied next to the app. Both of them: an AnyCPU app may run
+    as a 64-bit or a 32-bit process whatever its RuntimeIdentifier (the SDK gives a .NET Framework exe
+    win-x86 by default), and FullInt loads the library of the process (FullIntOperations_win_x64.dll or
+    FullIntOperations_win_x86.dll). The one the RID already brings (NuGet copies runtimes/<rid>/native
+    then) is not added twice. Without a library FullInt still works, on its managed core.
+  -->
+  <ItemGroup Condition="'$(TargetFrameworkIdentifier)' == '.NETFramework'">
+    <None Condition="!$(RuntimeIdentifier.EndsWith('-x64'))"
+          Include="$(MSBuildThisFileDirectory)..\runtimes\win-x64\native\FullIntOperations_win_x64.dll"
+          Link="FullIntOperations_win_x64.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    <None Condition="!$(RuntimeIdentifier.EndsWith('-x86'))"
+          Include="$(MSBuildThisFileDirectory)..\runtimes\win-x86\native\FullIntOperations_win_x86.dll"
+          Link="FullIntOperations_win_x86.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+</Project>

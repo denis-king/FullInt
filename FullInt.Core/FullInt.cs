@@ -278,7 +278,7 @@ namespace FullNumerics
         }
 
         /// <summary>
-        /// The bytes as <see cref="BigInteger.ToByteArray(bool, bool)"/>: two's complement unless
+        /// The bytes as BigInteger.ToByteArray(bool, bool): two's complement unless
         /// <paramref name="isUnsigned"/> (then a negative value throws OverflowException), least
         /// significant byte first unless <paramref name="isBigEndian"/>; the fewest bytes.
         /// </summary>

@@ -75,7 +75,7 @@ namespace FullNumerics
             core is FullIntCoreNative64 x64 ? x64.HasNttKernels : core is FullIntCoreNative32 x86 && x86.HasNttKernels;
 
         /// <summary>
-        /// The words of a product modulo β^m - 1 that <see cref="MultiplyMod"/> takes for at least
+        /// The words of a product modulo β^m - 1 that MultiplyMod takes for at least
         /// <paramref name="minWords"/> words: through the cyclic NTT (a power of two; AVX2) or the
         /// cyclic FFT (no zero padding, about half the transform of the full product) from
         /// <see cref="FftThreshold"/> words, otherwise minWords itself (the full product, folded).
@@ -96,7 +96,7 @@ namespace FullNumerics
         }
 
         /// <summary>
-        /// r = a·b mod (β^m - 1), m = r.Length (from <see cref="MulModLength"/>), in [0, β^m - 1)
+        /// r = a·b mod (β^m - 1), m = r.Length (from MulModLength), in [0, β^m - 1)
         /// (β^m - 1 itself, the other zero, is written as 0); a and b at most m words.
         ///   cyclic: K = 2^k pieces of M words, K·M = m, the convolution without zero padding wraps
         ///   (c_i = sum over j + l = i mod K), so sum c_i·β^(M·i) = a·b mod β^(KM) - 1.
