@@ -122,7 +122,7 @@ namespace FullNumerics.Tests
                     BigInteger expected = ba + bb;
                     bigStopwatch.Stop();
 
-                    FullIntCore expectedFull = (FullIntCore)expected.ToString();
+                    FullIntCore expectedFull = FullIntCore.Parse(expected.ToString());
 
                     Assert.AreEqual(expectedFull.ToString(10), sumFull.ToString(10), $"Mismatch for a={ba}, b={bb}");
                 }
@@ -198,7 +198,7 @@ namespace FullNumerics.Tests
                     BigInteger expected = ba * bb;
                     bigStopwatch.Stop();
 
-                    FullIntCore expectedFull = (FullIntCore)expected.ToString();
+                    FullIntCore expectedFull = FullIntCore.Parse(expected.ToString());
 
                    
                     Assert.AreEqual(expectedFull.ToString(10), multFull.ToString(10), $"Mismatch for a={ba}, b={bb}");
@@ -306,7 +306,7 @@ namespace FullNumerics.Tests
                   
 
                 _engine.div_internal(fullintA[i].value, fullintB[i].value, resultBuf, remainderBuf);
-                var sign = fullintA[i].Sing != fullintB[i].Sing;
+                var sign = fullintA[i].IsNegative != fullintB[i].IsNegative;
 
                 //propably ussless if value1 >= value2. remove when uncommented the optimalization above
                 if (_engine.CompareAbsInternal(resultBuf, zero) == 0)
@@ -315,7 +315,7 @@ namespace FullNumerics.Tests
                 }
                 fullintC[i] = new FullInt(sign, FullHelper.DeleteZeros(resultBuf).ToArray());
                 for (int j = 0; j < remainderBuf.Length; j++) remainderBuf[j] = 0;
-                //remainder = new FullInt(value1.Sing, deleteZeros(remainderBuf).ToArray(), Base);
+                //remainder = new FullInt(value1.IsNegative, deleteZeros(remainderBuf).ToArray(), Base);
 
                 //return result;
                 //fullintC[i] = _engine.div(fullintA[i], fullintB[i]);
@@ -325,7 +325,7 @@ namespace FullNumerics.Tests
             for (int i = 0; i < iterations; i++)
             {
 
-                FullIntCore expectedFull = (FullIntCore)bigingC[i].ToString();
+                FullIntCore expectedFull = FullIntCore.Parse(bigingC[i].ToString());
                 Assert.AreEqual(expectedFull.ToString(10), fullintC[i].ToString(10), $"Mismatch for a={bigingA[i]}, b={bigingB[i]}");
             }
 
@@ -400,7 +400,7 @@ namespace FullNumerics.Tests
                     BigInteger expected = ba % bb;
                     bigStopwatch.Stop();
 
-                    FullIntCore expectedFull = (FullIntCore)expected.ToString();
+                    FullIntCore expectedFull = FullIntCore.Parse(expected.ToString());
 
                     Assert.AreEqual(expectedFull.ToString(10), divFull.ToString(10), $"Mismatch for a={ba}, b={bb}");
                 }

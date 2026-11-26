@@ -2,7 +2,7 @@ using System;
 
 namespace FullNumerics
 {
-    public static partial class Karatsuba
+    internal static partial class Karatsuba
     {
         /// <summary>
         /// From this many words in the shorter operand (and when the operands are not too

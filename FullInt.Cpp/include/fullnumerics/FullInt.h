@@ -8,8 +8,9 @@
 //   - the magnitude is always normalized (no leading zero words, zero is never negative);
 //     leading zeros of a result are dropped by moving the start offset, not by copying;
 //   - the one-word paths are inline here, so the compiler builds them into the caller.
-// Differences in the API, C++ conventions: ^ is XOR (C#: power, see Pow); ToString() is
-// decimal (C#: hex) - to be aligned in the API review before v1.
+// The API as C#: ^ is XOR, the power is Pow; ToString() is decimal; bytes and words in and out
+// with an explicit order (FromBytes / ToBytes as BigInteger, FromWords / ToWords as GMP
+// mpz_import / mpz_export).
 //
 // Limbs: 64-bit words, index 0 = most significant word (as in C# and the asm kernels).
 #pragma once
@@ -19,17 +20,28 @@
 
 #include <compare>
 #include <concepts>
+#include <limits>
 #include <cstdint>
 #include <cstring>
 #include <functional>
 #include <iosfwd>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace fullnumerics {
 
 class FullIntEngine;
+
+// The order of the words in FromWords / ToWords / TryWriteWords (the bytes inside a word are the
+// machine's own)
+enum class WordOrder
+{
+    LeastSignificantFirst,   // words[0] is the least significant word (GMP order -1)
+    MostSignificantFirst,    // words[0] is the most significant word (GMP order 1)
+};
 
 // Thresholds of the decimal conversion by halves (C# DecimalConversion)
 struct DecimalConversion
@@ -102,15 +114,33 @@ public:
     // sign + magnitude words (index 0 = most significant), as the C# (bool, ulong[]) constructor
     FullInt(bool negative, CSpan magnitude);
 
-    explicit FullInt(std::string_view text);
+    explicit FullInt(std::string_view text);   // Parse
 
-    // Magnitude from bytes, little-endian: magnitude[0] is the least significant byte.
-    static FullInt FromBytes(std::span<const uint8_t> magnitude, bool negative = false);
+    // Bytes as C# FullInt(ReadOnlySpan<byte>, isUnsigned, isBigEndian) and BigInteger: two's
+    // complement unless isUnsigned, least significant byte first unless isBigEndian; no bytes: 0.
+    static FullInt FromBytes(std::span<const uint8_t> bytes, bool isUnsigned = false, bool isBigEndian = false);
+    // the fewest bytes; isUnsigned on a negative value throws std::overflow_error
+    size_t GetByteCount(bool isUnsigned = false) const;
+    std::vector<uint8_t> ToBytes(bool isUnsigned = false, bool isBigEndian = false) const;
+    // false (nothing written) when destination is too short
+    bool TryWriteBytes(std::span<uint8_t> destination, size_t& bytesWritten, bool isUnsigned = false, bool isBigEndian = false) const;
 
+    // The magnitude's words in the given order and a sign (GMP mpz_import); no words: 0
+    static FullInt FromWords(std::span<const uint64_t> magnitude, WordOrder order, bool negative = false);
+    size_t GetWordCount() const noexcept { return size_; }   // zero is one zero word
+    std::vector<uint64_t> ToWords(WordOrder order) const;
+    bool TryWriteWords(std::span<uint64_t> destination, size_t& wordsWritten, WordOrder order) const noexcept;
+
+    // Decimal digits with an optional sign ('-' or '+'), white space around allowed; "0x..." is
+    // hexadecimal and a leading 0 octal. std::invalid_argument for anything else.
     static FullInt Parse(std::string_view text);
+    static bool TryParse(std::string_view text, FullInt& result);
 
-    // base 10 (default), 16 ("0x" + upper-case hex, as C#), 8 or 2
+    // base 10 (default), 16 ("0x" + upper-case hex), 8 or 2
     std::string ToString(int base = 10) const;
+    // as C#: "D" decimal, "X" / "x" hexadecimal, "B" binary; a number after the letter is the
+    // least number of digits; a negative value is '-' and the magnitude's digits
+    std::string ToString(std::string_view format) const;
 
     FullInt(const FullInt& other) { CopyFrom(other); }
     FullInt(FullInt&& other) noexcept { MoveFrom(other); }
@@ -130,9 +160,30 @@ public:
     }
     ~FullInt() { Release(); }
 
-    bool Sing() const noexcept { return neg_; }   // the C# name: true = negative
     bool IsNegative() const noexcept { return neg_; }
     bool IsZero() const noexcept { return size_ == 1 && Data()[0] == 0; }
+    bool IsOne() const noexcept { return !neg_ && size_ == 1 && Data()[0] == 1; }
+    bool IsEven() const noexcept { return (Data()[size_ - 1] & 1) == 0; }
+    int Sign() const noexcept { return IsZero() ? 0 : neg_ ? -1 : 1; }
+
+    // to an integer type, std::overflow_error when out of its range (C#: explicit operators)
+    template <std::integral T>
+        requires(!std::same_as<T, bool>)
+    explicit operator T() const
+    {
+        uint64_t m = Data()[size_ - 1];
+        if (size_ > 1) throw std::overflow_error("FullInt: out of range");
+        if (neg_)
+        {
+            if constexpr (std::is_signed_v<T>)
+            {
+                if (m <= (uint64_t)std::numeric_limits<T>::max() + 1) return (T)(0 - m);
+            }
+            throw std::overflow_error("FullInt: out of range");
+        }
+        if (m > (uint64_t)std::numeric_limits<T>::max()) throw std::overflow_error("FullInt: out of range");
+        return (T)m;
+    }
     uint32_t Length() const noexcept { return size_; }
     CSpan Words() const noexcept { return CSpan(Data(), size_); }
 
@@ -574,8 +625,14 @@ inline std::strong_ordering operator<=>(const FullInt& a, const FullInt& b) noex
     return FullIntEngine::Compare(a, b) <=> 0;
 }
 
-inline FullInt Pow(const FullInt& value, const FullInt& exponent) { return FullIntEngine::pow(value, exponent); }
+// exponent >= 0 (std::out_of_range otherwise)
+inline FullInt Pow(const FullInt& value, int exponent) { return FullIntEngine::pow(value, FullInt(exponent)); }
 inline FullInt Abs(const FullInt& value) { return FullIntEngine::abs(value); }
+// the truncated quotient and the remainder (the sign of the dividend), as / and %
+inline FullInt DivRem(const FullInt& dividend, const FullInt& divisor, FullInt& remainder)
+{
+    return FullIntEngine::div(dividend, divisor, remainder);
+}
 
 std::ostream& operator<<(std::ostream& os, const FullInt& value);
 

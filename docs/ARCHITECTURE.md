@@ -6,12 +6,12 @@ This document describes the code as it is today. The target design is summarized
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
-│ FullInt  (FullInt.Core/FullInt.cs)                         │  public value type: operators,
-│   sign + ulong[] magnitude + IsDec flag                        │  implicit conversions, ToString
+│ FullInt  (FullInt.Core/FullInt.cs)  - the public type         │  operators, conversions,
+│   sign + ulong[] magnitude                                     │  bytes / words, text, JSON
 └──────────────────────────────┬────────────────────────────────┘
                                │ static singleton
 ┌──────────────────────────────▼────────────────────────────────┐
-│ FullIntEngine  (FullIntEngine.cs)                          │  sign handling, buffer sizing,
+│ FullIntEngine  (FullIntEngine.cs)  - internal                 │  sign handling, buffer sizing,
 │   add/sub/mult/div/mod/pow/compare, base conversion, parsing   │  normalization, string formats
 └──────────────────────────────┬────────────────────────────────┘
                                │ IFullIntCore (magnitude-only, Span<ulong>)
@@ -41,11 +41,11 @@ This document describes the code as it is today. The target design is summarized
 | Aspect | Current choice | Notes |
 |---|---|---|
 | Limb size | `ulong` (64 bits) | |
-| Limb order | **big-endian**: `value[0]` is the most significant limb | The opposite of GMP and `BigInteger`. Normalizing means slicing off leading zeros and copying (`FullHelper.DeleteZeros(...).ToArray()`). |
-| Sign | separate `bool Sing` (sign-magnitude) | Zero can end up negative (see ANALYSIS C7). |
-| Radix | 2⁶⁴ (`toBase.hex`), or 10¹⁹ per limb (`toBase.dec`, `IsDec = true`) | Decimal mode only works in managed code. The asm kernels are binary-only. |
+| Limb order | **big-endian**: `value[0]` is the most significant limb | Internal only: the public import / export (`FromWords` / `ToWords`, bytes) takes an explicit order. |
+| Sign | separate flag (sign-magnitude), `IsNegative` / `Sign` | Zero is never negative (normalized on read). |
+| Radix | 2⁶⁴ | |
 | Minimum length | 1 limb (zero is `{ 0 }`) | |
-| Mutability | mutable class with a public `ulong[] value` setter | The copy constructor shares the array with the original. |
+| Mutability | sealed class; the word array is internal | The copy constructor shares the array; the in-place API (`Add(result, a, b)`) writes only into arrays its result object owns. |
 
 ## Core contract (`IFullIntCore`)
 

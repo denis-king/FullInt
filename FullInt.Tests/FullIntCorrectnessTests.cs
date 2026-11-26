@@ -51,15 +51,15 @@ namespace FullNumerics.Tests
             var products = new[] { zero * minusFive, minusFive * zero };
             foreach (var p in products)
             {
-                Assert.IsFalse(p.Sing, "0 * -5 must not be negative");
+                Assert.IsFalse(p.IsNegative, "0 * -5 must not be negative");
                 Assert.IsTrue(p == zero, "0 * -5 == 0");
                 Assert.AreEqual("0", p.ToString(10));
             }
 
-            Assert.IsFalse((-zero).Sing, "-0 must not be negative");
+            Assert.IsFalse((-zero).IsNegative, "-0 must not be negative");
             Assert.IsTrue(-zero == zero);
-            Assert.IsFalse((zero / minusFive).Sing, "0 / -5");
-            Assert.IsFalse(((FullInt)(-10) % five).Sing, "-10 % 5 == 0, not -0");
+            Assert.IsFalse((zero / minusFive).IsNegative, "0 / -5");
+            Assert.IsFalse(((FullInt)(-10) % five).IsNegative, "-10 % 5 == 0, not -0");
             Assert.AreEqual("0", ((FullInt)(-10) % five).ToString(10));
         }
 
@@ -152,7 +152,7 @@ namespace FullNumerics.Tests
                     }
                     bool neg = rnd.Next(2) == 0;
                     var mag = e.ToByteArray();   // little-endian two's complement of a positive: the magnitude (+ a sign byte)
-                    var f = new FullInt(mag, neg);
+                    var f = neg ? -new FullInt(mag, isUnsigned: true) : new FullInt(mag, isUnsigned: true);
                     Assert.AreEqual((neg ? -e : e).ToString(), f.ToString(10), $"n {n} shape {shape}");
                 }
         }
@@ -171,17 +171,12 @@ namespace FullNumerics.Tests
                 var expected = BigCompat.FromUnsignedLittleEndian(bytes);
                 if (neg) expected = -expected;
 
-                Assert.AreEqual(expected.ToString(), new FullInt(bytes, neg).ToString(10));
-                if (!neg)
-                {
-                    FullInt implicitConv = bytes;
-                    Assert.AreEqual(expected.ToString(), implicitConv.ToString(10));
-                }
+                Assert.AreEqual(expected.ToString(), (neg ? -new FullInt(bytes, isUnsigned: true) : new FullInt(bytes, isUnsigned: true)).ToString(10));
             }
 
-            FullInt x = new byte[] { 0x01, 0x02 };       // 0x0201
+            FullInt x = new FullInt(new byte[] { 0x01, 0x02 });       // 0x0201
             Assert.AreEqual("513", x.ToString(10));
-            FullInt empty = new byte[0];
+            FullInt empty = new FullInt(new byte[0]);
             Assert.IsTrue(empty == 0);
         }
 
@@ -191,7 +186,7 @@ namespace FullNumerics.Tests
         public void Pow_NegativeExponent_Throws()
         {
             FullInt two = 2;
-            Assert.ThrowsException<ArgumentOutOfRangeException>(() => two ^ -3);
+            Assert.ThrowsException<ArgumentOutOfRangeException>(() => FullInt.Pow(two, -3));
         }
 
         [TestMethod]
@@ -203,7 +198,7 @@ namespace FullNumerics.Tests
                 long b = rnd.Next(-1000, 1000);
                 int e = rnd.Next(0, 60);
                 FullInt fb = b;
-                Assert.AreEqual(BigInteger.Pow(b, e).ToString(), (fb ^ e).ToString(10), $"{b}^{e}");
+                Assert.AreEqual(BigInteger.Pow(b, e).ToString(), FullInt.Pow(fb, e).ToString(10), $"{b}^{e}");
             }
         }
 
@@ -229,7 +224,7 @@ namespace FullNumerics.Tests
             static void AssertNormalized(FullInt x, string what)
             {
                 Assert.IsTrue(x.value.Length == 1 || x.value[0] != 0, what + ": leading zero word");
-                if (x.value.Length == 1 && x.value[0] == 0) Assert.IsFalse(x.Sing, what + ": negative zero");
+                if (x.value.Length == 1 && x.value[0] == 0) Assert.IsFalse(x.IsNegative, what + ": negative zero");
             }
 
             for (int i = 0; i < 5_000; i++)
@@ -269,7 +264,7 @@ namespace FullNumerics.Tests
             static void AssertCanonical(FullInt x, string what)
             {
                 Assert.IsTrue(x.value.Length == 1 || x.value[0] != 0, what + ": leading zero word");
-                if (x.value.Length == 1 && x.value[0] == 0) Assert.IsFalse(x.Sing, what + ": negative zero");
+                if (x.value.Length == 1 && x.value[0] == 0) Assert.IsFalse(x.IsNegative, what + ": negative zero");
             }
 
             foreach (var aw in words)
@@ -595,33 +590,33 @@ namespace FullNumerics.Tests
                         }
                         break;
                     case 1:
-                        var x = new FullInt(a.Sing, (ulong[])a.value.Clone());
+                        var x = new FullInt(a.IsNegative, (ulong[])a.value.Clone());
                         FullInt.Add(x, x, b); Assert.AreEqual(A + B, Big(x), "add into a " + ctx);
                         FullInt.Subtract(x, x, b); Assert.AreEqual(A, Big(x), "sub into a " + ctx);
                         FullInt.Multiply(x, x, b); Assert.AreEqual(A * B, Big(x), "mul into a " + ctx);
                         FullInt.ShiftLeft(x, x, shift); Assert.AreEqual((A * B) << shift, Big(x), "shl into a " + ctx);
                         FullInt.ShiftRight(x, x, shift); Assert.AreEqual(BigCompat.ShiftRightFloor((A * B) << shift, shift), Big(x), "shr into a " + ctx);
                         FullInt.And(x, x, b); Assert.AreEqual(A * B & B, Big(x), "and into a " + ctx);
-                        var x2 = new FullInt(a.Sing, (ulong[])a.value.Clone());
+                        var x2 = new FullInt(a.IsNegative, (ulong[])a.value.Clone());
                         FullInt.Xor(x2, x2, b); Assert.AreEqual(A ^ B, Big(x2), "xor into a " + ctx);
                         if (!B.IsZero)
                         {
-                            var x3 = new FullInt(a.Sing, (ulong[])a.value.Clone());
+                            var x3 = new FullInt(a.IsNegative, (ulong[])a.value.Clone());
                             FullInt.Divide(x3, x3, b); Assert.AreEqual(BigInteger.Divide(A, B), Big(x3), "div into a " + ctx);
-                            var x4 = new FullInt(a.Sing, (ulong[])a.value.Clone());
+                            var x4 = new FullInt(a.IsNegative, (ulong[])a.value.Clone());
                             FullInt.Remainder(x4, x4, b); Assert.AreEqual(BigInteger.Remainder(A, B), Big(x4), "rem into a " + ctx);
                         }
                         break;
                     default:
-                        var y = new FullInt(b.Sing, (ulong[])b.value.Clone());
+                        var y = new FullInt(b.IsNegative, (ulong[])b.value.Clone());
                         FullInt.Add(y, a, y); Assert.AreEqual(A + B, Big(y), "add into b " + ctx);
                         FullInt.Subtract(y, a, y); Assert.AreEqual(-B, Big(y), "sub into b " + ctx);
                         FullInt.Multiply(y, a, y); Assert.AreEqual(-A * B, Big(y), "mul into b " + ctx);
-                        var y2 = new FullInt(b.Sing, (ulong[])b.value.Clone());
+                        var y2 = new FullInt(b.IsNegative, (ulong[])b.value.Clone());
                         FullInt.Or(y2, a, y2); Assert.AreEqual(A | B, Big(y2), "or into b " + ctx);
                         if (!B.IsZero)
                         {
-                            var y3 = new FullInt(b.Sing, (ulong[])b.value.Clone());
+                            var y3 = new FullInt(b.IsNegative, (ulong[])b.value.Clone());
                             FullInt.Divide(y3, a, y3); Assert.AreEqual(BigInteger.Divide(A, B), Big(y3), "div into b " + ctx);
                         }
                         break;
@@ -649,10 +644,10 @@ namespace FullNumerics.Tests
 
             var r2 = new FullInt(0);
             FullInt.Multiply(r2, a, b);
-            var words = (ulong[])r2;
+            var words = r2.ToWords(WordOrder.MostSignificantFirst);
             var snapshot = (ulong[])words.Clone();
             FullInt.Add(r2, r2, a);
-            CollectionAssert.AreEqual(snapshot, words, "(ulong[]) hands the array out");
+            CollectionAssert.AreEqual(snapshot, words, "ToWords returns a copy");
 
             // an operand made by the engine (shares nothing): the result gets its own array
             var sum = a + b;

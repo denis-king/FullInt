@@ -36,13 +36,14 @@ namespace FullNumerics
     {
         // registered when the assembly loads, before any DllImport of it can bind
         [ModuleInitializer]
+#pragma warning disable CA2255   // a library on purpose: the resolver must be in place before any DllImport binds
         internal static void Register()
         {
             NativeLibrary.SetDllImportResolver(typeof(NativeLibraryResolver).Assembly, Resolve);
         }
 
         // the file of a logical name on this OS and architecture, or null (no such library here)
-        internal static string FileName(string name)
+        internal static string? FileName(string name)
         {
             var arch = RuntimeInformation.ProcessArchitecture;
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))

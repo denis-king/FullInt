@@ -17,18 +17,20 @@ Arbitrary-precision integer arithmetic for .NET, built on 64-bit limbs with hand
 ```csharp
 using FullNumerics;
 
-FullInt a = "123456789012345678901234567890";      // decimal string
-FullInt b = "0xFFFFFFFFFFFFFFFFFFFF";              // hex string
-FullInt c = 42;                                    // from int/long/byte
+FullInt a = FullInt.Parse("123456789012345678901234567890");
+FullInt b = FullInt.Parse("0xFFFFFFFFFFFFFFFFFFFF");
+FullInt c = 42;                                    // from any integer type
 
 var sum  = a + b;
 var prod = a * b;
 var quot = a / c;
 var rem  = a % c;
-var pow  = c ^ 100;          // NOTE: '^' is power here, not XOR (will become Pow() — see roadmap)
+var pow  = FullInt.Pow(c, 100);
+var xor  = a ^ b;                                  // XOR, as for int and BigInteger
 
-Console.WriteLine(prod.ToString(10));   // decimal
-Console.WriteLine(prod.ToString(16));   // hex with 0x prefix
+Console.WriteLine(prod);                // decimal
+Console.WriteLine(prod.ToString("X"));  // hex
+byte[] bytes = prod.ToByteArray();      // as BigInteger; (BigInteger)prod, (FullInt)big
 ```
 
 The current public API is listed in [docs/OPERATIONS.md](docs/OPERATIONS.md).
@@ -40,12 +42,11 @@ The current public API is listed in [docs/OPERATIONS.md](docs/OPERATIONS.md).
 | `+`, `-`, unary `-` | ✅ | ✅ |
 | `*` (schoolbook, Karatsuba from 64 limbs, Toom-3 from 256) | ✅ | ✅ |
 | `/`, `%` | ✅ | ✅ |
-| `&`, `\|`, `Xor`, `~`, `<<`, `>>` (BigInteger semantics) | ✅ | ✅ |
+| `&`, `\|`, `^` (XOR), `~`, `<<`, `>>` (BigInteger semantics) | ✅ | ✅ |
 | Compare, `==`, `<`, … | ✅ | ✅ |
-| `^` (power, square-and-multiply) | ✅ | ✅ |
-| Parse decimal string | ✅ | ✅ |
-| `ToString(10)` | ✅ | ✅ |
-| Decimal storage mode (`toBase.dec`) | ❌ wrong results | partial |
+| `Pow`, `DivRem`, `Abs`, `Min`, `Max` | ✅ | ✅ |
+| `Parse` / `TryParse`, `ToString` (`D`, `X`, `B` formats) | ✅ | ✅ |
+| Bytes / words in and out (either order), `BigInteger`, System.Text.Json | ✅ | ✅ |
 
 ## Platforms
 

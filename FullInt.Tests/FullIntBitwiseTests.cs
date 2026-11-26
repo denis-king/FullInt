@@ -135,7 +135,7 @@ namespace FullNumerics.Tests
 
                 Assert.AreEqual((x & y).ToString(), (fx & fy).ToString(10), $"{x} & {y}");
                 Assert.AreEqual((x | y).ToString(), (fx | fy).ToString(10), $"{x} | {y}");
-                Assert.AreEqual((x ^ y).ToString(), FullInt.Xor(fx, fy).ToString(10), $"{x} xor {y}");
+                Assert.AreEqual((x ^ y).ToString(), (fx ^ fy).ToString(10), $"{x} xor {y}");
                 Assert.AreEqual((~x).ToString(), (~fx).ToString(10), $"~{x}");
                 Assert.AreEqual((x << shift).ToString(), (fx << shift).ToString(10), $"{x} << {shift}");
                 Assert.AreEqual(BigCompat.ShiftRightFloor(x, shift).ToString(), (fx >> shift).ToString(10), $"{x} >> {shift}");
@@ -149,7 +149,7 @@ namespace FullNumerics.Tests
 
             Assert.AreEqual("0", (zero & minusOne).ToString(10));
             Assert.AreEqual("-1", (zero | minusOne).ToString(10));
-            Assert.AreEqual("0", FullInt.Xor(minusOne, minusOne).ToString(10));
+            Assert.AreEqual("0", (minusOne ^ minusOne).ToString(10));
             Assert.AreEqual("-1", (~zero).ToString(10));
             Assert.AreEqual("0", (~minusOne).ToString(10));
             Assert.AreEqual("-1", (minusOne >> 1000).ToString(10), "negative >> large shift is -1");

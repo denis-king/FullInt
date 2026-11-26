@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace FullNumerics
 {
-    public class FullIntCoreFactory
+    internal class FullIntCoreFactory
     {
 		// FULLINT_FORCE_MANAGED=1 forces the managed fallback core on every platform
 		// (used to run the whole test suite against it and compare with the native core).

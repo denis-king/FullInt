@@ -9,7 +9,7 @@ using System.Text;
 
 namespace FullNumerics
 {
-    public partial class FullIntEngine
+    internal partial class FullIntEngine
     {
 		private static readonly Lazy<FullIntEngine> _instance = new Lazy<FullIntEngine>(() => new FullIntEngine());
 		public static FullIntEngine Instance => _instance.Value;
@@ -27,7 +27,7 @@ namespace FullNumerics
         {
             if (value1.value.Length == 1 && value2.value.Length == 1)
             {
-                return addOneWord(value1.value[0], value1.Sing, value2.value[0], value2.Sing);
+                return addOneWord(value1.value[0], value1.IsNegative, value2.value[0], value2.IsNegative);
             }
             return addOrSub(value1, value2, negate2: false);
         }
@@ -35,7 +35,7 @@ namespace FullNumerics
         // a + b, or a - b with negate2 (no FullInt is made for -b). The signs are read once.
         private FullInt addOrSub(FullInt value1, FullInt value2, bool negate2)
         {
-            bool neg1 = value1.Sing, neg2 = value2.Sing != negate2;   // -0 is fine here: a zero result is normalized on read
+            bool neg1 = value1.IsNegative, neg2 = value2.IsNegative != negate2;   // -0 is fine here: a zero result is normalized on read
             ulong[] a = value1.value, b = value2.value;
 
             if (a.Length == 1 && b.Length == 1)
@@ -83,7 +83,7 @@ namespace FullNumerics
             return new FullInt(sign, FullHelper.Trimmed(r));
         }
         // One word and one word: plain 64-bit arithmetic in C#. The native call costs more than
-        // the add itself at this size. (A zero result is never negative: Sing normalizes on read.)
+        // the add itself at this size. (A zero result is never negative: IsNegative normalizes on read.)
         private static FullInt addOneWord(ulong a, bool aNegative, ulong b, bool bNegative)
         {
             if (aNegative == bNegative)
@@ -114,10 +114,10 @@ namespace FullNumerics
         // Signed add into result.value; returns the carry out of the top word (same signs only).
         private ulong addSigned(FullInt value1, FullInt value2, FullInt result)
         {
-            if (value1.Sing == value2.Sing)
+            if (value1.IsNegative == value2.IsNegative)
             {
                 var carry = addInternal(value1.value, value2.value, result.value);
-                result.Sing = value1.Sing;
+                result.IsNegative = value1.IsNegative;
                 return carry;
             }
             else
@@ -126,15 +126,15 @@ namespace FullNumerics
                
                 if (compareResult > 0)
                 {
-                    result.Sing = value1.Sing;
+                    result.IsNegative = value1.IsNegative;
                 }
                 else if (compareResult < 0)
                 {
-                    result.Sing = value2.Sing;
+                    result.IsNegative = value2.IsNegative;
                 }
                 else
                 {
-                    result.Sing = false;
+                    result.IsNegative = false;
                 }
                 return 0;   // |a - b| always fits
             }
@@ -144,7 +144,7 @@ namespace FullNumerics
         {
             if (value1.value.Length == 1 && value2.value.Length == 1)
             {
-                return addOneWord(value1.value[0], value1.Sing, value2.value[0], !value2.Sing);   // -0 is fine: normalized on read
+                return addOneWord(value1.value[0], value1.IsNegative, value2.value[0], !value2.IsNegative);   // -0 is fine: normalized on read
             }
             return addOrSub(value1, value2, negate2: true);
         }
@@ -156,7 +156,7 @@ namespace FullNumerics
 
         public void addInto(FullInt result, FullInt value1, FullInt value2, bool negate2)
         {
-            bool neg1 = value1.Sing, neg2 = value2.Sing != negate2;
+            bool neg1 = value1.IsNegative, neg2 = value2.IsNegative != negate2;
             Span<ulong> a = FullHelper.DeleteZeros(value1.value), b = FullHelper.DeleteZeros(value2.value);
             if (a.Length == 1 && b.Length == 1)   // one word: plain 64-bit arithmetic, no core call
             {
@@ -187,7 +187,7 @@ namespace FullNumerics
 
         public void multInto(FullInt result, FullInt value1, FullInt value2)
         {
-            bool negative = value1.Sing != value2.Sing;
+            bool negative = value1.IsNegative != value2.IsNegative;
             Span<ulong> a = FullHelper.DeleteZeros(value1.value), b = FullHelper.DeleteZeros(value2.value);
             if (a.Length == 1 && b.Length == 1)   // one word by one word: FullHelper.BigMul, no core call
             {
@@ -232,7 +232,7 @@ namespace FullNumerics
                 result.Assign(shiftLeft(value, shift));
                 return;
             }
-            bool negative = value.Sing;
+            bool negative = value.IsNegative;
             Span<ulong> a = FullHelper.DeleteZeros(value.value);
             ulong[] r = result.WritableBuffer(a.Length + shift / 64 + 1, mustBeNew: ReferenceEquals(result.value, value.value));
             _core.ShiftLeft(a, shift, r);   // writes the lead zeros of a longer r
@@ -243,7 +243,7 @@ namespace FullNumerics
         // otherwise the ordinary operation
         public void bitwiseInto(FullInt result, int op, FullInt value1, FullInt value2)
         {
-            if (value1.Sing || value2.Sing)
+            if (value1.IsNegative || value2.IsNegative)
             {
                 result.Assign(bitwise(op, value1, value2));
                 return;
@@ -272,7 +272,7 @@ namespace FullNumerics
 
         public void shiftRightInto(FullInt result, FullInt value, int shift)
         {
-            if (shift < 0 || value.Sing)   // negative: floor rounding, the ordinary path
+            if (shift < 0 || value.IsNegative)   // negative: floor rounding, the ordinary path
             {
                 result.Assign(shiftRight(value, shift));
                 return;
@@ -298,7 +298,7 @@ namespace FullNumerics
         public FullInt abs(FullInt value)
         {
             var result = new FullInt(value);
-            result.Sing = false;
+            result.IsNegative = false;
             return result;
         }
 
@@ -311,7 +311,7 @@ namespace FullNumerics
             if (value1.value.Length == 1 && value2.value.Length == 1)
             {
                 ulong hi = FullHelper.BigMul(value1.value[0], value2.value[0], out ulong lo);
-                return new FullInt(value1.Sing != value2.Sing, hi == 0 ? new ulong[] { lo } : new ulong[] { hi, lo });
+                return new FullInt(value1.IsNegative != value2.IsNegative, hi == 0 ? new ulong[] { lo } : new ulong[] { hi, lo });
             }
 
             var lenth = value1.value.Length + value2.value.Length;
@@ -335,7 +335,7 @@ namespace FullNumerics
             {
                 multInternal(value1.value, value2.value, bytes);
             }
-            return new FullInt(value1.Sing != value2.Sing, FullHelper.ResultArray(bytes, heap));
+            return new FullInt(value1.IsNegative != value2.IsNegative, FullHelper.ResultArray(bytes, heap));
         }
 
         private void multInternal(Span<ulong> value1, Span<ulong> value2, Span<ulong> result)
@@ -353,7 +353,7 @@ namespace FullNumerics
         {
             // integer power is undefined for negative exponents (same as BigInteger.Pow);
             // before, the '-' of the exponent's base-2 string was silently ignored: a^-n == a^n
-            if (value2.Sing)
+            if (value2.IsNegative)
             {
                 throw new ArgumentOutOfRangeException(nameof(value2), "The exponent must be non-negative.");
             }
@@ -391,7 +391,7 @@ namespace FullNumerics
         public int Compare(FullInt value1, FullInt value2)
         {
             {
-                bool neg1 = value1.Sing, neg2 = value2.Sing;
+                bool neg1 = value1.IsNegative, neg2 = value2.IsNegative;
                 if (neg1 != neg2) return neg1 ? -1 : 1;
                 ulong[] a = value1.value, b = value2.value;
                 int abs;
@@ -515,7 +515,7 @@ namespace FullNumerics
 
             div_internal(value1.value, value2, bytes, out remainder);
 
-            var result = new FullInt(value1.Sing, FullHelper.ResultArray(bytes, heap));
+            var result = new FullInt(value1.IsNegative, FullHelper.ResultArray(bytes, heap));
             return result;
         }
 
@@ -569,8 +569,8 @@ namespace FullNumerics
             {
                 ulong q1 = dividend[0] / divisor[0];
                 ulong r1 = dividend[0] - q1 * divisor[0];
-                remainder = wantRemainder ? new FullInt(value1.Sing, new ulong[] { r1 }) : null;
-                return wantQuotient ? new FullInt(value1.Sing != value2.Sing, new ulong[] { q1 }) : null;
+                remainder = wantRemainder ? new FullInt(value1.IsNegative, new ulong[] { r1 }) : null;
+                return wantQuotient ? new FullInt(value1.IsNegative != value2.IsNegative, new ulong[] { q1 }) : null;
             }
 
             //optimalizations for small numbers
@@ -584,13 +584,13 @@ namespace FullNumerics
             // out) is faster through the asm kernel (measured 124 vs 140 ns), "/" still gains (172 -> 139)
             if (divisor.Length == 1 && dividend.Length == 2 && (wantQuotient || IntPtr.Size == 8))
             {
-                return divTwoByOne(dividend[0], dividend[1], divisor[0], value1.Sing, value2.Sing, wantQuotient, wantRemainder, out remainder);
+                return divTwoByOne(dividend[0], dividend[1], divisor[0], value1.IsNegative, value2.IsNegative, wantQuotient, wantRemainder, out remainder);
             }
             // a two-word divisor (x64): the 3-by-2 steps here (FullHelper.DivBy2), no native call
             // (.NET 8, x64, 2N / N: 3-16 words 0.9-0.97 of the core's Div; 64 words 1.07: the core)
             if (divisor.Length == 2 && dividend.Length <= 32 && IntPtr.Size == 8)
             {
-                return divByTwoWords(dividend, divisor, value1.Sing, value2.Sing, wantQuotient, wantRemainder, out remainder);
+                return divByTwoWords(dividend, divisor, value1.IsNegative, value2.IsNegative, wantQuotient, wantRemainder, out remainder);
             }
 
             if (divisor.Length == 1)
@@ -600,7 +600,7 @@ namespace FullNumerics
                 if (wantQuotient)
                 {
                     res = div(value1, divisor[0], out r);
-                    res.Sing = value1.Sing != value2.Sing;
+                    res.IsNegative = value1.IsNegative != value2.IsNegative;
                 }
                 else
                 {
@@ -612,7 +612,7 @@ namespace FullNumerics
                     div_internal(value1.value, divisor[0], scratch, out r);
                     FullHelper.Return(rented);
                 }
-                remainder = wantRemainder ? new FullInt(value1.Sing, new ulong[] { r }) : null;
+                remainder = wantRemainder ? new FullInt(value1.IsNegative, new ulong[] { r }) : null;
 
                 return res;
             }
@@ -634,7 +634,7 @@ namespace FullNumerics
 
             div_internal(dividend, divisor, resultBuf, remainderBuf, quotientOnly: !wantRemainder);
 
-            remainder = wantRemainder ? new FullInt(value1.Sing, FullHelper.DeleteZeros(remainderBuf).ToArray()) : null;
+            remainder = wantRemainder ? new FullInt(value1.IsNegative, FullHelper.DeleteZeros(remainderBuf).ToArray()) : null;
             FullHelper.Return(remainderRented);
             if (!wantQuotient)
             {
@@ -642,7 +642,7 @@ namespace FullNumerics
                 return null;
             }
 
-            var sign = value1.Sing != value2.Sing;
+            var sign = value1.IsNegative != value2.IsNegative;
 
             //propably ussless if value1 >= value2. remove when uncommented the optimalization above
             if (FullHelper.IsZeroSpan(resultBuf))   // in C#: this was a core (native) call comparing with a zero word
@@ -693,7 +693,7 @@ namespace FullNumerics
         {
             var a = FullHelper.DeleteZeros(value1.value);
             var b = FullHelper.DeleteZeros(value2.value);
-            if (!value1.Sing && !value2.Sing)
+            if (!value1.IsNegative && !value2.IsNegative)
             {
                 // both non-negative (the common case): word by word here, no kernel call - and:
                 // the low min(la, lb) words; or / xor: the longer one's top words as they are
@@ -718,9 +718,9 @@ namespace FullNumerics
             }
             var r = new ulong[Math.Max(a.Length, b.Length) + 1];
 
-            int negative = op == 0 ? _core.And(a, value1.Sing, b, value2.Sing, r)
-                         : op == 1 ? _core.Or(a, value1.Sing, b, value2.Sing, r)
-                         : _core.Xor(a, value1.Sing, b, value2.Sing, r);
+            int negative = op == 0 ? _core.And(a, value1.IsNegative, b, value2.IsNegative, r)
+                         : op == 1 ? _core.Or(a, value1.IsNegative, b, value2.IsNegative, r)
+                         : _core.Xor(a, value1.IsNegative, b, value2.IsNegative, r);
 
             return Normalized(negative != 0, r);
         }
@@ -736,14 +736,14 @@ namespace FullNumerics
         public FullInt shiftLeft(FullInt value, int shift)
         {
             var w = value.value;
-            if (w.Length == 1 && (uint)shift < 64) return shiftLeftOneWord(w[0], value.Sing, shift);
+            if (w.Length == 1 && (uint)shift < 64) return shiftLeftOneWord(w[0], value.IsNegative, shift);
             return shiftLeftGeneral(value, shift);
         }
 
         public FullInt shiftRight(FullInt value, int shift)
         {
             var w = value.value;
-            if (w.Length == 1 && shift >= 0) return shiftRightOneWord(w[0], value.Sing, shift);   // Sing is false for 0
+            if (w.Length == 1 && shift >= 0) return shiftRightOneWord(w[0], value.IsNegative, shift);   // IsNegative is false for 0
             return shiftRightGeneral(value, shift);
         }
 
@@ -754,7 +754,7 @@ namespace FullNumerics
             var a = FullHelper.DeleteZeros(value.value);
             var r = new ulong[a.Length + shift / 64 + 1];
             _core.ShiftLeft(a, shift, r);
-            return Normalized(value.Sing, r);
+            return Normalized(value.IsNegative, r);
         }
 
         // arithmetic shift: rounds toward negative infinity, like BigInteger
@@ -765,7 +765,7 @@ namespace FullNumerics
             var a = FullHelper.DeleteZeros(value.value);
             bool isZero = a.Length == 1 && a[0] == 0;
 
-            if (!value.Sing || isZero)
+            if (!value.IsNegative || isZero)
             {
                 var r = new ulong[Math.Max(a.Length - shift / 64, 1)];
                 _core.ShiftRight(a, shift, r);
@@ -795,7 +795,7 @@ namespace FullNumerics
                 : new FullInt(false, new ulong[] { shift >= 64 ? 0 : m >> shift });
         }
 
-        private static FullInt invertor(FullInt value) => FullInt.invertor(value);
+        private static FullInt invertor(FullInt value) => FullInt.Negate(value);
 
         // magnitude is a fresh array owned by the caller: kept as is unless it has leading zeros
         private static FullInt Normalized(bool negative, ulong[] magnitude)
@@ -911,7 +911,7 @@ namespace FullNumerics
             if (value.value.Length == 1)   // one word: the BCL formats a ulong without the buffers and the native call
             {
                 var text1 = value.value[0].ToString(System.Globalization.CultureInfo.InvariantCulture);
-                return value.Sing ? "-" + text1 : text1;   // the sign exactly as the general path writes it
+                return value.IsNegative ? "-" + text1 : text1;   // the sign exactly as the general path writes it
             }
             if (value.value.Length > DecimalConversion.ToStringThreshold)   // long: by halves (FullIntEngine.Decimal.cs)
             {
@@ -921,7 +921,7 @@ namespace FullNumerics
                 var w = FullHelper.DeleteZeros(value.value);
                 if (w.Length >= DecimalConversion.FractionFrom && w.Length <= DecimalConversion.FractionMaxWords)
                 {
-                    var s = ToDecStringFraction(w, value.Sing);
+                    var s = ToDecStringFraction(w, value.IsNegative);
                     if (s != null) return s;
                 }
             }
@@ -934,7 +934,7 @@ namespace FullNumerics
 
             _core.ToDecString(value.value, resultBuf, out var startPosition);
 
-            if(value.Sing && startPosition > 0)
+            if(value.IsNegative && startPosition > 0)
             {
                 startPosition--;
                 resultBuf[startPosition] = (byte)'-';
@@ -954,7 +954,7 @@ namespace FullNumerics
                 return ToDecString(value);
             }
             String result = "";
-            String prefix = value.Sing ? "-" : string.Empty;
+            String prefix = value.IsNegative ? "-" : string.Empty;
             Span<ulong> zero = stackalloc ulong[] { 0 };
             if (toBase == 16)
             {

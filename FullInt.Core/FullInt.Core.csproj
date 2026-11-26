@@ -21,4 +21,11 @@
     <ProjectReference Include="..\FullInt.AsmForNet\FullInt.AsmForNet.csproj" />
   </ItemGroup>
 
+  <!-- the public surface is FullInt (and WordOrder, FullIntJsonConverter); the engine, the cores and
+       the algorithms are internal, open to the tests and the benchmarks -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="FullInt.Tests" />
+    <InternalsVisibleTo Include="FullInt.Benchmarks" />
+  </ItemGroup>
+
 </Project>

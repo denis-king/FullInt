@@ -268,7 +268,7 @@ namespace FullNumerics.Tests
                     BigInteger expected = (BigInteger)a + (BigInteger)b;
                     bigStopwatch.Stop();
 
-                    FullIntCore expectedFull = (FullIntCore)expected.ToString();
+                    FullIntCore expectedFull = FullIntCore.Parse(expected.ToString());
 
                     Assert.AreEqual(expectedFull, sumFull, $"Mismatch for a={a}, b={b}");
                 }
@@ -311,7 +311,7 @@ namespace FullNumerics.Tests
                     BigInteger expected = (BigInteger)a / (BigInteger)b;
                     bigStopwatch.Stop();
 
-                    FullIntCore expectedFull = (FullIntCore)expected.ToString();
+                    FullIntCore expectedFull = FullIntCore.Parse(expected.ToString());
 
                     Assert.AreEqual(expectedFull, divFull, $"Mismatch for a={a}, b={b}");
                 }
@@ -353,7 +353,7 @@ namespace FullNumerics.Tests
                     BigInteger expected = (BigInteger)a % (BigInteger)b;
                     bigStopwatch.Stop();
 
-                    FullIntCore expectedFull = (FullIntCore)expected.ToString();
+                    FullIntCore expectedFull = FullIntCore.Parse(expected.ToString());
 
                     Assert.AreEqual(expectedFull, divFull, $"Mismatch for a={a}, b={b}");
                 }
@@ -603,7 +603,7 @@ namespace FullNumerics.Tests
             BigInteger expected = (BigInteger)a * (BigInteger)b;
             //bigStopwatch.Stop();
 
-            FullIntCore expectedFull = (FullIntCore)expected.ToString();
+            FullIntCore expectedFull = FullIntCore.Parse(expected.ToString());
 
             Assert.AreEqual(expectedFull, multFull, $"Mismatch for a={a}, b={b}");
         }

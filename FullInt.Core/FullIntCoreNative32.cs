@@ -8,7 +8,7 @@ namespace FullNumerics
     /// kernels to 32-bit registers), cdecl. Every operation has an x86 kernel; small sizes and
     /// Compare go to the managed core, where the native call would cost more than the work.
     /// </summary>
-    public sealed class FullIntCoreNative32 : FullIntCoreBase, IFullIntCore   // re-implements a few members, see below
+    internal sealed class FullIntCoreNative32 : FullIntCoreBase, IFullIntCore   // re-implements a few members, see below
     {
         const string dll = NativeNames.Lib32;
 

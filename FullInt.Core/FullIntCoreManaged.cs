@@ -2,7 +2,7 @@
 
 namespace FullNumerics
 {
-    public class FullIntCoreManaged : IFullIntCore
+    internal class FullIntCoreManaged : IFullIntCore
     {
 
 

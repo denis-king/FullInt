@@ -2,7 +2,7 @@ using System;
 
 namespace FullNumerics
 {
-    public static partial class Karatsuba
+    internal static partial class Karatsuba
     {
         /// <summary>
         /// Below this many words in the shorter operand <see cref="MultiplyLow"/> is the core's

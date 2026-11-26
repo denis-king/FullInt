@@ -4,7 +4,7 @@ using System.Text;
 
 namespace FullNumerics
 {
-    public interface IFullIntCore
+    internal interface IFullIntCore
     {
         ulong Add(Span<ulong> a, Span<ulong> b, Span<ulong> r);
         int Sub(Span<ulong> a, Span<ulong> b, Span<ulong> r);

@@ -5,7 +5,7 @@ using System.Text;
 
 namespace FullNumerics
 {
-    public abstract class FullIntCoreBase : IFullIntCore
+    internal abstract class FullIntCoreBase : IFullIntCore
     {
         public ulong Add(Span<ulong> a, Span<ulong> b, Span<ulong> r)
         {

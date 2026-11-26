@@ -19,7 +19,7 @@ namespace FullNumerics
     ///     q̂ = (top t words of X)·(top t + 1 words of I) / β^t  (a few units off the true q),
     ///     R = X - q̂·B', then q̂ -= 1 while that is negative, q̂ += 1 while R &gt;= B'.
     /// </summary>
-    public static class NewtonDivision
+    internal static class NewtonDivision
     {
         // x86 with the NTT kernels (AVX2): the products are 5-10 times faster there, and Newton
         // pays off as early as on x64 (read before the thresholds below are initialized)

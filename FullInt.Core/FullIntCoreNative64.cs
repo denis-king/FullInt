@@ -5,7 +5,7 @@ using System.Text;
 
 namespace FullNumerics
 {
-    public sealed class FullIntCoreNative64 : FullIntCoreBase
+    internal sealed class FullIntCoreNative64 : FullIntCoreBase
     {
 		const string dll = NativeNames.Lib64;
 		

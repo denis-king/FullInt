@@ -6,7 +6,7 @@ using System.Text;
 
 namespace FullNumerics
 {
-    public static class FullHelper
+    internal static class FullHelper
     {
         // Max buffer size taken from the stack; larger buffers go to the heap.
         // Buffers sized by the input must never be stackalloc'ed unbounded:

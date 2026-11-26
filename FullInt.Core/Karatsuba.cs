@@ -21,7 +21,7 @@ namespace FullNumerics
     /// from <see cref="FftThreshold"/> the FFT (Fft.cs), in between a Karatsuba level;
     /// every subproduct chooses again by its own size.
     /// </summary>
-    public static partial class Karatsuba
+    internal static partial class Karatsuba
     {
         /// <summary>
         /// Below this many words in the shorter operand, the basecase (column) multiply is used.

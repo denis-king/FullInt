@@ -22,7 +22,7 @@ namespace FullNumerics
     /// recursion halves down to the basecase) and its top bit is set; the dividend is shifted by
     /// the same and cut into blocks of n words, divided from the top, schoolbook-style.
     /// </summary>
-    public static class BurnikelZiegler
+    internal static class BurnikelZiegler
     {
         /// <summary>
         /// Inside the recursion, blocks below this many words (or odd) go to the core's Div.

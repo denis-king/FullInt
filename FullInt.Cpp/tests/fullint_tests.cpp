@@ -8,6 +8,8 @@
 #include <fullnumerics/kernels.h>
 #include <gmp.h>
 
+#include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <random>
@@ -168,9 +170,7 @@ void EdgeCases()
     CHECK((FullInt(-3) * FullInt(0)).IsNegative() == false, "-3 * 0 not negative");
     CHECK(FullInt(INT64_MIN).ToString() == "-9223372036854775808", "INT64_MIN");
     CHECK(FullInt(UINT64_MAX).ToString() == "18446744073709551615", "UINT64_MAX");
-    CHECK(FullInt::Parse("") == FullInt(0), "empty parses as 0");
     CHECK(FullInt::Parse("0x1F") == FullInt(31), "0x prefix");
-    CHECK(FullInt::Parse("x1f") == FullInt(31), "x prefix");
     CHECK(FullInt::Parse("017") == FullInt(15), "octal prefix");
 
     bool threw = false;
@@ -180,7 +180,7 @@ void EdgeCases()
     try { (void)FullInt::Parse("12a"); } catch (const std::invalid_argument&) { threw = true; }
     CHECK(threw, "bad digit throws");
     threw = false;
-    try { (void)Pow(FullInt(2), FullInt(-1)); } catch (const std::out_of_range&) { threw = true; }
+    try { (void)Pow(FullInt(2), -1); } catch (const std::out_of_range&) { threw = true; }
     CHECK(threw, "negative exponent throws");
 
     // copy / move / self-assignment, inline and heap
@@ -203,17 +203,17 @@ void EdgeCases()
     }
     {
         uint8_t le[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09 };
-        CHECK(FullInt::FromBytes(le, true).ToString(16) == "-0x90807060504030201", "FromBytes");
+        CHECK((-FullInt::FromBytes(le, true)).ToString(16) == "-0x90807060504030201", "FromBytes");
     }
 
     Mpz e;
     for (int p : { 0, 1, 2, 7, 64, 100 })
     {
         mpz_ui_pow_ui(e.v, 3, p);
-        CHECK(Same(Pow(FullInt(3), FullInt(p)), e.v), "pow 3^" + std::to_string(p));
+        CHECK(Same(Pow(FullInt(3), p), e.v), "pow 3^" + std::to_string(p));
         mpz_set_si(e.v, -7);
         mpz_pow_ui(e.v, e.v, p);
-        CHECK(Same(Pow(FullInt(-7), FullInt(p)), e.v), "pow -7^" + std::to_string(p));
+        CHECK(Same(Pow(FullInt(-7), p), e.v), "pow -7^" + std::to_string(p));
     }
 }
 
@@ -708,7 +708,8 @@ void ParseShapes()
                 t[pos] = (char)b;
                 bool threw = false;
                 try { (void)FullInt::Parse(t); } catch (const std::invalid_argument&) { threw = true; }
-                CHECK(threw, "Parse refuses a non-digit at " + std::to_string(pos) + " of " + std::to_string(len));
+                bool trailingSpace = b == 0x20 && pos == len - 1;   // white space around is trimmed
+                CHECK(threw != trailingSpace, "Parse refuses a non-digit at " + std::to_string(pos) + " of " + std::to_string(len));
             }
 }
 
@@ -1017,6 +1018,135 @@ static void CompareKernels()
             }
 }
 
+// the public API as C#: bytes (BigInteger semantics) and words in both orders, conversions,
+// formats, Parse / TryParse; GMP is the reference
+void ApiChecks()
+{
+    using fullnumerics::WordOrder;
+    for (int round = 0; round < 3000; round++)
+    {
+        int words = 1 + (int)(rng() % (round % 10 == 0 ? 40 : 4));
+        FullInt v = round < 3 ? FullInt(round - 1) : RandomValue(words);
+        if (round % 7 == 0)   // a byte boundary: the top byte 0x80 or 0x7F..., the rest random
+        {
+            std::vector<uint8_t> b(1 + rng() % 20);
+            for (auto& x : b) x = (uint8_t)rng();
+            b.back() = (rng() & 1) ? 0x80 : (uint8_t)(rng() % 256);
+            if (rng() & 1) for (size_t k = 0; k + 1 < b.size(); k++) b[k] = 0;
+            v = FullInt::FromBytes(b, true);
+            if (rng() & 1) v = -v;
+        }
+        Mpz m, mag, t;
+        ToMpz(v, m.v);
+        mpz_abs(mag.v, m.v);
+
+        // words: the magnitude, both orders, as mpz_export
+        auto lsf = v.ToWords(WordOrder::LeastSignificantFirst);
+        auto msf = v.ToWords(WordOrder::MostSignificantFirst);
+        std::vector<uint64_t> rev(msf.rbegin(), msf.rend());
+        CHECK(lsf == rev && lsf.size() == v.GetWordCount(), "ToWords orders");
+        mpz_import(t.v, lsf.size(), -1, sizeof(uint64_t), 0, 0, lsf.data());
+        CHECK(mpz_cmp(t.v, mag.v) == 0, "ToWords is the magnitude");
+        CHECK(FullInt::FromWords(lsf, WordOrder::LeastSignificantFirst, v.IsNegative()) == v, "FromWords lsf");
+        CHECK(FullInt::FromWords(msf, WordOrder::MostSignificantFirst, v.IsNegative()) == v, "FromWords msf");
+        std::vector<uint64_t> shortW(lsf.size() - 1);
+        size_t n = 99;
+        CHECK(!v.TryWriteWords(shortW, n, WordOrder::LeastSignificantFirst) && n == 0, "TryWriteWords short");
+
+        for (bool be : { false, true })
+        {
+            // signed: x = bytes as unsigned, minus 2^(8n) when negative; the fewest bytes
+            auto sb = v.ToBytes(false, be);
+            CHECK(sb.size() == v.GetByteCount(), "GetByteCount");
+            std::vector<uint8_t> le = sb;
+            if (be) std::reverse(le.begin(), le.end());
+            mpz_import(t.v, le.size(), -1, 1, 0, 0, le.data());
+            if (v.IsNegative())
+            {
+                Mpz p;
+                mpz_ui_pow_ui(p.v, 2, 8 * le.size());
+                mpz_sub(t.v, t.v, p.v);
+                CHECK((le.back() & 0x80) != 0, "negative: the top bit");
+                CHECK(le.size() == 1 || !(le.back() == 0xFF && (le[le.size() - 2] & 0x80)), "negative: the fewest bytes");
+            }
+            else
+            {
+                CHECK((le.back() & 0x80) == 0, "positive: no top bit");
+                CHECK(le.size() == 1 || !(le.back() == 0 && !(le[le.size() - 2] & 0x80)), "positive: the fewest bytes");
+            }
+            CHECK(mpz_cmp(t.v, m.v) == 0, "ToBytes signed value");
+            CHECK(FullInt::FromBytes(sb, false, be) == v, "FromBytes signed");
+
+            if (!v.IsNegative())
+            {
+                auto ub = v.ToBytes(true, be);
+                std::vector<uint8_t> ule = ub;
+                if (be) std::reverse(ule.begin(), ule.end());
+                size_t cnt = 0;
+                std::vector<uint8_t> e(mpz_sizeinbase(mag.v, 256) + 1);
+                mpz_export(e.data(), &cnt, -1, 1, 0, 0, mag.v);
+                if (cnt == 0) { cnt = 1; e[0] = 0; }
+                e.resize(cnt);
+                CHECK(ule == e, "ToBytes unsigned = mpz_export");
+                CHECK(FullInt::FromBytes(ub, true, be) == v, "FromBytes unsigned");
+            }
+            else
+            {
+                bool threw = false;
+                try { (void)v.ToBytes(true, be); } catch (const std::overflow_error&) { threw = true; }
+                CHECK(threw, "unsigned bytes of a negative value throw");
+            }
+            std::vector<uint8_t> shortB(sb.size() - 1);
+            CHECK(!v.TryWriteBytes(shortB, n, false, be) && n == 0, "TryWriteBytes short");
+        }
+
+        // formats: X / x / B / D with a width, against GMP
+        std::vector<char> buf(mpz_sizeinbase(mag.v, 2) + 3);
+        std::string sign = v.IsNegative() ? "-" : "";
+        mpz_get_str(buf.data(), 16, mag.v);
+        std::string hexLower = buf.data(), hexUpper = hexLower;
+        for (auto& c : hexUpper) c = (char)std::toupper((unsigned char)c);
+        CHECK(v.ToString("X") == sign + hexUpper && v.ToString("x") == sign + hexLower, "format X");
+        mpz_get_str(buf.data(), 2, mag.v);
+        CHECK(v.ToString("B") == sign + std::string(buf.data()), "format B");
+        std::string dec = MpzDec(mag.v);
+        std::string padded = dec.size() < 50 ? std::string(50 - dec.size(), '0') + dec : dec;
+        CHECK(v.ToString("D50") == sign + padded && v.ToString("D") == v.ToString(), "format D");
+        CHECK(v.Sign() == mpz_sgn(m.v) && v.IsEven() == (mpz_even_p(m.v) != 0), "Sign, IsEven");
+    }
+
+    // conversions to the integer types
+    CHECK((int64_t)FullInt(INT64_MIN) == INT64_MIN && (int64_t)FullInt(INT64_MAX) == INT64_MAX, "int64 ends");
+    CHECK((uint64_t)FullInt(UINT64_MAX) == UINT64_MAX && (int)FullInt(-5) == -5 && (uint8_t)FullInt(255) == 255, "small types");
+    auto overflows = [](auto f) { try { f(); } catch (const std::overflow_error&) { return true; } return false; };
+    CHECK(overflows([] { (void)(int64_t)(FullInt(INT64_MAX) + FullInt(1)); }), "int64 overflow");
+    CHECK(overflows([] { (void)(int64_t)(FullInt(INT64_MIN) - FullInt(1)); }), "int64 underflow");
+    CHECK(overflows([] { (void)(uint64_t)FullInt(-1); }), "uint64 of -1");
+    CHECK(overflows([] { (void)(uint8_t)FullInt(256); }), "uint8 overflow");
+    CHECK(overflows([] { (void)(int8_t)FullInt(-129); }), "int8 underflow");
+    CHECK((int8_t)FullInt(-128) == -128, "int8 min");
+
+    // Parse / TryParse
+    CHECK(FullInt::Parse("  +42 ") == FullInt(42) && FullInt::Parse("-0xff") == FullInt(-255), "Parse forms");
+    for (const char* bad : { "", " ", "-", "+", "12a", "1 2", "0x", "0xG", "--1", "1.5", "1e5", "x1f", "08" })
+    {
+        FullInt r(7);
+        CHECK(!FullInt::TryParse(bad, r) && r.IsZero(), std::string("TryParse rejects '") + bad + "'");
+        bool threw = false;
+        try { (void)FullInt::Parse(bad); } catch (const std::invalid_argument&) { threw = true; }
+        CHECK(threw, std::string("Parse throws for '") + bad + "'");
+    }
+    bool threw = false;
+    try { (void)FullInt(1).ToString("Q"); } catch (const std::invalid_argument&) { threw = true; }
+    CHECK(threw, "unknown format throws");
+
+    // DivRem, ^ as XOR
+    FullInt r;
+    FullInt q = DivRem(FullInt(-17), FullInt(5), r);
+    CHECK(q == FullInt(-3) && r == FullInt(-2), "DivRem truncates");
+    CHECK((FullInt(12) ^ FullInt(10)) == FullInt(6) && (FullInt(-1) ^ FullInt(5)) == FullInt(-6), "^ is XOR");
+}
+
 int main()
 {
     const int sizes[] = { 1, 2, 3, 4, 5, 8, 17, 63, 64, 65, 100, 255, 256, 300, 700, 1500 };
@@ -1040,6 +1170,7 @@ int main()
     ParseShapes();
     ToStringShapes();
     DecimalByHalves();
+    ApiChecks();
 
     for (int sa : sizes)
         for (int sb : sizes)

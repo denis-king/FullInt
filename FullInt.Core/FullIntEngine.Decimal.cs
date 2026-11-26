@@ -6,7 +6,7 @@ namespace FullNumerics
     /// <summary>
     /// Thresholds of the divide-and-conquer decimal conversions (FullIntEngine.Decimal.cs).
     /// </summary>
-    public static class DecimalConversion
+    internal static class DecimalConversion
     {
         /// <summary>
         /// Numbers above this many words are converted to text by halves; below, by the core's
@@ -48,7 +48,7 @@ namespace FullNumerics
     ///   ToString(x):  x = q·P_k + r  ->  ToString(q) followed by ToString(r) padded to 19·2^k digits
     ///   Parse(t):     t = [high][low: 19·2^k digits]  ->  Parse(high)·P_k + Parse(low)
     /// </summary>
-    public partial class FullIntEngine
+    internal partial class FullIntEngine
     {
         private const ulong Pow10_19 = 10_000_000_000_000_000_000UL;   // 19 decimal digits a word
 
@@ -127,7 +127,7 @@ namespace FullNumerics
             int capacity = (int)(words * 19.27) + 2;              // 64·log10(2) = 19.266 digits per word
             var text = new char[capacity + 1];
             int start = WriteDecimal(magnitude, text, text.Length, -1);
-            if (value.Sing) text[--start] = '-';
+            if (value.IsNegative) text[--start] = '-';
             return new string(text, start, text.Length - start);
         }
 

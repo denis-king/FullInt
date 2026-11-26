@@ -1157,22 +1157,224 @@ FullInt::FullInt(bool negative, CSpan magnitude)
     Normalize(negative);
 }
 
-FullInt::FullInt(std::string_view text) : FullInt(FullIntEngine::ToFullInt(text)) {}
+FullInt::FullInt(std::string_view text) : FullInt(Parse(text)) {}
 
-FullInt FullInt::Parse(std::string_view text) { return FullIntEngine::ToFullInt(text); }
+// as C# TryNormalize: white space trimmed, a '+' dropped, the digits of the form checked; the
+// text for ToFullInt into out (a '-' kept)
+static bool NormalizeNumber(std::string_view text, std::string& out)
+{
+    auto space = [](char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v'; };
+    while (!text.empty() && space(text.front())) text.remove_prefix(1);
+    while (!text.empty() && space(text.back())) text.remove_suffix(1);
+    bool negative = false;
+    if (!text.empty() && (text[0] == '-' || text[0] == '+'))
+    {
+        negative = text[0] == '-';
+        text.remove_prefix(1);
+    }
+    bool hex = text.size() >= 2 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X');
+    size_t from = hex ? 2 : 0;
+    if (from >= text.size()) return false;
+    for (size_t k = from; k < text.size(); k++)
+    {
+        char c = text[k];
+        bool ok = hex ? (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') : c >= '0' && c <= '9';
+        if (!ok) return false;
+    }
+    out.assign(negative ? "-" : "");
+    out.append(text);
+    return true;
+}
+
+FullInt FullInt::Parse(std::string_view text)
+{
+    std::string normalized;
+    if (!NormalizeNumber(text, normalized)) throw std::invalid_argument("FullInt: not an integer");
+    return FullIntEngine::ToFullInt(normalized);
+}
+
+bool FullInt::TryParse(std::string_view text, FullInt& result)
+{
+    std::string normalized;
+    if (NormalizeNumber(text, normalized))
+    {
+        try
+        {
+            result = FullIntEngine::ToFullInt(normalized);
+            return true;
+        }
+        catch (const std::invalid_argument&) {}   // "08": not an octal digit
+    }
+    result = FullInt();
+    return false;
+}
 
 std::string FullInt::ToString(int base) const { return FullIntEngine::ToString(*this, base); }
 
-FullInt FullInt::FromBytes(std::span<const uint8_t> magnitude, bool negative)
+std::string FullInt::ToString(std::string_view format) const
 {
-    uint32_t words = (uint32_t)std::max<size_t>((magnitude.size() + 7) / 8, 1);
+    if (format.empty()) return ToString(10);
+    char kind = format[0];
+    size_t precision = 0;
+    if (format.size() > 1)
+    {
+        auto [ptr, ec] = std::from_chars(format.data() + 1, format.data() + format.size(), precision);
+        if (ec != std::errc() || ptr != format.data() + format.size()) throw std::invalid_argument("FullInt: unsupported format");
+    }
+    CSpan w = Words();
+    std::string digits;
+    if (kind == 'D' || kind == 'd')
+    {
+        digits = FullIntEngine::ToString(Abs(*this), 10);
+    }
+    else if (kind == 'X' || kind == 'x' || kind == 'B' || kind == 'b')
+    {
+        int bits = (kind == 'X' || kind == 'x') ? 4 : 1;
+        const char* alphabet = kind == 'x' ? "0123456789abcdef" : "0123456789ABCDEF";
+        int perWord = 64 / bits;
+        uint64_t mask = (1ull << bits) - 1;
+        digits.reserve(w.size() * (size_t)perWord);
+        for (size_t i = 0; i < w.size(); i++)
+            for (int d = perWord - 1; d >= 0; d--)
+            {
+                unsigned digit = (unsigned)((w[i] >> (d * bits)) & mask);
+                if (digits.empty() && digit == 0 && !(i == w.size() - 1 && d == 0)) continue;
+                digits += alphabet[digit];
+            }
+    }
+    else
+    {
+        throw std::invalid_argument("FullInt: unsupported format");
+    }
+    if (digits.size() < precision) digits.insert(0, precision - digits.size(), '0');
+    return neg_ ? "-" + digits : digits;
+}
+
+FullInt FullInt::FromBytes(std::span<const uint8_t> bytes, bool isUnsigned, bool isBigEndian)
+{
+    size_t n = bytes.size();
+    if (n == 0) return FullInt();
+    uint8_t top = isBigEndian ? bytes[0] : bytes[n - 1];
+    bool negative = !isUnsigned && (top & 0x80) != 0;
+    uint32_t words = (uint32_t)((n + 7) / 8);
     FullInt r;
     uint64_t* limbs = r.Prepare(words);   // limbs[0] is the most significant word
     std::memset(limbs, 0, words * sizeof(uint64_t));
-    for (size_t i = 0; i < magnitude.size(); i++)
-        limbs[words - 1 - i / 8] |= (uint64_t)magnitude[i] << ((i % 8) * 8);
+    for (size_t i = 0; i < n; i++)
+    {
+        uint8_t b = isBigEndian ? bytes[n - 1 - i] : bytes[i];
+        limbs[words - 1 - i / 8] |= (uint64_t)b << ((i % 8) * 8);
+    }
+    if (negative)
+    {
+        // the magnitude is 2^(8n) - x: sign-extend to whole words, then negate them
+        size_t extra = (size_t)words * 8 - n;
+        if (extra > 0) limbs[0] |= ~0ull << (64 - extra * 8);
+        uint64_t carry = 1;
+        for (uint32_t i = words; i-- > 0;)
+        {
+            uint64_t v = ~limbs[i] + carry;
+            carry = (carry == 1 && v == 0) ? 1 : 0;
+            limbs[i] = v;
+        }
+    }
     r.Normalize(negative);
     return r;
+}
+
+// the magnitude's significant bytes (at least 1) and its byte i (0: the least significant)
+static size_t MagnitudeByteCount(CSpan w)
+{
+    size_t bytes = 8;
+    while (bytes > 1 && (w[0] >> ((bytes - 1) * 8)) == 0) bytes--;
+    return (w.size() - 1) * 8 + bytes;
+}
+static uint8_t MagnitudeByte(CSpan w, size_t i) { return (uint8_t)(w[w.size() - 1 - i / 8] >> ((i % 8) * 8)); }
+
+size_t FullInt::GetByteCount(bool isUnsigned) const
+{
+    CSpan w = Words();
+    size_t k = MagnitudeByteCount(w);
+    if (isUnsigned)
+    {
+        if (neg_) throw std::overflow_error("FullInt: a negative value has no unsigned bytes");
+        return k;
+    }
+    uint8_t tb = MagnitudeByte(w, k - 1);
+    if (!neg_) return tb >= 0x80 ? k + 1 : k;
+    // -m fits in k bytes while m <= 2^(8k-1)
+    if (tb < 0x80) return k;
+    if (tb > 0x80) return k + 1;
+    for (size_t i = 0; i + 1 < k; i++)
+        if (MagnitudeByte(w, i) != 0) return k + 1;
+    return k;
+}
+
+bool FullInt::TryWriteBytes(std::span<uint8_t> destination, size_t& bytesWritten, bool isUnsigned, bool isBigEndian) const
+{
+    size_t count = GetByteCount(isUnsigned);
+    bytesWritten = 0;
+    if (destination.size() < count) return false;
+    CSpan w = Words();
+    size_t k = MagnitudeByteCount(w);
+    uint8_t* d = destination.data();
+    for (size_t i = 0; i < count; i++) d[i] = i < k ? MagnitudeByte(w, i) : 0;
+    if (neg_)
+    {
+        unsigned carry = 1;
+        for (size_t i = 0; i < count; i++)
+        {
+            unsigned v = (uint8_t)~d[i] + carry;
+            d[i] = (uint8_t)v;
+            carry = v >> 8;
+        }
+    }
+    if (isBigEndian) std::reverse(d, d + count);
+    bytesWritten = count;
+    return true;
+}
+
+std::vector<uint8_t> FullInt::ToBytes(bool isUnsigned, bool isBigEndian) const
+{
+    std::vector<uint8_t> result(GetByteCount(isUnsigned));
+    size_t written;
+    TryWriteBytes(result, written, isUnsigned, isBigEndian);
+    return result;
+}
+
+FullInt FullInt::FromWords(std::span<const uint64_t> magnitude, WordOrder order, bool negative)
+{
+    if (magnitude.empty()) return FullInt();
+    FullInt r;
+    uint32_t n = (uint32_t)magnitude.size();
+    uint64_t* limbs = r.Prepare(n);
+    if (order == WordOrder::MostSignificantFirst)
+        std::memcpy(limbs, magnitude.data(), magnitude.size_bytes());
+    else
+        for (uint32_t i = 0; i < n; i++) limbs[i] = magnitude[n - 1 - i];
+    r.Normalize(negative);
+    return r;
+}
+
+bool FullInt::TryWriteWords(std::span<uint64_t> destination, size_t& wordsWritten, WordOrder order) const noexcept
+{
+    CSpan w = Words();
+    wordsWritten = 0;
+    if (destination.size() < w.size()) return false;
+    if (order == WordOrder::MostSignificantFirst)
+        std::memcpy(destination.data(), w.data(), w.size_bytes());
+    else
+        for (size_t i = 0; i < w.size(); i++) destination[i] = w[w.size() - 1 - i];
+    wordsWritten = w.size();
+    return true;
+}
+
+std::vector<uint64_t> FullInt::ToWords(WordOrder order) const
+{
+    std::vector<uint64_t> result(size_);
+    size_t written;
+    TryWriteWords(result, written, order);
+    return result;
 }
 
 std::ostream& operator<<(std::ostream& os, const FullInt& value) { return os << value.ToString(); }
