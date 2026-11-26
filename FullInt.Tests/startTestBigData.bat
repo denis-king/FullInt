@@ -1,1 +1,0 @@
-vstest.console.exe C:\Users\Denis\source\repos\FullInt\FullInt.Tests\bin\Debug\net8.0\FullInt.Tests.dll /TestCaseFilter:"FullyQualifiedName~FullNumerics.Tests.FullIntBigTests.BigTestHex" /Logger:"console;verbosity=detailed"

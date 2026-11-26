@@ -92,7 +92,7 @@ To enable a new platform: implement its branch in the build script, add its RID 
 
 ### Debugging the native code
 
-Build in `Debug`. NASM then emits CodeView symbols (`-g`) and `link /DEBUG` produces a `.pdb` that is copied next to the DLL. In Visual Studio, enable **Native code debugging** (mixed mode) for the test project. You can then set breakpoints in the `.asm` files. `FullInt.Tests/debugTestBigData.bat` shows a WinDbg alternative.
+Build in `Debug`. NASM then emits CodeView symbols (`-g`) and `link /DEBUG` produces a `.pdb` that is copied next to the DLL. In Visual Studio, enable **Native code debugging** (mixed mode) for the test project. You can then set breakpoints in the `.asm` files.
 
 ## Legacy code
 
