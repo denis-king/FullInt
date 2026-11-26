@@ -7,7 +7,7 @@
 param([ValidateSet('x64', 'x86')][string]$Arch = 'x64', [switch]$Fetch)
 $ErrorActionPreference = 'Stop'
 $cpp = (Resolve-Path "$PSScriptRoot/../..").Path
-$repo = Split-Path -Parent $cpp
+$repo = (Split-Path -Parent $cpp).Replace('\', '/')   # CMake reads \ as an escape
 $out = "$cpp/out/package/$Arch"
 
 $vs = 'C:\Program Files\Microsoft Visual Studio\18\Enterprise\Common7\Tools\Launch-VsDevShell.ps1'
