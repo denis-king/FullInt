@@ -3,7 +3,12 @@ cmake_minimum_required(VERSION 3.21)
 # FullInt C++ library: the same asm kernels as the .NET package (FullInt.Asm/Sources),
 # linked statically into the C++ binary - no DLL and no interop on a kernel call.
 # The upper layer (src/, include/fullnumerics/) is a port of FullInt.Core (C# is the master).
-project(FullIntCpp LANGUAGES CXX)
+#
+# Use from another CMake project (docs/CPP_INSTALL.md):
+#   cmake --install <build> --prefix <dir>, then  find_package(FullInt 1.0 CONFIG REQUIRED)
+#   or add_subdirectory(<repo>/FullInt.Cpp) / FetchContent (SOURCE_SUBDIR FullInt.Cpp)
+#   and in every case                              target_link_libraries(app PRIVATE FullInt::FullInt)
+project(FullInt VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -11,6 +16,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(FULLINT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/..")
 
 option(FULLINT_WITH_GMP "Build the tests and benchmarks against GMP (needs GMP: vcpkg feature 'gmp')" OFF)
+# a subproject (add_subdirectory / FetchContent) builds the library only, and installs nothing
+# unless asked
+option(FULLINT_BUILD_TOOLS "Build the kernel tests and probes (ARM64)" ${PROJECT_IS_TOP_LEVEL})
+option(FULLINT_INSTALL "Generate the install rules (cmake --install, find_package(FullInt))" ${PROJECT_IS_TOP_LEVEL})
+
+include(GNUInstallDirs)
+set(FULLINT_INCLUDE_DIRS "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
 
 if(MSVC)
     add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/utf-8> $<$<COMPILE_LANGUAGE:CXX>:/permissive->)
@@ -44,7 +56,7 @@ if(FULLINT_ARCH STREQUAL "arm64")
         file(GLOB FULLINT_ASM_SOURCES CONFIGURE_DEPENDS "${FULLINT_ASM_DIR}/*.s")
     endif()
     add_library(fullint_kernels STATIC src/kernels_generic.cpp src/ntt_portable.cpp ${FULLINT_ASM_SOURCES})
-    target_include_directories(fullint_kernels PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+    target_include_directories(fullint_kernels PUBLIC ${FULLINT_INCLUDE_DIRS})
     target_compile_definitions(fullint_kernels PUBLIC FULLINT_ARM64_ASM=$<BOOL:${FULLINT_ARM64_ASM}>)
     # .include "abi.inc" (from the sources' directory); the object format for the macros there
     set(FULLINT_ASM_FLAGS "-Wa,-I${FULLINT_ASM_DIR}")
@@ -75,7 +87,7 @@ file(GLOB FULLINT_ASM_SOURCES CONFIGURE_DEPENDS "${FULLINT_ASM_DIR}/*.asm")
 add_library(fullint_kernels STATIC ${FULLINT_ASM_SOURCES})
 # archive with the C++ toolchain's librarian (CMake's ASM_NASM archive rule is the ar one)
 set_target_properties(fullint_kernels PROPERTIES LINKER_LANGUAGE CXX)
-target_include_directories(fullint_kernels PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_include_directories(fullint_kernels PUBLIC ${FULLINT_INCLUDE_DIRS})
 # FULLINT_CPP: the kernels built into the C++ library (they may jump on to its C++ paths; the C#
 # library's native DLL is assembled without it)
 target_compile_options(fullint_kernels PRIVATE
@@ -104,10 +116,36 @@ add_library(fullint STATIC
     src/Ntt.cpp
     src/Fft.cpp)
 target_link_libraries(fullint PUBLIC FullInt::kernels)
+target_compile_features(fullint PUBLIC cxx_std_20)   # the headers need C++20 (span, concepts, <=>)
 add_library(FullInt::fullint ALIAS fullint)
+add_library(FullInt::FullInt ALIAS fullint)          # the name users link (as find_package gives it)
+# installed as FullInt::FullInt and FullInt::kernels; the Debug libraries get a d (fullintd.lib):
+# MSVC's Debug and Release runtimes do not mix, so both configurations can be installed side by side
+set_target_properties(fullint PROPERTIES EXPORT_NAME FullInt DEBUG_POSTFIX d)
+set_target_properties(fullint_kernels PROPERTIES EXPORT_NAME kernels DEBUG_POSTFIX d)
+
+if(FULLINT_INSTALL)
+    include(CMakePackageConfigHelpers)
+    set(FULLINT_CMAKE_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/FullInt")
+    install(TARGETS fullint fullint_kernels EXPORT FullIntTargets
+        ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+        LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+        RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+    # every header: FullInt.h includes the core's (FullIntCore.h, kernels.h, Cpu.h, FullHelper.h)
+    install(DIRECTORY include/fullnumerics DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+    install(EXPORT FullIntTargets NAMESPACE FullInt:: DESTINATION "${FULLINT_CMAKE_DIR}")
+    configure_package_config_file(cmake/FullIntConfig.cmake.in
+        "${CMAKE_CURRENT_BINARY_DIR}/FullIntConfig.cmake" INSTALL_DESTINATION "${FULLINT_CMAKE_DIR}")
+    # 1.x satisfies find_package(FullInt 1.0); the architecture must match (a 32-bit build is not
+    # offered to a 64-bit project)
+    write_basic_package_version_file("${CMAKE_CURRENT_BINARY_DIR}/FullIntConfigVersion.cmake"
+        COMPATIBILITY SameMajorVersion)
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/FullIntConfig.cmake" "${CMAKE_CURRENT_BINARY_DIR}/FullIntConfigVersion.cmake"
+        DESTINATION "${FULLINT_CMAKE_DIR}")
+endif()
 
 # the AArch64 kernels against the portable C++ ones (no GMP: quick under QEMU)
-if(FULLINT_ARCH STREQUAL "arm64" AND FULLINT_ARM64_ASM)
+if(FULLINT_ARCH STREQUAL "arm64" AND FULLINT_ARM64_ASM AND FULLINT_BUILD_TOOLS)
     add_executable(fullint_arm64_kernels tests/arm64_kernels.cpp)
     find_package(Threads REQUIRED)   # (the test's watchdog)
     target_link_libraries(fullint_arm64_kernels PRIVATE FullInt::kernels Threads::Threads)

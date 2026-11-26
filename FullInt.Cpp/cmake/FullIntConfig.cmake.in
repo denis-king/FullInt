@@ -1,0 +1,6 @@
+# find_package(FullInt): the imported targets FullInt::FullInt (link this one) and FullInt::kernels
+# (the asm kernels it pulls in). No dependencies.
+@PACKAGE_INIT@
+
+include("${CMAKE_CURRENT_LIST_DIR}/FullIntTargets.cmake")
+check_required_components(FullInt)
