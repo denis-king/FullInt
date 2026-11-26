@@ -30,15 +30,17 @@ The same machine and build; only `BigInteger` differs. Its division on .NET 8 is
 
 ## Linux ARM64, .NET 10.0.15
 
-Oracle Ampere A1 (Neoverse-N1), one core, Docker; the .NET 10 SDK unpacked into the project folder. Below 1 in three cells: `ToString` at 2 and 4 words (0.79, 0.86) and addition at 2 words (1.0); everything else is faster.
+Oracle Ampere A1 (Neoverse-N1), one core, Docker; the .NET 10 SDK unpacked into the project folder.
 
 | Operation | 1 | 4 | 16 | 64 | 256 | 1024 | 4096 | 16384 |
 |---|---|---|---|---|---|---|---|---|
-| `a * b` | 1.3 | 1.7 | 2.5 | 2.9 | 3.5 | 6.1 | 12 | 25 |
-| `c / b` | 1.1 | 1.3 | 4.0 | 5.3 | 3.8 | 4.6 | 7.5 | 15 |
-| `ToString()` | 1.7 | 0.9 | 1.1 | 2.2 | 4.7 | 8.4 | 19 | 53 |
-| `Parse` | 1.5 | 2.2 | 2.6 | 3.1 | 3.2 | 3.6 | 4.8 | 7.5 |
-| `a + b` | 1.2 | 1.1 | 1.7 | 2.9 | 3.4 | 3.5 | 4.3 | 7.1 |
+| `a * b` | 1.1 | 1.6 | 2.5 | 2.9 | 3.4 | 6.1 | 12 | 25 |
+| `c / b` | 1.1 | 1.3 | 3.9 | 5.3 | 3.8 | 4.6 | 7.4 | 15 |
+| `ToString()` | 1.7 | 1.0 | 1.4 | 2.3 | 4.6 | 8.4 | 19 | 53 |
+| `Parse` | 1.5 | 2.1 | 2.6 | 3.1 | 3.1 | 3.5 | 4.9 | 7.4 |
+| `a + b` | 1.0 | 1.1 | 1.7 | 2.8 | 3.3 | 3.6 | 4.2 | 3.1 |
+
+The lowest cell of all 228 is 0.98 (addition, division and `ToString` at 2–4 words); that is within the run-to-run spread. The first run of the day had `ToString` of 2 and 4 words at 0.79 and 0.86. On ARM64 the native call around the kernel (the GC transition, the pinning, the byte buffer) and the kernel's digit-by-digit loop cost more than the digits. Up to 32 words ToString now stays in C# (`DecimalConversion.ShortWords`): the division by 10^19 through its reciprocal and the BCL's ulong formatting. That is 0.74–0.89 of the kernel's time there; x64 and x86 keep the kernel, which is as fast or faster.
 
 ## Linux ARM64, .NET 8.0.34
 

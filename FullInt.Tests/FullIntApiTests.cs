@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Numerics;
 using FullNumerics;
@@ -32,6 +32,43 @@ namespace FullNumerics.Tests
             if (isUnsigned && b.Length > 1 && b[b.Length - 1] == 0) b = b.Take(b.Length - 1).ToArray();
             if (isBigEndian) Array.Reverse(b);
             return b;
+        }
+
+        // the short ToString path (in C#, up to DecimalConversion.ShortWords words) and the kernel's
+        // on both sides of it: around 10^(19k) (a lower 19-digit chunk all zeros, or with leading
+        // zeros), around 2^(64k), both signs; every result against BigInteger
+        [TestMethod]
+        public void ToString_AroundChunkAndWordEdges_MatchBigInteger()
+        {
+            var values = new System.Collections.Generic.List<BigInteger>();
+            for (int k = 1; k <= 12; k++)
+            {
+                var p10 = BigInteger.Pow(10, 19 * k);
+                var p2 = BigInteger.One << (64 * k);
+                foreach (var b in new[] { p10, p2, p10 * 7 + 3, p10 * (BigInteger.Pow(10, 18) + 1) })
+                    for (int d = -2; d <= 2; d++) values.Add(b + d);
+                values.Add(p2 * 12345 + p10);
+            }
+            var rnd = new Random(31);
+            for (int i = 0; i < 3000; i++)
+            {
+                var bytes = new byte[2 + rnd.Next(i < 2900 ? 80 : 1200)];   // the last ones long: the leaves
+                rnd.NextBytes(bytes);
+                bytes[bytes.Length - 1] = 0;   // non-negative (net48 has no isUnsigned)
+                values.Add(new BigInteger(bytes));
+            }
+            int saved = DecimalConversion.ShortWords;
+            try
+            {
+                foreach (int shortWords in new[] { 0, 8, 32 })   // the kernel; C# for short numbers and the leaves
+                {
+                    DecimalConversion.ShortWords = shortWords;
+                    foreach (var v in values)
+                        foreach (var x in new[] { v, -v })
+                            Assert.AreEqual(x.ToString(), ((FullInt)x).ToString(), $"ShortWords {shortWords}: {x}");
+                }
+            }
+            finally { DecimalConversion.ShortWords = saved; }
         }
 
         [TestMethod]

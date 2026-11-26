@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Threading;
 
 namespace FullNumerics
@@ -37,6 +37,19 @@ namespace FullNumerics
 
         /// <summary>The longest leaf the fraction method takes (its reciprocals are cached per length).</summary>
         public const int FractionMaxWords = 128;
+
+        /// <summary>
+        /// Up to this many words ToString (and a leaf of a long one) stays in C#
+        /// (FullIntEngine.WriteDecimalShort): the division by 10^19 through its reciprocal
+        /// (Math.BigMul) and the BCL's ulong formatting, no native call. ARM64 (Neoverse-N1, .NET 10,
+        /// `cross --ops todec --short N`): 0.74 of the kernel's time at 2 words, 0.82 at 4, 0.87 at
+        /// 8, 0.75 at 16, 0.89 at 32. x64 (Zen 3): the same at 2-4 words, slower from 8 (the kernel
+        /// there writes the digits faster); x86: slower from 4. So 32 on ARM64 and everything that is
+        /// not x86-64 / x86 (the managed core's ToDecString is slower still), 0 on x64 and x86.
+        /// </summary>
+        public static int ShortWords { get; set; } =
+            System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture
+                is System.Runtime.InteropServices.Architecture.X64 or System.Runtime.InteropServices.Architecture.X86 ? 0 : 32;
     }
 
     /// <summary>
@@ -243,6 +256,9 @@ namespace FullNumerics
                 for (ulong v = w[0]; v != 0; v /= 10) text[--end] = (char)('0' + (int)(v % 10));
                 return end;
             }
+#if !NETSTANDARD2_0
+            if (w.Length <= DecimalConversion.ShortWords) return WriteDecimalShort(w, text, end);   // in C#, no native call
+#endif
             int resultBytes = (int)(w.Length * 1.014 + 1) * 19 + 1;
             byte[]? rented = null;
             Span<byte> buf = resultBytes <= FullHelper.StackAllocLimitBytes

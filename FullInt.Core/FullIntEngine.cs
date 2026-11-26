@@ -873,6 +873,62 @@ namespace FullNumerics
             return text.Slice(start).ToString();
         }
 
+#if !NETSTANDARD2_0
+        // the 2-by-1 reciprocal of 10^19 (Pow10_19, FullIntEngine.Decimal.cs; its top bit set: a
+        // normalized divisor): floor((2^128 - 1) / 10^19) - 2^64 (Möller–Granlund; the AArch64
+        // ToDecString.s has the same)
+        private const ulong Pow10_19Recip = 0xD83C94FB6D2AC34AUL;
+
+        // (u1·2^64 + u0) / 10^19 with u1 < 10^19: the quotient, and the remainder in r
+        private static ulong Div10e19(ulong u1, ulong u0, out ulong r)
+        {
+            ulong q1 = FullHelper.BigMul(Pow10_19Recip, u1, out ulong q0);
+            ulong s = q0 + u0;
+            q1 += u1 + 1 + (s < q0 ? 1UL : 0UL);
+            q0 = s;
+            ulong rr = u0 - q1 * Pow10_19;
+            if (rr > q0) { q1--; rr += Pow10_19; }
+            if (rr >= Pow10_19) { q1++; rr -= Pow10_19; }
+            r = rr;
+            return q1;
+        }
+
+        // A short number (a few words, the top one nonzero) in decimal, in C#: the words divided by
+        // 10^19 again and again (one Div10e19 a word), each remainder 19 digits by the BCL's ulong
+        // formatting (the top one without its leading zeros).
+        [System.Runtime.CompilerServices.SkipLocalsInit]   // every stackalloc here is written before it is read
+        private static string ToDecStringShort(ReadOnlySpan<ulong> value, bool negative)
+        {
+            Span<char> text = stackalloc char[20 * value.Length + 2];
+            int start = WriteDecimalShort(value, text, text.Length);
+            if (negative) text[--start] = '-';
+            return new string(text.Slice(start));
+        }
+
+        // value's digits (a few words, the top one nonzero) right-aligned at text[.. end), no
+        // leading zeros; returns the first digit's index
+        [System.Runtime.CompilerServices.SkipLocalsInit]   // every stackalloc here is written before it is read
+        private static int WriteDecimalShort(ReadOnlySpan<ulong> value, Span<char> text, int end)
+        {
+            int n = value.Length;
+            Span<ulong> w = stackalloc ulong[n];
+            value.CopyTo(w);
+            Span<char> digits = stackalloc char[20];
+            int start = 0;
+            while (true)
+            {
+                ulong r = 0;
+                for (int i = start; i < n; i++) w[i] = Div10e19(r, w[i], out r);
+                while (start < n && w[start] == 0) start++;
+                r.TryFormat(digits, out int k, default, System.Globalization.CultureInfo.InvariantCulture);
+                digits.Slice(0, k).CopyTo(text.Slice(end - k));
+                if (start == n) return end - k;   // the top chunk: no leading zeros
+                text.Slice(end - 19, 19 - k).Fill('0');
+                end -= 19;
+            }
+        }
+#endif
+
 		private string ToDecString(FullInt value)
         {
             if (value.value.Length == 1)   // one word: the BCL formats a ulong without the buffers and the native call
@@ -880,6 +936,12 @@ namespace FullNumerics
                 var text1 = value.value[0].ToString(System.Globalization.CultureInfo.InvariantCulture);
                 return value.IsNegative ? "-" + text1 : text1;   // the sign exactly as the general path writes it
             }
+#if !NETSTANDARD2_0
+            if (value.value.Length <= DecimalConversion.ShortWords)   // short: in C#, no native call
+            {
+                return ToDecStringShort(FullHelper.DeleteZeros(value.value), value.IsNegative);
+            }
+#endif
             if (value.value.Length > DecimalConversion.ToStringThreshold)   // long: by halves (FullIntEngine.Decimal.cs)
             {
                 return ToDecStringRecursive(value);

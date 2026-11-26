@@ -15,6 +15,7 @@ namespace FullNumerics.Benchmarks
     ///   --bigmax: BigInteger only up to this many words (default 16384: its division and decimal
     ///   conversion are quadratic - seconds a call there); above it the column is -1 ("-" in the table)
     ///   --quick: 1 ms batches and 3 rounds - a fast "did it help" check, noisier than the full run
+    ///   --short N: DecimalConversion.ShortWords (ToString in C# up to N words; 0: always the native kernel)
     ///
     /// Then: fullint_bench_api --net file  prints the four columns side by side.
     /// </summary>
@@ -110,6 +111,7 @@ namespace FullNumerics.Benchmarks
                 else if (args[i] == "--csv" && i + 1 < args.Length) csvPath = args[++i];
                 else if (args[i] == "--ops" && i + 1 < args.Length) ops = "," + args[++i] + ",";
                 else if (args[i] == "--quick") { _batchTargetNs = 1e6; _quickRounds = 3; }
+                else if (args[i] == "--short" && i + 1 < args.Length) DecimalConversion.ShortWords = int.Parse(args[++i]);   // ToString in C# up to N words
             }
             try
             {
