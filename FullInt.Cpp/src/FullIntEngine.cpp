@@ -1060,7 +1060,7 @@ std::string FullIntEngine::ToString(const FullInt& value, int base)
     throw std::invalid_argument("base must be 2, 8, 10 or 16");
 }
 
-// As C#: an optional '-', then a leading '0' means octal and "0x" / "x" hexadecimal; otherwise decimal.
+// As C#: an optional '-', then "0x" / "0X" means hexadecimal; otherwise decimal (leading zeros too).
 // C++ also rejects characters that are not digits of the base (C# hands decimal text to the
 // kernel unchecked).
 FullInt FullIntEngine::ToFullInt(std::string_view value)
@@ -1074,15 +1074,10 @@ FullInt FullIntEngine::ToFullInt(std::string_view value)
         s = true;
         value.remove_prefix(1);
     }
-    if (value.size() > 1 && value[0] == '0')
-    {
-        base = 8;
-        value.remove_prefix(1);
-    }
-    if (value.size() > 1 && (value[0] == 'x' || value[0] == 'X'))
+    if (value.size() > 2 && value[0] == '0' && (value[1] == 'x' || value[1] == 'X'))
     {
         base = 16;
-        value.remove_prefix(1);
+        value.remove_prefix(2);
     }
     if (value.empty()) throw std::invalid_argument("no digits");
 
@@ -1124,9 +1119,9 @@ FullInt FullIntEngine::ToFullInt(std::string_view value)
             ? ParseDecimal(value)          // long text: by halves (FullIntEngine.Decimal.cpp)
             : ParseDecimalLeaf(value);
     }
-    else   // 16 and 8: the digits are bit groups (C#: 16-digit chunks for hex, mult/add per digit for octal)
+    else   // 16: the digits are 4-bit groups
     {
-        int bitsPerDigit = base == 16 ? 4 : 3;
+        int bitsPerDigit = 4;
         size_t totalBits = value.size() * bitsPerDigit;
         uint32_t n = (uint32_t)((totalBits + 63) / 64);
         uint64_t* p = result.Prepare(n);
@@ -1204,7 +1199,7 @@ bool FullInt::TryParse(std::string_view text, FullInt& result)
             result = FullIntEngine::ToFullInt(normalized);
             return true;
         }
-        catch (const std::invalid_argument&) {}   // "08": not an octal digit
+        catch (const std::invalid_argument&) {}   // (the digits are checked already: kept for safety)
     }
     result = FullInt();
     return false;

@@ -324,7 +324,7 @@ namespace FullNumerics
 
         /// <summary>
         /// Decimal digits with an optional sign: "-123", "+5", "  42 " (white space around is
-        /// allowed). Also "0x1F" (hex) and a leading 0 as octal.
+        /// allowed), leading zeros included ("017" is 17). Also "0x1F" (hexadecimal).
         /// </summary>
         public static FullInt Parse(string value)
         {

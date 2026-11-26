@@ -62,7 +62,7 @@ Semantics of `System.Numerics.BigInteger`: a negative number behaves as an infin
 | White space around | ignored |
 | `-` or `+` in front | the sign |
 | `0x…` / `0X…` | hexadecimal |
-| `0…` (a leading zero, more than one digit) | ⚠️ octal (`"007"` is 7, `"08"` is an error); under review |
+| leading zeros | decimal (`"017"` is 17), as `BigInteger.Parse` |
 | digits `0-9` | decimal |
 
 Anything else (empty text, a lone sign, other characters, fractions, exponents) is an error.

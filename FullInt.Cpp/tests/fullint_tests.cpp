@@ -144,9 +144,8 @@ void CheckSingle(const FullInt& a)
         mpz_get_str(b2.data(), base, ma.v);
         CHECK(a.ToString(base) == b2.data(), "ToString(" + std::to_string(base) + ")");
     }
-    std::vector<char> oct(mpz_sizeinbase(e.v, 8) + 2);
-    mpz_get_str(oct.data(), 8, e.v);
-    CHECK(FullInt::Parse(std::string(a.IsNegative() ? "-0" : "0") + oct.data()) == a, "Parse(octal)");
+    std::string absText = Abs(a).ToString();
+    CHECK(FullInt::Parse(std::string(a.IsNegative() ? "-000" : "000") + absText) == a, "Parse: leading zeros are decimal");
 
     mpz_neg(e.v, ma.v);
     CHECK(Same(-a, e.v), "negate");
@@ -172,7 +171,7 @@ void EdgeCases()
     CHECK(FullInt(INT64_MIN).ToString() == "-9223372036854775808", "INT64_MIN");
     CHECK(FullInt(UINT64_MAX).ToString() == "18446744073709551615", "UINT64_MAX");
     CHECK(FullInt::Parse("0x1F") == FullInt(31), "0x prefix");
-    CHECK(FullInt::Parse("017") == FullInt(15), "octal prefix");
+    CHECK(FullInt::Parse("017") == FullInt(17) && FullInt::Parse("-08") == FullInt(-8), "leading zeros: decimal, no octal");
 
     bool threw = false;
     try { (void)(FullInt(1) / FullInt(0)); } catch (const std::domain_error&) { threw = true; }
@@ -1129,7 +1128,7 @@ void ApiChecks()
 
     // Parse / TryParse
     CHECK(FullInt::Parse("  +42 ") == FullInt(42) && FullInt::Parse("-0xff") == FullInt(-255), "Parse forms");
-    for (const char* bad : { "", " ", "-", "+", "12a", "1 2", "0x", "0xG", "--1", "1.5", "1e5", "x1f", "08" })
+    for (const char* bad : { "", " ", "-", "+", "12a", "1 2", "0x", "0xG", "--1", "1.5", "1e5", "x1f" })
     {
         FullInt r(7);
         CHECK(!FullInt::TryParse(bad, r) && r.IsZero(), std::string("TryParse rejects '") + bad + "'");

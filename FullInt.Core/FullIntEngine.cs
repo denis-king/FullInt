@@ -826,15 +826,11 @@ namespace FullNumerics
                 s = true;
                 valueSpan = valueSpan.Slice(1);
             }
-            if (valueSpan.Length > 1 && valueSpan[0] == 0x30)
-            {
-                Base = 8;
-                valueSpan = valueSpan.Slice(1);
-            }
-            if (valueSpan.Length > 1 && (valueSpan[0] == 0x58 || valueSpan[0] == 0x78)) //'x' or 'X'
+            // "0x" / "0X": hexadecimal; anything else decimal (leading zeros too: no octal)
+            if (valueSpan.Length > 2 && valueSpan[0] == 0x30 && (valueSpan[1] == 0x58 || valueSpan[1] == 0x78))
             {
                 Base = 16;
-                valueSpan = valueSpan.Slice(1);
+                valueSpan = valueSpan.Slice(2);
             }
             if (Base == 10 && valueSpan.Length > DecimalConversion.ParseThreshold)   // long text: by halves
             {
@@ -853,45 +849,16 @@ namespace FullNumerics
                 FullHelper.Return(rented);
                 return parsed;
             }
-            value = FullHelper.AsciiString(valueSpan);
-            FullInt result = new FullInt(s, new ulong[0]);
-            int chunkSize = Base == 10 ? 19 : 16;
-            if (Base == 16)   // (10 went above; 8: the digit loop below)
+            // hexadecimal: 4 bits a digit, from the low end (the digits checked by FullInt.Parse)
+            int words = (valueSpan.Length + 15) / 16;
+            var hex = new ulong[words];
+            for (int i = 0; i < valueSpan.Length; i++)
             {
-               
-                result.value = new ulong[value.Length / chunkSize + (value.Length % chunkSize > 0 ? 1 : 0)];
-               
-                int index = 0;
-                
-                var reversedChunks = Enumerable
-                .Range(0, (value.Length + chunkSize - 1) / chunkSize)
-                .Select(i => value
-                    .Reverse()
-                    .Skip(i * chunkSize)
-                    .Take(chunkSize)
-                    .Reverse()
-                    .ToArray()
-                )
-                .Reverse()
-                .Select(c => new string(c));
-
-                foreach (var chunk in reversedChunks)
-                {
-                    ulong b = Convert.ToUInt64(chunk, (byte)Base);
-                    result.value[index] = b;
-                    index++;
-                }
+                int c = valueSpan[valueSpan.Length - 1 - i];
+                int digit = c <= '9' ? c - '0' : (c | 0x20) - 'a' + 10;
+                hex[words - 1 - i / 16] |= (ulong)digit << ((i % 16) * 4);
             }
-            else
-            {
-                for (int i = 0; i < value.Length; i++)
-                {
-                    result = mult(result, Base);
-                    result = add(result, Convert.ToByte(value[i].ToString(), (int)Base));
-                }
-            }
-
-            return result;
+            return new FullInt(s, FullHelper.Trimmed(hex));
         }
         // a short number by the fraction method (FullIntEngine.Decimal.cs); null: the core has no passes
 #if NET5_0_OR_GREATER

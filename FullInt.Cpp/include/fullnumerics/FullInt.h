@@ -132,7 +132,7 @@ public:
     bool TryWriteWords(std::span<uint64_t> destination, size_t& wordsWritten, WordOrder order) const noexcept;
 
     // Decimal digits with an optional sign ('-' or '+'), white space around allowed; "0x..." is
-    // hexadecimal and a leading 0 octal. std::invalid_argument for anything else.
+    // hexadecimal; leading zeros are decimal ("017" is 17). std::invalid_argument for anything else.
     static FullInt Parse(std::string_view text);
     static bool TryParse(std::string_view text, FullInt& result);
 

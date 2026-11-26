@@ -395,7 +395,7 @@ namespace FullNumerics
             }
             if (!hex)
             {
-                // decimal: the engine's text form ("0..." would read as octal there: drop the leading zeros)
+                // decimal: the engine's text form (its "0x" prefix cannot occur: digits only)
                 var digits = s.TrimStart('0');
                 if (digits.IsEmpty) return true;
                 result = _engine.ToFullInt((negative ? "-" : "") + digits.ToString());

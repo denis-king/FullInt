@@ -194,6 +194,9 @@ namespace FullNumerics.Tests
             Assert.AreEqual("42", FullInt.Parse("  42 ").ToString());
             Assert.AreEqual("255", FullInt.Parse("0xFF").ToString());
             Assert.AreEqual("-255", FullInt.Parse("-0xff").ToString());
+            Assert.AreEqual("17", FullInt.Parse("017").ToString(), "leading zeros: decimal, no octal");
+            Assert.AreEqual("-8", FullInt.Parse("-008").ToString());
+            Assert.AreEqual("0", FullInt.Parse("000").ToString());
             string longText = "9" + new string('0', 5000);
             Assert.AreEqual(longText, FullInt.Parse(longText).ToString());
 
