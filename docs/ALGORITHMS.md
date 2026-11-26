@@ -4,87 +4,90 @@ Notation: `n`, `m` are operand sizes in 64-bit limbs; `M(n)` is the cost of mult
 
 ## Current implementation
 
-| Operation | Where | Algorithm | Cost |
-|---|---|---|---|
-| Add / Sub | `Add.asm`, `Sub.asm` | Limb loop from LSW to MSW with `adc`/`sbb`. The carry is saved in `al` with `setc` and restored with `shr al,1`. Sub compares magnitudes first and swaps operands so the result is non-negative. | O(n) |
-| Compare | `Compare.asm` | Skip leading zeros, compare lengths, then limbs from MSW | O(n) |
-| Multiply | `Mult.asm` | **Product scanning (column-wise) schoolbook.** For each result limb, sum all `a[i]·b[j]` with `i + j = k` into a 192-bit accumulator (`r13:r14:r15`) using `mul` + `adc`. The inner loop always runs over all of `b` and range-checks `i`. | O(n·(n+m)) iterations, about 2× the necessary work |
-| Divide by 1 limb | `Div2Long.asm` | Native `div r64` (128/64 → 64) per limb, from MSW | O(n), but `div` costs 30–90 cycles |
-| Divide | `Div.asm` | Long division with a quotient-digit estimate: the top two words are normalized on every step with `bsr` + `shld`, `q_min = U / (D+1)` and `q_max = U / D` are computed, then interpolated using the next divisor word. The digit is applied with a multiply-subtract and **one** ±1 correction. | O(n·m), ⚠️ the estimate can be off by more than 1, which gives wrong digits |
-| To decimal string | `ToDecString.asm` | Repeated division of the whole number by 10¹⁹, each remainder producing 19 digits | O(n²) |
-| From decimal string | `FromDecString.asm` | Parse 19-digit chunks, then convert radix 10¹⁹ → 2⁶⁴ by repeated division | O(n²) |
-| Power | `FullIntEngine.pow` | Right-to-left binary exponentiation. The exponent bits come from `ToString(2)`. | O(log e) multiplications |
-| Radix mode conversion | `ConvertToBase` | Repeated division by 10¹⁹ (bin → dec) or by 2⁶⁴ written in radix 10¹⁹ (dec → bin) | O(n²) |
+The same algorithms run in the .NET library (C#, `FullInt.Core`) and the C++ one (`FullInt.Cpp/src`). The words inside are 64-bit, most significant first. The thresholds below are the x64 defaults in words; x86 and the narrower ARM64 cores (`ArmCpu.Narrow`, e.g. Neoverse-N1) have their own.
 
-### Why the schoolbook multiply loses to `BigInteger` today
+### Kernels (assembly, `FullInt.Asm/Sources`)
 
-1. **Wasted iterations.** About half the inner iterations of `Mult.asm` are out of range and do nothing but branch.
-2. **Algorithmic threshold.** `BigInteger` switches to Karatsuba above a few dozen 32-bit words, so for large inputs it wins on complexity, whatever the word size.
-3. **Overhead per call.** Two allocations per result (`new ulong[]` + `DeleteZeros().ToArray()`), span pinning, and a P/Invoke transition. For numbers under about 8 limbs this costs more than the arithmetic.
-4. **No benchmark harness.** `Stopwatch` inside unit tests includes JIT time, GC and test framework noise.
+| Kernel | x64 baseline | x64 with BMI2 / ADX / AVX2 | x86 | ARM64 |
+|---|---|---|---|---|
+| Add, subtract | `adc` / `sbb` loops | | 32-bit port | `adcs` / `sbcs`, `ldp` / `stp` |
+| Compare, AND / OR / XOR, shifts | scalar | AVX2 (`CompareAvx2`, `LogicAvx2`, `ShiftAvx2`) | scalar | scalar |
+| Multiply basecase | product scanning (`Mult`) | `mulx` + `adcx` / `adox` (`MultAdx`) | 32-bit port | `mul` / `umulh` |
+| Square, low half of a product | `Sqr` | `SqrAdx`, `MulLoAdx` | ✓ | ✓ |
+| Divide by one word | `div` | precomputed reciprocal (`DivRecip`, Möller–Granlund) | `div` | reciprocal (no 128/64 `udiv`) |
+| Long division | estimate + correction (`Div`) | reciprocal of the top words | ✓ | reciprocal |
+| Decimal text, both ways | base 10¹⁹ (`ToDecString`, `FromDecString`), the fraction method for short numbers | | ✓ | ✓ |
+| NTT butterflies | — | AVX2 (`NttAvx2`) | AVX2 | NEON (`NttNeon`) |
+| Schönhage–Strassen butterflies | — | `FftAdx` | C# / C++ | C# / C++ |
 
-## Planned algorithms
+The kernel set is picked at start-up with `cpuid`; `FULLINT_CPU=baseline` forces the baseline set. On .NET a call into a kernel costs about 12–16 ns, and the short calls skip the GC transition on .NET 8 (`SuppressGCTransition`). The shortest operations (one or two words, short compares) stay in C#.
 
-### Multiplication ladder
+### Multiplication
 
-| Size (limbs, to be tuned) | Algorithm | Complexity | Notes |
-|---|---|---|---|
-| 1 | `mul` / `Math.BigMul` | O(1) | Stay in managed code, no P/Invoke |
-| 2 – ~32 | **Schoolbook, operand scanning**: `mul_1` for the first row, then `addmul_1` for each remaining row | O(n·m) | Inner loop has no branches. On x64, the BMI2+ADX variant uses `mulx` + `adcx`/`adox` (two independent carry chains), about 1.5–2× faster. Unroll 4×. |
-| ~32 – ~200 | **Karatsuba** ✅ | O(n^1.585) | Three half-size products: `z0 = a0·b0`, `z2 = a1·b1`, `z1 = (a0+a1)(b0+b1) − z0 − z2`. Recurse until the threshold. Uses a scratch buffer of about 2n limbs from `ArrayPool`. |
-| ~200 – ~3000 | **Toom-Cook 3** (Toom-3) ✅ | O(n^1.465) | Five products at evaluation points {0, 1, −1, 2, ∞}, Bodrato's interpolation sequence. |
-| > ~3000 (≈ 200k bits) | **NTT** (three-prime number-theoretic transform + CRT) or **Schönhage–Strassen** | O(n log n log log n) | Needs 64-bit modular multiplication with primes p < 2⁶³, Montgomery or Shoup reduction. |
-| unbalanced (m ≪ n) | Split the longer operand into m-sized chunks and add the shifted partial products | | Avoids wasting Karatsuba on zero padding |
-| `a·a` | **Dedicated squaring** | ~0.6–0.7 × M(n) | Compute only the off-diagonal products, double them, add the diagonal |
+| Size (shorter operand) | Algorithm | Cost |
+|---|---|---|
+| 1 word | `Math.BigMul` in C# | O(1) |
+| below 64 | schoolbook basecase in assembly; squaring has its own kernel up to 96 | O(n·m) |
+| 64 – 255 | Karatsuba | O(n^1.585) |
+| 256 – 511 | Toom-3 (points 0, 1, −1, −2, ∞; Bodrato's interpolation) | O(n^1.465) |
+| 512 – 1023 | Toom-4 | O(n^1.404) |
+| from 1024 | Toom-6 | O(n^1.338) |
+| from 896 (when the AVX2 / NEON kernels exist) | **NTT**: 32-bit digits, three primes below 2³⁰, transform length 2^k or 3·2^k, Garner's CRT; products up to 2²¹ words | O(n log n) |
+| from 8192 (no NTT kernels) | **Schönhage–Strassen**: convolution mod 2^N + 1, twiddles as shifts | O(n log n log log n) |
+| unbalanced operands | the longer one is cut into pieces of the shorter one's length | |
 
-**Implemented now** (`FullInt.Core/Karatsuba.cs`):
-- 1 × 1 limb: managed `FullHelper.BigMul`, no P/Invoke.
-- Basecase: the author's column (product-scanning) asm `Mult`, with per-column bounds and a 2× unrolled inner loop.
-- Karatsuba from **64 limbs** in the shorter operand, in C# over the asm basecase, add and sub. It uses the subtractive form `z1 = z0 + z2 − (a1−a0)(b1−b0)`, so every intermediate stays at m or 2m+1 limbs. Scratch is about 8n limbs from `ArrayPool`. Unbalanced operands are cut into chunks, as in the table.
-- Toom-3 from **256 limbs** (when the shorter operand reaches the top third of the longer one), in C# like Karatsuba: points 0, 1, −1, −2, ∞, Bodrato's interpolation with sign-magnitude temporaries; the exact divisions by 3 and 2 are the asm divide-by-word and shift. 10–30% faster than Karatsuba alone from 512 limbs (`kara toom`).
-- The threshold was 80 with the old add/sub loops; after the add/sub asm rewrite (2–3× faster) it is 64. A C# → asm call costs about 12–16 ns; on .NET 8 the short calls skip the GC transition (`SuppressGCTransition`), which saves 3–7 ns of it. A further step would be the per-level add/sub fused into one asm kernel. Tuning: `dotnet run -c Release --project FullInt.Benchmarks -- kara`. Numbers: [benchmarks/2026-11-14-karatsuba.md](benchmarks/2026-11-14-karatsuba.md).
-
-Above roughly 100k bits, the three top-level Karatsuba or Toom subproducts can run in parallel with `Parallel.Invoke`, at the cost of a separate scratch buffer per branch.
+Karatsuba and the Toom levels are written in the upper layer (C# / C++) over the assembly add, subtract, shift and exact-division kernels. Their scratch memory comes from `ArrayPool` (C#) or a thread-local buffer (C++).
 
 ### Division
 
-| Algorithm | When | Complexity |
+| Case | Algorithm | Cost |
 |---|---|---|
-| `divrem_1` with **precomputed reciprocal** (Möller–Granlund, "Improved division by invariant integers") | divisor of 1 limb | O(n), about 3–5× faster than `div` per limb. Required on ARM64, which has no 128/64 divide instruction. |
-| **Knuth Algorithm D** (TAOCP vol. 2, §4.3.1) | divisor of 2 limbs or more | O(n·m). Normalize once (shift so the divisor's top bit is set). Estimate `q̂` from the top two dividend limbs and the top divisor limb, refine with the second divisor limb (at most two corrections), then `submul_1`. If the result goes negative, add back once. This makes every quotient digit provably correct. |
-| **Burnikel–Ziegler** recursive division | m > ~60 limbs | O(M(n)·log n). Reuses Karatsuba and Toom. |
-| **Newton reciprocal** + multiply | very large, or repeated division by the same divisor | O(M(n)) |
-| **Barrett reduction** / **Montgomery multiplication** | modular arithmetic with a fixed modulus | O(M(n)) per reduction. Montgomery avoids division entirely. |
+| divisor of one word | reciprocal per word (Möller–Granlund) | O(n) |
+| short divisor or short quotient | long division in assembly: the digit estimated from the top words, at most a couple of corrections | O(n·m) |
+| divisor and quotient both from 96 words | **Burnikel–Ziegler** (block size 48), over the fast multiplication | O(M(n)·log n) |
+| divisor from 2048 words | **Newton reciprocal**, then the quotient in blocks (Barrett style): about 2.5–4.5 products in all | O(M(n)) |
+| quotient only (`/` without the remainder) | an approximate quotient from the top words, corrected by one multiplication | saves the remainder's product |
 
-### Radix conversion (string ↔ binary)
+### Decimal text
 
-| Algorithm | Complexity |
+| Direction | Algorithm | Cost |
+|---|---|---|
+| `ToString` | divide and conquer by cached powers 10^(19·2^k); leaves of 32–48 words in assembly (base 10¹⁹, or the fraction method) | O(M(n)·log n) |
+| `Parse` | divide and conquer: halves multiplied by the cached powers; leaves of up to 912 digits in assembly | O(M(n)·log n) |
+
+### Other operations
+
+| Operation | How |
 |---|---|
-| Current: repeated division by 10¹⁹ | O(n²) |
-| **Divide and conquer**: precompute `10^(19·2^k)`, split the number by the largest power, recurse on both halves (parsing works symmetrically with multiply-and-add) | O(M(n)·log n) |
+| Bit operations on negative numbers | the two's complement computed on the fly, as `BigInteger` |
+| Shifts | word moves plus `shld` / `shrd` (x64), `extr` (ARM64), AVX2 for long numbers |
+| `Pow` | binary exponentiation, squaring through the squaring path |
+| Conversion to `double` / `float` | the top 63 bits plus a sticky bit, one rounding (correctly rounded) |
 
-For a million-digit number this is the difference between minutes and well under a second. The table of powers can be cached and shared.
-
-### Other planned operations
+## Planned algorithms
 
 | Operation | Algorithm |
 |---|---|
-| GCD | Binary GCD for small sizes, **Lehmer's** algorithm (double-digit) for medium, half-GCD for very large |
+| GCD | Binary GCD for small sizes, **Lehmer's** algorithm (double digit) for medium, half-GCD for very large |
 | Modular inverse | Extended Lehmer GCD |
-| ModPow | Montgomery form + **sliding-window** exponentiation (window 4–6 bits depending on exponent size) |
-| Integer square root, n-th root | Newton iteration with an initial estimate from the top bits (`Math.Sqrt` on the leading 53 bits) |
+| ModPow | Montgomery form + **sliding-window** exponentiation (window 4–6 bits depending on the exponent's size) |
+| Integer square root, n-th root | Newton iteration with an initial estimate from the top bits |
 | Primality | Trial division by small primes, then **Miller–Rabin** with random bases, optionally Baillie–PSW |
-| Bitwise ops on negative numbers | Two's-complement view computed on the fly, as `BigInteger` does |
-| Shifts | `shld`/`shrd` loops (x64), `extr` (ARM64) |
+| Per-CPU thresholds | A table by CPU family plus a one-time tuner that writes a profile keyed by the CPU model |
+| Parallel products | Above about 100k bits, the top-level Toom subproducts or the NTT transforms on several threads |
 
 ## Correctness strategy
 
-- **Reference oracle.** Every operation is checked against `System.Numerics.BigInteger` on random inputs.
-- **Edge-case generators**, not just uniform random bytes: all-ones limbs (`0xFFFF…`), single set bits, powers of two ± 1, divisors with a top limb of `0x8000…0000` or `0xFFFF…FFFF`, quotient digits that hit `q̂ = 2⁶⁴ − 1`, operands of lengths 1, 2, threshold − 1, threshold and threshold + 1.
-- **Deterministic seeds.** A fixed seed in CI, plus a random seed that is printed on failure so it can be replayed.
-- **Algebraic identities** as properties: `(a·b)/b == a`, `a == q·b + r` with `|r| < |b|`, `Parse(ToString(a)) == a`, `Karatsuba(a,b) == Schoolbook(a,b)`.
-- **Both kernels.** Each test runs against the native and the managed kernels.
-- **Fuzzing.** A nightly CI job runs millions of random cases.
+- **Reference oracles.** The .NET suite checks every operation against `System.Numerics.BigInteger`; the C++ suite against GMP.
+- **Both cores and every kernel set.** The .NET suite runs on the native and the managed core (`FULLINT_FORCE_MANAGED=1`); the C++ suite with the CPU's kernels and with `FULLINT_CPU=baseline`; on ARM64 every assembly kernel is also checked word for word against its portable C++ version (`fullint_arm64_kernels`).
+- **Edge cases, not only uniform random words.** The generators include:
+  - all-ones words, single set bits, powers of two ± 1;
+  - divisors whose top word is `0x8000…0000` or `0xFFFF…FFFF`;
+  - quotient digits that hit `2⁶⁴ − 1`;
+  - lengths around every threshold.
+- **Identities**: `(a·b)/b == a`, `a == q·b + r` with `|r| < |b|`, `Parse(ToString(a)) == a`.
+- **Platforms**: Windows x64 and x86, Linux x64 (Docker), Linux ARM64 (a phone and a cloud machine).
+- **Planned**: a fixed-seed CI run on every commit and a long randomized run on a schedule.
 
 ## References
 

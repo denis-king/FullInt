@@ -1,16 +1,42 @@
 # FullInt
 
-Arbitrary-precision integer arithmetic for .NET, built on 64-bit limbs with hand-written assembly kernels.
+Fast arbitrary-precision integers for .NET and C++. In .NET, `FullInt` is an alternative to `System.Numerics.BigInteger` with the same API and a faster engine: 64-bit limbs, hand-written assembly kernels for x64, x86 and ARM64, and sub-quadratic algorithms. In C++, `fullnumerics::FullInt` runs on the same kernels.
 
-> **Status: pre-alpha.** The library is not yet published to NuGet. Only **Windows x64** has a native backend, and the full test suite does not pass yet. See [docs/ANALYSIS.md](docs/ANALYSIS.md) for known issues and the roadmap.
+> **Status: preview before 1.0.** The API is settled and tested against `BigInteger` and GMP. The NuGet package builds and installs on every supported platform, but it is not published yet; see [Installing](#installing).
 
-## Why another big-integer library?
+## Why not BigInteger
 
-`System.Numerics.BigInteger` stores numbers as 32-bit words. FullInt uses **64-bit limbs** and runs the hot loops in native assembly (`mul`, `adc`, `div` on x86-64), so each multiply step handles four times as many bits per word product. The goals:
+`BigInteger` is fine for small numbers and slow for big ones:
+- it uses 32-bit words and plain C#;
+- its multiplication and decimal conversion slow down much faster than the numbers grow: at 4096 words on .NET 10, a product takes 5.8 ms against FullInt's 0.3 ms, and `ToString` 65 ms against 2.3 ms.
 
-- **Speed on large numbers.** Native kernels plus sub-quadratic algorithms (Karatsuba and Toom-3 are in; FFT/NTT is planned).
-- **Allocation-free low-level API.** Operations on `Span<ulong>` that write into caller-provided buffers.
-- **A foundation for big decimals and floats.** `BigDecimal` and `BigFloat` are planned on top of the same integer core.
+.NET 10 made its division much faster than .NET 8's, but FullInt is still 11–23× faster on large numbers.
+
+FullInt keeps the API and replaces the engine:
+
+| | `FullInt` |
+|---|---|
+| Word | 64 bits; assembly kernels per CPU (BMI2 / ADX and AVX2 on x64, NEON on ARM64), chosen at start-up |
+| Multiplication | schoolbook, Karatsuba, Toom-3 / 4 / 6, NTT |
+| Division | schoolbook, Burnikel–Ziegler, Newton |
+| Decimal text | divide and conquer, both ways |
+| Loops without allocation | `FullInt.Add(result, a, b)` and its siblings |
+
+How many times faster than `BigInteger` on .NET 10 (Windows x64, Ryzen 7 7730U; a word is 64 bits; above 1 means FullInt is faster):
+
+| Operation | 1 word | 4 | 16 | 64 | 256 | 1024 | 4096 | 16384 |
+|---|---|---|---|---|---|---|---|---|
+| `a * b` | 1.8 | 2.7 | 4.4 | 5.0 | 4.8 | 8.5 | 18 | 35 |
+| `c / b` | 1.9 | 1.6 | 4.6 | 6.8 | 5.2 | 6.9 | 11 | 23 |
+| `ToString()` | 2.4 | 1.1 | 1.5 | 2.9 | 7.1 | 14 | 28 | 97 |
+| `Parse` | 1.7 | 2.1 | 2.6 | 2.8 | 3.9 | 4.7 | 6.9 | 10 |
+| `a + b` | 1.5 | 1.4 | 2.3 | 2.4 | 3.7 | 3.4 | 2.7 | 2.6 |
+
+FullInt is at least as fast in every measured cell, from a single word up. The gain grows with the size, because the algorithms differ in complexity. Against .NET 8's `BigInteger` the division gains are far larger (219× at 4096 words), because .NET 10 sped its division up. On ARM64 (Neoverse-N1, against .NET 8) the gains are a little smaller, and at 2–4 words addition and `ToString` are on par. The full tables, the other operations and the raw times are in [docs/benchmarks/2026-11-26-net-vs-biginteger.md](docs/benchmarks/2026-11-26-net-vs-biginteger.md).
+
+For values that fit in 64 or 128 bits, `long` and `Int128` beat both.
+
+The C++ library on the same kernels runs close to GMP 6.3 on x64; the measurements are in [docs/HISTORY.md](docs/HISTORY.md).
 
 ## Quick start
 
@@ -18,89 +44,110 @@ Arbitrary-precision integer arithmetic for .NET, built on 64-bit limbs with hand
 using FullNumerics;
 
 FullInt a = FullInt.Parse("123456789012345678901234567890");
-FullInt b = FullInt.Parse("0xFFFFFFFFFFFFFFFFFFFF");
-FullInt c = 42;                                    // from any integer type
+FullInt b = 42;                                     // from any integer type
 
-var sum  = a + b;
-var prod = a * b;
-var quot = a / c;
-var rem  = a % c;
-var pow  = FullInt.Pow(c, 100);
-var xor  = a ^ b;                                  // XOR, as for int and BigInteger
+var p = FullInt.Pow(a, 100) * b;
+var q = p / a;                                      // truncates toward zero, like BigInteger
+var x = a ^ b;                                      // XOR, as for int and BigInteger
 
-Console.WriteLine(prod);                // decimal
-Console.WriteLine(prod.ToString("X"));  // hex
-byte[] bytes = prod.ToByteArray();      // as BigInteger; (BigInteger)prod, (FullInt)big
+Console.WriteLine(p);                               // decimal
+Console.WriteLine(p.ToString("X"));                 // hexadecimal
+byte[] bytes = p.ToByteArray();                     // the BigInteger format
+var big = (System.Numerics.BigInteger)p;            // and back: (FullInt)big
 ```
 
-The current public API is listed in [docs/OPERATIONS.md](docs/OPERATIONS.md).
+```cpp
+#include <fullnumerics/FullInt.h>
+using fullnumerics::FullInt;
 
-## Supported operations (current)
+FullInt p = fullnumerics::Pow(FullInt::Parse("123456789012345678901234567890"), 100);
+std::cout << p.ToString() << "\n";
+```
 
-| Operation | Windows x64 (asm) | Managed fallback |
-|---|---|---|
-| `+`, `-`, unary `-` | ✅ | ✅ |
-| `*` (schoolbook, Karatsuba from 64 limbs, Toom-3 from 256) | ✅ | ✅ |
-| `/`, `%` | ✅ | ✅ |
-| `&`, `\|`, `^` (XOR), `~`, `<<`, `>>` (BigInteger semantics) | ✅ | ✅ |
-| Compare, `==`, `<`, … | ✅ | ✅ |
-| `Pow`, `DivRem`, `Abs`, `Min`, `Max` | ✅ | ✅ |
-| `Parse` / `TryParse`, `ToString` (`D`, `X`, `B` formats) | ✅ | ✅ |
-| Bytes / words in and out (either order), `BigInteger`, System.Text.Json | ✅ | ✅ |
+The whole API, with the rules for division, signs and bit operations, is in [docs/OPERATIONS.md](docs/OPERATIONS.md). It covers:
+- operators;
+- `Parse` / `ToString` with formats;
+- bytes and words in either order;
+- conversions to and from every number type;
+- System.Text.Json;
+- generic math (`IBinaryInteger<FullInt>`, .NET 7+).
+
+## Installing
+
+**.NET.** One NuGet package, `FullInt`, with two builds:
+- `net8.0`, for .NET 8 and later;
+- `netstandard2.0`, for .NET Framework 4.6.1+, Mono and Unity.
+
+The native libraries come inside the package. Until it is published, build it locally:
+
+```powershell
+powershell -File pack/pack-nuget.ps1                # out/nuget/FullInt.<version>.nupkg (needs Docker for the Linux libraries)
+dotnet add package FullInt --prerelease --source out/nuget
+```
+
+**C++.** CMake; three ways, described in [docs/CPP_INSTALL.md](docs/CPP_INSTALL.md):
+- `cmake --install` and then `find_package(FullInt)`;
+- `add_subdirectory`;
+- `FetchContent` from this repository.
+
+In every case the project links `FullInt::FullInt`.
 
 ## Platforms
 
-| RID | Backend | Status |
-|---|---|---|
-| `win-x64` | NASM x86-64 | working, has known bugs |
-| `win-x86` | NASM x86 (32-bit port of the x64 kernels) | ✅ working, built next to win-x64 |
-| `linux-x64` | NASM x86-64 (System V ABI) | ✅ working (C# and C++), tested in Docker |
-| `osx-x64` | NASM x86-64 (System V ABI) | sources exist, build script is a stub |
-| `win-arm64`, `linux-arm64`, `osx-arm64` | AArch64 assembly | planned |
-| anything else (incl. ARM32) | managed C# | ✅ complete, slower than asm |
+| | Kernels | .NET | C++ |
+|---|---|---|---|
+| Windows x64 | x86-64 assembly | ✅ | ✅ MSVC |
+| Windows x86 | x86 assembly | ✅ | ✅ MSVC |
+| Linux x64 | x86-64 assembly | ✅ | ✅ GCC, Clang |
+| Linux ARM64 | AArch64 assembly | ✅ | ✅ GCC, Clang |
+| macOS, Windows ARM64, Android, iOS, others | managed C# (.NET only) | ✅ same results, slower | — |
 
-Runtimes: one package with two builds, `netstandard2.0` (.NET Framework 4.6.1+, Xamarin, Mono, Unity) and `net8.0` (.NET 8 and later). If the native library cannot be loaded, the managed core is used automatically.
+If the native library cannot be loaded, the .NET library switches to its managed core without a word. `FULLINT_FORCE_MANAGED=1` forces it. The details, including the ABIs and the ARM64 port, are in [docs/PLATFORMS.md](docs/PLATFORMS.md).
 
-Details: [docs/PLATFORMS.md](docs/PLATFORMS.md).
+## Correctness
 
-## Building
+Every operation is checked differentially, on random and edge-case numbers from 1 word to millions of bits:
+- **.NET:** against `BigInteger`, on the native and the managed core, on .NET 8 and .NET Framework 4.8, x64 and x86;
+- **C++:** against GMP, with every kernel variant: the CPU's own and `FULLINT_CPU=baseline`.
 
-Requirements (Windows x64):
+The suites run on Windows x64 and x86, Linux x64 and Linux ARM64.
 
-- .NET SDK 8.0 or later
-- Visual Studio or Build Tools 2017+ with the **Desktop development with C++** workload (only `link.exe` is used; it is located automatically with `vswhere`)
-- NASM is bundled in `Tools/nasm`
+## Building from source
+
+Requirements on Windows:
+- .NET SDK 8 or later;
+- Visual Studio 2022+ (or the Build Tools) with the **Desktop development with C++** workload, for `link.exe`;
+- NASM, which is bundled in `Tools/nasm`.
 
 ```powershell
-dotnet build FullInt.sln -c Release
-dotnet test  FullInt.Tests/FullInt.Tests.csproj
-.\FullInt.Benchmarks\ab.ps1      # after an asm edit: speed vs HEAD
+dotnet build FullInt.sln -c Release                 # builds the native library of this machine too
+dotnet test  FullInt.Tests -c Release               # net8.0 and net48
+powershell -File docker/test-linux-x64.ps1          # Linux x64 in Docker: C++ against GMP and .NET
 ```
 
-`dotnet build` builds the native library too. `FullInt.AsmForNet` runs `FullInt.Asm/build/build-native.cmd`, which assembles `Sources/x64/*.asm` and links `FullIntOperations_win_x64.dll` into `FullInt.Asm/bin/<rid>/<Configuration>/`. The DLL (and its `.pdb` in Debug) is then copied to the output of every project that references `FullInt.Core`. The native step is incremental: it only reruns when a source, `exports.def` or a build script changes.
+How the native build works:
+- `FullInt.AsmForNet` assembles the kernels for the build machine. On Windows x64 it builds the x86 library as well.
+- The result is copied next to every project that references `FullInt.Core`.
 
 | Option | Effect |
 |---|---|
-| `FULLINT_LINK=<path>` (env) | Use this `link.exe` instead of searching with `vswhere` |
-| `FULLINT_NASM=<path>` (env) | Use this `nasm.exe` instead of the bundled one |
-| `-p:FullIntNativeRid=<rid>` | Build for another RID (non-Windows targets are stubs for now) |
-| `-p:FullIntSkipNative=true` | Skip the native build; the managed fallback is used |
+| `FULLINT_LINK=<path>`, `FULLINT_NASM=<path>` (environment) | The linker and assembler to use |
+| `-p:FullIntNativeRid=<rid>` | Build the native library for another RID |
+| `-p:FullIntSkipNative=true` | No native build; the managed core is used |
 
-The NuGet package (`FullInt`, every native library in `runtimes/<rid>/native`): `powershell -File pack/pack-nuget.ps1`, output in `out/nuget/`; it needs Docker for the Linux libraries. See [docs/PLATFORMS.md](docs/PLATFORMS.md#native-packaging-for-nuget).
+The C++ library and its tests against GMP: [docs/CPP_INSTALL.md](docs/CPP_INSTALL.md) and `FullInt.Cpp/CMakePresets.json` (`x64-bench`, `x86-bench`).
 
-The C++ library (`FullInt.Cpp`, `fullnumerics::FullInt`): `cmake --install` and `find_package(FullInt)`, or `add_subdirectory` / `FetchContent`; see [docs/CPP_INSTALL.md](docs/CPP_INSTALL.md).
-
-On platforms without a native backend yet (`linux-*`, `osx-*`, `win-arm64`), the build succeeds with warning `FULLINT001` and the managed fallback core is used.
-
-## Repository layout
+## Repository
 
 ```
-FullInt.Core/        main library: FullInt type, engine, core abstraction, P/Invoke bindings
-FullInt.Asm/         native kernels (NASM: Sources/x64, Sources/x86) and build scripts
-FullInt.AsmForNet/   MSBuild glue that builds the native DLL and copies it next to managed outputs
-FullInt.Tests/       MSTest suite; randomized differential tests against System.Numerics.BigInteger
-FullInt.Benchmarks/  asm regression check (ab.ps1) and BenchmarkDotNet suites, see its README
-Tools/nasm/          bundled NASM assembler
+FullInt.Core/        the .NET library (assembly and package FullInt, namespace FullNumerics)
+FullInt.Asm/         assembly kernels: Sources/x64, Sources/x86 (NASM), Sources/arm64 (GNU as); build scripts
+FullInt.AsmForNet/   MSBuild glue: builds the native library and copies it next to the outputs
+FullInt.Cpp/         the C++ library (CMake), its tests and benchmarks against GMP
+FullInt.Tests/       MSTest: differential tests against BigInteger
+FullInt.Benchmarks/  benchmarks: against BigInteger (cross), asm A/B (ab.ps1), BenchmarkDotNet suites
+pack/                the NuGet package: build script, .targets, package README, consumer test
+docker/              Linux x64 / ARM64 test images
 docs/                documentation
 ```
 
@@ -108,23 +155,29 @@ docs/                documentation
 
 | Document | Contents |
 |---|---|
+| [OPERATIONS.md](docs/OPERATIONS.md) | The public API and its semantics |
+| [CPP_INSTALL.md](docs/CPP_INSTALL.md) | Using the C++ library |
+| [USE_CASES.md](docs/USE_CASES.md) | Where big integers are used and where FullInt fits (not for production cryptography) |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Layers, data representation, native interop, build pipeline |
-| [OPERATIONS.md](docs/OPERATIONS.md) | Public API, semantics, edge cases |
-| [ALGORITHMS.md](docs/ALGORITHMS.md) | Current and planned algorithms, complexity, thresholds |
-| [PLATFORMS.md](docs/PLATFORMS.md) | ABIs, assembler toolchains, ARM64 port, NuGet packaging |
-| [USE_CASES.md](docs/USE_CASES.md) | Where arbitrary-precision arithmetic is used and where FullInt fits |
-| [ANALYSIS.md](docs/ANALYSIS.md) | Project review, known defects, roadmap (in Russian) |
+| [ALGORITHMS.md](docs/ALGORITHMS.md) | Algorithms, complexity, thresholds |
+| [PLATFORMS.md](docs/PLATFORMS.md) | ABIs, toolchains, ARM64, NuGet packaging |
+| [HISTORY.md](docs/HISTORY.md) | From byte arithmetic to the race with GMP |
+| [benchmarks/](docs/benchmarks/) | Measurements |
 
-## Roadmap (short)
+## Roadmap
 
-1. **Stabilize:** fix the division and ABI bugs, make the build portable, make tests deterministic.
-2. **Core 2.0:** binary-only little-endian limbs, small native primitive layer (GMP `mpn`-style), complete managed fallback, immutable public type with generic math.
-3. **NuGet preview:** `win-x64`, `linux-x64`, `osx-x64` native assets plus the managed fallback.
-4. **ARM64 and speed:** AArch64 kernels, FFT/NTT multiplication, divide-and-conquer base conversion.
-   Per-CPU tuning: a defaults table by CPU family, a one-time tuner (`FullInt.Tune()` / `fullint_tune`) that
-   measures the thresholds and kernel variants and writes a profile keyed by the CPU model, loaded at startup.
-5. **Extensions:** GCD, ModPow, roots, primality tests, `BigDecimal`, `BigFloat`.
+- **1.0:**
+  - the license;
+  - the measurements above;
+  - publishing the NuGet package.
+- **After 1.0:**
+  - `ModPow`, `GreatestCommonDivisor`, `Sqrt`;
+  - per-CPU self-tuning of the thresholds;
+  - closing the ARM64 gaps to GMP;
+  - macOS (Apple Silicon) and Windows ARM64 kernels;
+  - a vcpkg port.
+- **Later:** `FullDecimal`, a big float.
 
 ## License
 
-Not chosen yet. MIT or Apache-2.0 is recommended before the first NuGet release.
+Not chosen yet; it will be set before the first NuGet release.

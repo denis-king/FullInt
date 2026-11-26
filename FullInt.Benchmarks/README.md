@@ -88,3 +88,11 @@ Full runs worth keeping go to [docs/benchmarks/](../docs/benchmarks/) (summary +
 - [2026-11-14-api-vs-biginteger.md](../docs/benchmarks/2026-11-14-api-vs-biginteger.md) — FullInt vs `BigInteger` (Add, Mult, Div), after the Mult inner-loop fix
 - [2026-11-14-karatsuba.md](../docs/benchmarks/2026-11-14-karatsuba.md) — Karatsuba threshold tuning and Mult vs `BigInteger` up to 4096 limbs
 - [2026-11-14-api-after-optimizations.md](../docs/benchmarks/2026-11-14-api-after-optimizations.md) — FullInt vs `BigInteger` (Add, Mult, Div, up to 4096 limbs) after all optimizations of the day
+
+## FullInt against BigInteger (cross)
+
+```powershell
+dotnet run -c Release --project FullInt.Benchmarks -p:BenchTfm=net10.0 -- cross --max 16384 --csv out/bench/cross.csv
+```
+
+The same numbers on both sides; every operation and size warmed on both before anything is measured; one core, high priority. `-p:BenchTfm=net10.0` runs it on .NET 10 (the default is net8.0): `BigInteger` differs a lot between the two (its division on .NET 10 is ~30x faster at 4096 words). `--quick` for a fast check, `--ops mul,div,...` for a subset. Results: [docs/benchmarks/2026-11-26-net-vs-biginteger.md](../docs/benchmarks/2026-11-26-net-vs-biginteger.md).

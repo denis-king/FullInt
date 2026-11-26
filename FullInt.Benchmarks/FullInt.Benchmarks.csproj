@@ -6,7 +6,9 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
+    <!-- -p:BenchTfm=net10.0: the same benchmarks on a newer runtime (BigInteger changes between them) -->
+    <BenchTfm Condition="'$(BenchTfm)' == ''">net8.0</BenchTfm>
+    <TargetFramework>$(BenchTfm)</TargetFramework>
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>

@@ -1,11 +1,10 @@
-<!-- DRAFT: the table gets numbers before publishing (a fresh benchmark against BigInteger, x64 and ARM64) -->
 # FullInt
 
 Fast arbitrary-precision integers for .NET. `FullInt` follows the API of `System.Numerics.BigInteger` and replaces its engine.
 
 ## Why FullInt
 
-`BigInteger` is fine for small numbers and slow for big ones: it uses 32-bit words, schoolbook multiplication up to large sizes and a quadratic `ToString`. FullInt keeps the API and changes what is underneath:
+`BigInteger` is fine for small numbers and slow for big ones: it uses 32-bit words and plain C#, and its multiplication, division and decimal conversion slow down much faster than the numbers grow. FullInt keeps the API and changes what is underneath:
 
 - **Limbs and kernels.**
   - 64-bit limbs.
@@ -17,13 +16,17 @@ Fast arbitrary-precision integers for .NET. `FullInt` follows the API of `System
 - **In-place API.** `FullInt.Add(result, a, b)` and its siblings do not allocate in loops.
 - **The C++ version** runs on the same kernels, on par with GMP.
 
-| vs BigInteger (.NET 8, x64) | 8 words | 64 words | 1024 words |
-|---|---|---|---|
-| Multiply | … | … | … |
-| Divide | … | … | … |
-| ToString / Parse | … | … | … |
+How many times faster than `BigInteger` on .NET 10 (Windows x64, Ryzen 7 7730U; a word is 64 bits):
 
-The gain starts at a few hundred bits. On short numbers FullInt is no faster than `BigInteger`, because every operator returns a new object. For values that fit in 64 or 128 bits, `long` and `Int128` beat both.
+| Operation | 1 word | 4 | 16 | 64 | 256 | 1024 | 4096 | 16384 |
+|---|---|---|---|---|---|---|---|---|
+| `a * b` | 1.8 | 2.7 | 4.4 | 5.0 | 4.8 | 8.5 | 18 | 35 |
+| `c / b` | 1.9 | 1.6 | 4.6 | 6.8 | 5.2 | 6.9 | 11 | 23 |
+| `ToString()` | 2.4 | 1.1 | 1.5 | 2.9 | 7.1 | 14 | 28 | 97 |
+| `Parse` | 1.7 | 2.1 | 2.6 | 2.8 | 3.9 | 4.7 | 6.9 | 10 |
+| `a + b` | 1.5 | 1.4 | 2.3 | 2.4 | 3.7 | 3.4 | 2.7 | 2.6 |
+
+FullInt is at least as fast in every measured cell, from a single word up, and the gain grows with the size. For values that fit in 64 or 128 bits, `long` and `Int128` beat both. Details: https://github.com/denis-king/FullInt/blob/master/docs/benchmarks/2026-11-26-net-vs-biginteger.md
 
 Typical uses:
 - cryptography experiments and number theory;
