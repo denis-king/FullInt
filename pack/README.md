@@ -1,6 +1,34 @@
+<!-- DRAFT: the table gets numbers before publishing (a fresh benchmark against BigInteger, x64 and ARM64) -->
 # FullInt
 
-Arbitrary-precision integers for .NET. `FullInt` follows the API of `System.Numerics.BigInteger`. It stores numbers in 64-bit limbs and runs the hot loops in hand-written assembly.
+Fast arbitrary-precision integers for .NET. `FullInt` follows the API of `System.Numerics.BigInteger` and replaces its engine.
+
+## Why FullInt
+
+`BigInteger` is fine for small numbers and slow for big ones: it uses 32-bit words, schoolbook multiplication up to large sizes and a quadratic `ToString`. FullInt keeps the API and changes what is underneath:
+
+- **Limbs and kernels.**
+  - 64-bit limbs.
+  - Hand-written assembly kernels, chosen for the CPU at start-up: BMI2 / ADX and AVX2 on x64, and ARM64.
+- **Algorithms.**
+  - Multiplication: Karatsuba, Toom-Cook and NTT.
+  - Division: Newton and Burnikel–Ziegler.
+  - Fast decimal conversion both ways.
+- **In-place API.** `FullInt.Add(result, a, b)` and its siblings do not allocate in loops.
+- **The C++ version** runs on the same kernels, on par with GMP.
+
+| vs BigInteger (.NET 8, x64) | 8 words | 64 words | 1024 words |
+|---|---|---|---|
+| Multiply | … | … | … |
+| Divide | … | … | … |
+| ToString / Parse | … | … | … |
+
+The gain starts at a few hundred bits. On short numbers FullInt is no faster than `BigInteger`, because every operator returns a new object. For values that fit in 64 or 128 bits, `long` and `Int128` beat both.
+
+Typical uses:
+- cryptography experiments and number theory;
+- exact computation;
+- big factorials and constants.
 
 ```csharp
 using FullNumerics;
