@@ -87,17 +87,31 @@ A negative value is written as `-` and the digits of the magnitude (not two's co
 | `ToByteArray(isUnsigned, isBigEndian)`, `GetByteCount`, `TryWriteBytes(span, out n, …)` | As `BigInteger`: the fewest bytes; `isUnsigned` on a negative value throws `OverflowException`. The binary format of the number. |
 | `ToWords(order)`, `GetWordCount()`, `TryWriteWords(span, out n, order)` | The magnitude's words (the sign is `IsNegative`), like GMP `mpz_export`. Zero is one zero word. |
 | `(BigInteger)x` | Exact |
-| `(long)x`, `(ulong)x`, `(int)x`, `(uint)x` | `OverflowException` when out of range |
+| `(long)x`, `(ulong)x`, `(int)x`, `(uint)x`, `(Int128)x`, `(UInt128)x` | `OverflowException` when out of range |
+| `(double)x`, `(float)x`, `(Half)x` | Rounded to nearest, ties to even (correctly rounded: `BigInteger`'s conversion truncates in places, e.g. 2⁶³ − 1 → 2⁶³ − 1024); beyond the range an infinity |
+| `(decimal)x` | `OverflowException` beyond 96 bits |
+| `(FullInt)double`, `float`, `Half`, `decimal` | Truncated toward zero; NaN and the infinities throw `OverflowException` |
+| `x.GetBitLength()` | Bits of the shortest two's complement form without the sign bit, as `BigInteger.GetBitLength` |
 | System.Text.Json | `FullIntJsonConverter` (applied to the type, .NET 5+): written as a string of decimal digits (`"123"`, safe for readers with double numbers); a string or a number is read |
+
+## Generic math (.NET 7+)
+
+`FullInt` implements `IBinaryInteger<FullInt>` and `ISignedNumber<FullInt>` (as `BigInteger`), so generic code over `T : INumber<T>` / `IBinaryInteger<T>` takes it: `T.Zero`, `T.One`, `T.Abs`, `T.Clamp`, `T.CreateChecked(x)`, `T.IsEvenInteger`, `>>>`, and so on.
+
+| Member | Semantics |
+|---|---|
+| `CreateChecked` / `CreateSaturating` / `CreateTruncating` | From every integer type, `Int128`, `UInt128`, `BigInteger`, `double`, `float`, `Half`, `decimal`; to them: checked throws when out of range, saturating clamps, truncating wraps (the low bits of two's complement) |
+| `Parse` / `TryParse` with `NumberStyles` and a provider | `Integer` (white space, the provider's sign, decimal digits; no octal) and `HexNumber` (two's complement, as `BigInteger`: `"FF"` is −1, `"0FF"` is 255); other styles: `ArgumentException` |
+| `TryFormat(Span<char>, …)` | The formats of `ToString` |
+| `IsPow2`, `Log2`, `PopCount`, `TrailingZeroCount`, `LeadingZeroCount`, `RotateLeft`, `RotateRight`, `>>>` | On the shortest two's complement form in **64-bit words**. `BigInteger` uses 32-bit words, so `LeadingZeroCount`, the bit counts of negative values, `>>>` and the rotations can differ from it; every arithmetic result is the same. |
+| `DivRem(a, b)` | A `(Quotient, Remainder)` tuple |
 
 ## C++ (`fullnumerics::FullInt`)
 
-The same semantics with C++ conventions: value type (copies are deep, moves are cheap), `^` is XOR, `ToString()` is decimal, `operator<<` on streams. Words: `FullInt::FromWords`, `ToWords` with `WordOrder`; bytes: `FromBytes`, `ToBytes`.
+The same semantics with C++ conventions: value type (copies are deep, moves are cheap), `^` is XOR, `ToString()` is decimal, `operator<<` on streams. Words: `FullInt::FromWords`, `ToWords` with `WordOrder`; bytes: `FromBytes`, `ToBytes`; `static_cast` to the integer types (`std::overflow_error` out of range), to `double` / `float` (correctly rounded), `FromDouble`, `GetBitLength`. Generic code is templates there: no interfaces needed.
 
 ## Planned
 
 ```text
-Generic math: INumber<T>, IBinaryInteger<T>, ISignedNumber<T> (.NET 7+)
-Parse(ReadOnlySpan<char>, NumberStyles, IFormatProvider?), TryFormat(Span<char>, ...)
-ModPow, GreatestCommonDivisor, Sqrt, GetBitLength, conversions to and from double, Int128
+ModPow, GreatestCommonDivisor, Sqrt; TryFormat without the string in between; UTF-8 parsing / formatting of its own
 ```

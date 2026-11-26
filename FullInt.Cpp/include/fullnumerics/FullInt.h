@@ -166,6 +166,14 @@ public:
     bool IsEven() const noexcept { return (Data()[size_ - 1] & 1) == 0; }
     int Sign() const noexcept { return IsZero() ? 0 : neg_ ? -1 : 1; }
 
+    // as C#: to double / float rounded to nearest (ties to even), beyond the range an infinity;
+    // from double truncated toward zero, std::overflow_error for NaN and the infinities
+    explicit operator double() const;
+    explicit operator float() const;
+    static FullInt FromDouble(double value);
+    // the bits of the shortest two's complement form without the sign bit (0 for 0 and -1)
+    int64_t GetBitLength() const;
+
     // to an integer type, std::overflow_error when out of its range (C#: explicit operators)
     template <std::integral T>
         requires(!std::same_as<T, bool>)

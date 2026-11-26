@@ -5,6 +5,7 @@
 #include <fullnumerics/Karatsuba.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <charconv>
 #include <cstring>
@@ -1375,6 +1376,72 @@ std::vector<uint64_t> FullInt::ToWords(WordOrder order) const
     size_t written;
     TryWriteWords(result, written, order);
     return result;
+}
+
+// ---- floating point (C# FullInt.Conversions.cs) ----
+
+// the magnitude's bit length (0 for zero)
+static int64_t MagnitudeBitLength(CSpan w)
+{
+    if (w[0] == 0) return 0;   // normalized: only zero has a zero top word
+    return (int64_t)w.size() * 64 - FullHelper::LeadingZeroCount(w[0]);
+}
+
+// the magnitude as top · 2^scale with top below 2^63: its top 63 bits, bit 0 set when any bit
+// below them is set (a sticky bit: the one rounding, in the int64 -> double / float conversion,
+// is then the rounding of the whole value)
+static int64_t MagnitudeTop63Sticky(CSpan w, int64_t& scale)
+{
+    size_t n = w.size();
+    int64_t bits = MagnitudeBitLength(w);
+    scale = 0;
+    if (bits <= 63) return (int64_t)w[n - 1];
+    int64_t shift = bits - 63;
+    scale = shift;
+    size_t wi = (size_t)(shift / 64);
+    int off = (int)(shift % 64);
+    uint64_t lo = w[n - 1 - wi];
+    uint64_t hi = n >= wi + 2 ? w[n - 2 - wi] : 0;
+    uint64_t top = off == 0 ? lo : (lo >> off) | (hi << (64 - off));
+    bool sticky = off != 0 && (lo << (64 - off)) != 0;
+    for (size_t i = n - 1; i > n - 1 - wi && !sticky; i--) sticky = w[i] != 0;
+    return (int64_t)(sticky ? top | 1 : top);
+}
+
+FullInt::operator double() const
+{
+    int64_t scale;
+    int64_t top = MagnitudeTop63Sticky(Words(), scale);
+    double d = std::ldexp((double)top, (int)std::min<int64_t>(scale, 2000));   // rounded in (double)top
+    return neg_ ? -d : d;
+}
+
+FullInt::operator float() const
+{
+    int64_t scale;
+    int64_t top = MagnitudeTop63Sticky(Words(), scale);
+    float f = (float)std::ldexp((double)(float)top, (int)std::min<int64_t>(scale, 300));   // exact in double
+    return neg_ ? -f : f;
+}
+
+FullInt FullInt::FromDouble(double value)
+{
+    if (std::isnan(value) || std::isinf(value)) throw std::overflow_error("FullInt: NaN and the infinities have no integer value");
+    uint64_t bits;
+    std::memcpy(&bits, &value, 8);
+    int exp = (int)((bits >> 52) & 0x7FF);
+    if (exp < 1023) return FullInt();   // |value| < 1
+    uint64_t mantissa = (bits & 0xF'FFFF'FFFF'FFFFull) | 1ull << 52;
+    int shift = exp - 1075;   // value = mantissa · 2^shift
+    FullInt magnitude = shift <= 0 ? FullInt(mantissa >> -shift) : FullInt(mantissa) << shift;
+    return (bits >> 63) ? -magnitude : magnitude;
+}
+
+int64_t FullInt::GetBitLength() const
+{
+    if (!neg_) return MagnitudeBitLength(Words());
+    FullInt m1 = -*this - FullInt(1);   // -m needs the bits of m - 1
+    return MagnitudeBitLength(m1.Words());
 }
 
 std::ostream& operator<<(std::ostream& os, const FullInt& value) { return os << value.ToString(); }

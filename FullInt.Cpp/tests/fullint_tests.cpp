@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <random>
@@ -1139,6 +1140,30 @@ void ApiChecks()
     bool threw = false;
     try { (void)FullInt(1).ToString("Q"); } catch (const std::invalid_argument&) { threw = true; }
     CHECK(threw, "unknown format throws");
+
+    // double / float: correctly rounded, the reference strtod / strtof of the decimal text
+    for (int round = 0; round < 3000; round++)
+    {
+        FullInt v = RandomValue(1 + (int)(rng() % (round % 10 == 0 ? 20 : 3)));
+        if (round % 3 == 0) v = v >> (int)(rng() % 64);
+        std::string dec = v.ToString();
+        CHECK((double)v == std::strtod(dec.c_str(), nullptr), "double of " + dec);
+        CHECK((float)v == std::strtof(dec.c_str(), nullptr), "float of " + dec);
+        double d = std::ldexp((double)(rng() >> 11) * ((rng() & 1) ? 1 : -1), (int)(rng() % 1000) - 60);
+        Mpz e;
+        mpz_set_d(e.v, d);   // truncates toward zero
+        CHECK(Same(FullInt::FromDouble(d), e.v), "FromDouble");
+        Mpz m;
+        ToMpz(v, m.v);
+        int64_t bl = v.IsNegative() ? (int64_t)(mpz_add_ui(m.v, m.v, 1), mpz_sgn(m.v) == 0 ? 0 : mpz_sizeinbase(m.v, 2))
+                                     : (int64_t)(mpz_sgn(m.v) == 0 ? 0 : mpz_sizeinbase(m.v, 2));
+        CHECK(v.GetBitLength() == bl, "GetBitLength of " + dec);
+    }
+    CHECK((double)FullInt::Parse("9007199254740993") == 9007199254740992.0, "a tie to even");
+    CHECK((double)FullInt::Parse("9223372036854775807") == 9223372036854775808.0, "2^63 - 1 rounds up");
+    CHECK(std::isinf((double)(FullInt(1) << 5000)) && std::isinf((float)(FullInt(1) << 200)), "infinities");
+    CHECK(FullInt::FromDouble(-0.75).IsZero() && FullInt::FromDouble(-1e300) == -FullInt::FromDouble(1e300), "FromDouble: below 1, the sign");
+    CHECK(FullInt(-129).GetBitLength() == 8 && FullInt(-128).GetBitLength() == 7 && FullInt(-1).GetBitLength() == 0, "GetBitLength negatives");
 
     // DivRem, ^ as XOR
     FullInt r;

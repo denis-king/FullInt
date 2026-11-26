@@ -30,7 +30,7 @@ namespace FullNumerics
 #if NET5_0_OR_GREATER
     [JsonConverter(typeof(FullIntJsonConverter))]
 #endif
-    public sealed class FullInt : IEquatable<FullInt>, IComparable<FullInt>, IComparable, IFormattable
+    public sealed partial class FullInt : IEquatable<FullInt>, IComparable<FullInt>, IComparable, IFormattable
     {
         // the magnitude, most significant word first; may carry leading zero words
         private ulong[] _value = null!;

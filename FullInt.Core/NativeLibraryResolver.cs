@@ -35,8 +35,8 @@ namespace FullNumerics
     internal static class NativeLibraryResolver
     {
         // registered when the assembly loads, before any DllImport of it can bind
-        [ModuleInitializer]
 #pragma warning disable CA2255   // a library on purpose: the resolver must be in place before any DllImport binds
+        [ModuleInitializer]
         internal static void Register()
         {
             NativeLibrary.SetDllImportResolver(typeof(NativeLibraryResolver).Assembly, Resolve);
@@ -62,7 +62,7 @@ namespace FullNumerics
         private static IntPtr Resolve(string name, Assembly assembly, DllImportSearchPath? searchPath)
         {
             if (name != NativeNames.Lib64 && name != NativeNames.Lib32) return IntPtr.Zero;   // the default probing
-            string file = FileName(name);
+            string? file = FileName(name);
             if (file == null) return IntPtr.Zero;   // DllNotFoundException: the factory falls back to the managed core
             return NativeLibrary.TryLoad(file, assembly, searchPath, out var handle) ? handle : IntPtr.Zero;
         }
