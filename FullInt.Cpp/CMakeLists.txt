@@ -133,6 +133,7 @@ if(FULLINT_INSTALL)
         RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
     # every header: FullInt.h includes the core's (FullIntCore.h, kernels.h, Cpu.h, FullHelper.h)
     install(DIRECTORY include/fullnumerics DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+    install(FILES "${FULLINT_ROOT}/LICENSE" DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/FullInt")   # MIT
     install(EXPORT FullIntTargets NAMESPACE FullInt:: DESTINATION "${FULLINT_CMAKE_DIR}")
     configure_package_config_file(cmake/FullIntConfig.cmake.in
         "${CMAKE_CURRENT_BINARY_DIR}/FullIntConfig.cmake" INSTALL_DESTINATION "${FULLINT_CMAKE_DIR}")

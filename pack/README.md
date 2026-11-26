@@ -73,3 +73,5 @@ The package has two builds:
 If the native library cannot be loaded, the managed core takes over silently. `FULLINT_FORCE_MANAGED=1` forces it.
 
 Source, documentation and benchmarks: https://github.com/denis-king/FullInt
+
+License: MIT, Copyright (c) 2026 Denys Omelianenko.

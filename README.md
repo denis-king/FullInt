@@ -166,10 +166,7 @@ docs/                documentation
 
 ## Roadmap
 
-- **1.0:**
-  - the license;
-  - the measurements above;
-  - publishing the NuGet package.
+- **1.0:** publishing the NuGet package.
 - **After 1.0:**
   - `ModPow`, `GreatestCommonDivisor`, `Sqrt`;
   - per-CPU self-tuning of the thresholds;
@@ -180,4 +177,10 @@ docs/                documentation
 
 ## License
 
-Not chosen yet; it will be set before the first NuGet release.
+[MIT](LICENSE), Copyright (c) 2026 Denys Omelianenko. Free to use, change and distribute, in open and closed products alike; keep the copyright notice and the license text with the code.
+
+The bundled tools keep their own licenses:
+- `Tools/nasm`: NASM, BSD 2-clause;
+- `Tools/llvm`: `llvm-mc`, Apache-2.0 with the LLVM exception (`Tools/llvm/LICENSE.TXT`).
+
+They are used only to build the library and are not part of the package. GMP is used only by the C++ tests and benchmarks, as the reference; it is not linked into the library.

@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <!-- netstandard2.0: the widest reach (.NET Framework 4.6.1+, Xamarin, Mono, Unity, .NET Core 2+);
@@ -25,7 +25,8 @@
     <RepositoryUrl>https://github.com/denis-king/FullInt</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageProjectUrl>https://github.com/denis-king/FullInt</PackageProjectUrl>
-    <!-- the license is not chosen yet: set PackageLicenseExpression before publishing -->
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <Copyright>Copyright (c) 2026 Denys Omelianenko</Copyright>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!-- not every public member has an XML comment yet -->
     <NoWarn>$(NoWarn);CS1591</NoWarn>
