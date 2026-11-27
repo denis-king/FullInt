@@ -14,7 +14,7 @@ Fast arbitrary-precision integers for .NET. `FullInt` follows the API of `System
   - Division: Newton and Burnikel–Ziegler.
   - Fast decimal conversion both ways.
 - **In-place API.** `FullInt.Add(result, a, b)` and its siblings do not allocate in loops.
-- **The C++ version** runs on the same kernels, on par with GMP.
+- **The C++ version** runs on the same kernels, on par with GMP on x64 and x86.
 
 How many times faster than `BigInteger` on .NET 10 (Windows x64, Ryzen 7 7730U; a word is 64 bits):
 

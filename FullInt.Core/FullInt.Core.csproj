@@ -19,7 +19,7 @@
     <PackageId>FullInt</PackageId>
     <Version>1.0.0-preview.1</Version>
     <Authors>Denys Omelianenko</Authors>
-    <Description>Fast arbitrary-precision integers for .NET: an alternative to System.Numerics.BigInteger with the same API (operators, Parse / ToString, bytes, generic math). Hand-written assembly kernels (x64, x86, ARM64, ARMv7) and sub-quadratic algorithms make it faster than BigInteger at every size on x64 (on ARM64 on par at a few words; on 32-bit ARM from 8-32 words): 1.5-5x on numbers of a few words, 10-100x on large ones (against .NET 10; multiplication, division, decimal conversion). The same kernels in the C++ version run on par with GMP. No native dependencies to install; a managed core runs on every other platform.</Description>
+    <Description>Fast arbitrary-precision integers for .NET: an alternative to System.Numerics.BigInteger with the same API (operators, Parse / ToString, bytes, generic math). Hand-written assembly kernels (x64, x86, ARM64, ARMv7) and sub-quadratic algorithms make it faster than BigInteger at every size on x64 (on ARM64 on par at a few words; on 32-bit ARM from 8-32 words): 1.1-5x on numbers of a few words, 10-100x on large ones (against .NET 10; multiplication, division, decimal conversion). The same kernels in the C++ version run on par with GMP on x64 and x86. No native dependencies to install; a managed core runs on every other platform.</Description>
     <PackageTags>bigint;biginteger;arbitrary-precision;bignum;integer;math;numerics;assembly;simd</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/denis-king/FullInt</RepositoryUrl>
