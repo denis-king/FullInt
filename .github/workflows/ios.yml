@@ -47,11 +47,13 @@ jobs:
           echo "FULLINT_VERSION=$v" >> "$GITHUB_ENV"
       - name: Build the app for the simulator
         run: |
-          dotnet build pack/test-ios -c Release -f net10.0-ios -p:RuntimeIdentifier=iossimulator-arm64 \
+          # Debug: no trimming and no AOT on the simulator - Microsoft.iOS stays (the app calls no iOS API:
+          # a Release trim drops it, and keeping it whole makes the AOT step take 15+ minutes)
+          dotnet build pack/test-ios -c Debug -f net10.0-ios -p:RuntimeIdentifier=iossimulator-arm64 \
             -p:FullIntVersion=$FULLINT_VERSION -p:ValidateXcodeVersion=false
           # (not -o: the app bundle is assembled in the build's own folder, -o leaves it without
           # Microsoft.iOS.dll)
-          app=$(ls -d pack/test-ios/bin/Release/net10.0-ios/iossimulator-arm64/*.app)
+          app=$(ls -d pack/test-ios/bin/Debug/net10.0-ios/iossimulator-arm64/*.app)
           echo "APP=$app" >> "$GITHUB_ENV"
           ls "$app" | head -30
       - name: Run it on an iPhone simulator
