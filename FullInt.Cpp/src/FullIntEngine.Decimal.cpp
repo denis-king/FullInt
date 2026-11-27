@@ -194,11 +194,15 @@ size_t FullIntEngine::WriteDecimalLeaf(CSpan w, char* text, size_t end)
     if (w.size() >= (size_t)DecimalConversion::FractionFrom && w.size() <= (size_t)DecimalConversion::FractionMaxWords)
         return WriteDecimalFraction(w, text, end);
 #endif
+#if FULLINT_ARM32   // (a 64-bit division is a library call there: the kernel below, by reciprocals, 2.4x faster)
+    if (w.size() == 1 && w[0] == 0) return end;   // (the kernel would write "0")
+#else
     if (w.size() == 1)
     {
         for (uint64_t v = w[0]; v != 0; v /= 10) text[--end] = (char)('0' + (int)(v % 10));
         return end;
     }
+#endif
     int resultBytes = (int)(w.size() * 1.014 + 1) * 19 + 1;
     uint8_t stackBytes[2048];
     uint64_t stackWords[96];

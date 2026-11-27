@@ -15,6 +15,7 @@
 // =============================================================================
 
     .include "abi.inc"
+    .fpu vfpv3-d16              // the reciprocal's first guess (armhf has VFPv3)
 
 .macro ALIAS name
     .globl \name
@@ -26,16 +27,30 @@
     .p2align 4
 .Linvert:
     push {r4, lr}
-    mvn r2, r0                  // the 2-by-1 reciprocal of d1: floor((~d1 b + b - 1) / d1)
-    mov r3, #0
-    mov r12, #32
-1:  adds r2, r2, r2             // remainder · 2 (C: the bit out), the next dividend bit (1) in
-    orr r2, r2, #1
-    cmpcc r2, r0                // C: remainder >= d1 (or the bit out set)
-    subcs r2, r2, r0
-    adc r3, r3, r3              // the quotient bit
-    subs r12, r12, #1
-    bne 1b
+    // the 2-by-1 reciprocal of d1, floor((b^2 - 1) / d1) - b: (double) 2^64 / d1 - 2^32 (VFP,
+    // armhf's baseline; within 1 of it), then made exact by its product
+    vmov s0, r0
+    vcvt.f64.u32 d0, s0
+    mov r2, #0
+    movw r3, #0x0000
+    movt r3, #0x43F0            // 2^64
+    vmov d1, r2, r3
+    vdiv.f64 d1, d1, d0
+    movt r3, #0x41F0            // 2^32
+    vmov d2, r2, r3
+    vsub.f64 d1, d1, d2
+    vcvt.u32.f64 s0, d1         // toward zero
+    vmov r3, s0
+6:  umull r2, r12, r3, r0       // (b + v)·d1 = v·d1 + d1·b: over b^2 - 1 -> v - 1
+    adds r12, r12, r0
+    subcs r3, r3, #1
+    bcs 6b
+    mvn r2, r2                  // b^2 - 1 - (b + v)·d1 >= d1 -> v + 1
+    mvn r12, r12
+    cmp r12, #0                 // (a nonzero high word: HS)
+    cmpeq r2, r0
+    addhs r3, r3, #1
+    bhs 6b
     mul r2, r0, r3              // invert_pi1: p = d1 v + d0 (mod b)
     adds r2, r2, r1
     bcc 3f
@@ -405,13 +420,24 @@ ENTRY Fullint64FromDecStringWin
     sub r3, r3, r9
     mov r4, #0                  // the block (r5 r4)
     mov r5, #0
-3:  ldrb r6, [r0], #1
-    sub r6, r6, #48
+3:  cmp r9, #9                  // a group of up to 9 digits in 32 bits (two instructions a digit),
+    movhs r12, #9               // then block = block · 10^g + the group (umaal, mla)
+    movlo r12, r9
+    sub r9, r9, r12
+    adr lr, .Lpow10
+    ldr lr, [lr, r12, lsl #2]   // 10^g
+    mov r6, #0
+10: ldrb r7, [r0], #1
+    sub r7, r7, #48
+    add r6, r6, r6, lsl #2
+    add r6, r7, r6, lsl #1
+    subs r12, r12, #1
+    bne 10b
     mov r7, #0
-    umaal r6, r7, r4, r10       // lo·10 + digit
-    mla r5, r5, r10, r7
+    umaal r6, r7, r4, lr
+    mla r5, r5, lr, r7
     mov r4, r6
-    subs r9, r9, #1
+    teq r9, #0
     bne 3b
     strd r4, r5, [r8], #8
     add r11, r11, #1
@@ -460,4 +486,8 @@ ENTRY Fullint64FromDecStringWin
     str r12, [r0]
     add sp, sp, #P_SIZE
     pop {r4-r11, pc}
+
+    .p2align 2
+.Lpow10:
+    .word 1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000
 END Fullint64FromDecStringWin

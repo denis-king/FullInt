@@ -974,7 +974,19 @@ FullInt FullIntEngine::shiftRightGeneral(const FullInt& value, int shift)
 std::string FullIntEngine::ToDecString(const FullInt& value)
 {
     CSpan w = value.Words();
-    if (w.size() == 1)   // one word: the standard library formats it, no buffers, no kernel call
+    // one word: the standard library formats it, no buffers, no kernel call (ARMv7: only below
+    // 2^32 - a 64-bit to_chars divides by library calls there, the kernel by reciprocals)
+#if FULLINT_ARM32
+    if (w.size() == 1 && w[0] <= 0xFFFFFFFFu)
+    {
+        char text[24];
+        char* p = text;
+        if (value.neg_) *p++ = '-';
+        p = std::to_chars(p, text + sizeof(text), (uint32_t)w[0]).ptr;
+        return std::string(text, p);
+    }
+#else
+    if (w.size() == 1)
     {
         char text[24];
         char* p = text;
@@ -982,6 +994,7 @@ std::string FullIntEngine::ToDecString(const FullInt& value)
         p = std::to_chars(p, text + sizeof(text), w[0]).ptr;
         return std::string(text, p);
     }
+#endif
     if (w.size() > (size_t)DecimalConversion::ToStringThreshold)   // long: by halves (FullIntEngine.Decimal.cpp)
     {
         return ToDecStringRecursive(value);

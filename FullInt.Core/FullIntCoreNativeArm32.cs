@@ -95,7 +95,26 @@ namespace FullNumerics
             }
         }
 
-        public new void Sqr(Span<ulong> a, Span<ulong> r) => Mult(a, a, r);
+        [DllImport(dll)]
+        private static extern unsafe void Fullint64SqrWIN(ulong* a, ulong* r, int lenA, int lenR);
+        [DllImport(dll, EntryPoint = "Fullint64SqrWIN"), SuppressGCTransition]
+        private static extern unsafe void Fullint64SqrWIN_Fast(ulong* a, ulong* r, int lenA, int lenR);
+
+        // r = a² (Sqr.s: the products of different words once, doubled, the squares added): r at least
+        // 2·a.Length words, the words above zero
+        public new unsafe void Sqr(Span<ulong> a, Span<ulong> r)
+        {
+            if (r.Length < 2 * a.Length)
+            {
+                Mult(a, a, r);
+                return;
+            }
+            fixed (ulong* pa = a, pr = r)
+            {
+                if ((long)a.Length * a.Length <= 2 * FastProducts) Fullint64SqrWIN_Fast(pa, pr, a.Length, r.Length);
+                else Fullint64SqrWIN(pa, pr, a.Length, r.Length);
+            }
+        }
 
         // the low r.Length words of a·b: the kernel stops at r's top word
         public new void MultLow(Span<ulong> a, Span<ulong> b, Span<ulong> r) => Mult(a, b, r);
@@ -151,14 +170,71 @@ namespace FullNumerics
             remainder = r;
         }
 
-        // the quotient through the division above (no approximate-quotient kernel here)
-        public new void Quotient(Span<ulong> dividend, Span<ulong> divisor, Span<ulong> quotient)
+        [DllImport(dll)]
+        private static extern unsafe ulong Fullint64DivQWIN_recip(ulong* a, ulong* b, ulong* q, ulong* r, int lenA, int lenB, ulong* work);
+
+        // from this many divisor words the approximate quotient (DivLong.s: the passes on the top
+        // digits of B only) and its fix; below, the division (the guard word's extra step costs more)
+        private const int QuotientWordsMin = 8;
+
+        // a / b alone: Q' ~ floor(A·β / B) within 1 (the quotient and a guard word); a guard of 0 or
+        // β - 1 leaves the quotient it or one less / one more, decided by A - q·B. Saturated (the
+        // kernel's left-out error reached B, or B over 256 words): the division.
+        public new unsafe void Quotient(Span<ulong> dividend, Span<ulong> divisor, Span<ulong> quotient)
         {
+            int la = dividend.Length, lb = divisor.Length, lq = quotient.Length;
+            if (lb >= QuotientWordsMin && la > lb && lq == la - lb + 1)
+            {
+                int words = (lq + 1) + (la + 2) + (la + 1);   // Q', the kernel's work, A - q·B
+                ulong[]? bufRented = null;
+                Span<ulong> buf = words <= FullHelper.StackAllocLimitWords
+                    ? stackalloc ulong[words]
+                    : (bufRented = System.Buffers.ArrayPool<ulong>.Shared.Rent(words));
+                bool done = false;
+                fixed (ulong* pa = dividend, pb = divisor, pq = quotient, pw = buf)
+                {
+                    ulong* qa = pw, work = pw + lq + 1, p = work + la + 2;
+                    if (Fullint64DivQWIN_recip(pa, pb, qa, null, la, lb, work) == 0)
+                    {
+                        for (int i = 0; i < lq; i++) pq[i] = qa[i];
+                        done = true;
+                        if (qa[lq] + 1 <= 1) Fix(pa, pb, pq, p, la, lb, lq);
+                    }
+                }
+                if (bufRented != null) System.Buffers.ArrayPool<ulong>.Shared.Return(bufRented);
+                if (done) return;
+            }
             int rn = divisor.Length + 2;
             ulong[]? rented = null;
             Span<ulong> r = rn <= FullHelper.StackAllocLimitWords ? stackalloc ulong[rn] : FullHelper.RentZeroed(rn, out rented);
             Div(dividend, divisor, quotient, r);
             FullHelper.Return(rented);
+        }
+
+        // q within 1 of floor(A / B): D = A - q·B (p: la + 1 words) decides q - 1 / q / q + 1
+        private unsafe void Fix(ulong* a, ulong* b, ulong* q, ulong* p, int la, int lb, int lq)
+        {
+            Mult(new Span<ulong>(q, lq), new Span<ulong>(b, lb), new Span<ulong>(p, la + 1));
+            ulong borrow = 0;
+            for (int i = la; i >= 0; i--)   // p = [0, A] - p
+            {
+                ulong x = i > 0 ? a[i - 1] : 0, y = p[i];
+                ulong d = x - y;
+                ulong b1 = x < y ? 1UL : 0UL;
+                p[i] = d - borrow;
+                borrow = b1 | (d < borrow ? 1UL : 0UL);
+            }
+            if (borrow != 0)   // q·B > A: q - 1
+            {
+                for (int i = lq - 1; i >= 0; i--)
+                    if (q[i]-- != 0) break;
+                return;
+            }
+            int s = 0;
+            while (s <= la && p[s] == 0) s++;
+            if (s <= la && Compare(new Span<ulong>(p + s, la + 1 - s), new Span<ulong>(b, lb)) >= 0)   // D >= B: q + 1
+                for (int i = lq - 1; i >= 0; i--)
+                    if (++q[i] != 0) break;
         }
 
         // ---- compare, And / Or / Xor, the shifts (Compare.s, Logic.s, Shift.s) ----

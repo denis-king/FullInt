@@ -30,7 +30,12 @@
 .equ A_LENB, F_SIZE + 36
 .equ A_LENR, F_SIZE + 40
 
+// the low half of a product (the contract of Fullint64MulLoWIN_adx: r = a·b mod β^n, n words,
+// n <= lenA + lenB) is the truncated product: the same code, n as lenR
+    .globl Fullint64MulLoWIN
+    .type Fullint64MulLoWIN, %function
 ENTRY Fullint64MultWIN
+Fullint64MulLoWIN:
     push {r4-r11, lr}
     sub sp, sp, #F_SIZE
     ldr r4, [sp, #A_LENB]

@@ -28,9 +28,6 @@
     GENERIC Fullint64SubCmpNHdrWIN
     GENERIC Fullint64SubWIN
     GENERIC Fullint64ToDecFracWIN
-    GENERIC Fullint64SqrWIN
-    GENERIC Fullint64MulLoWIN
     GENERIC Fullint64DivWin
     GENERIC Fullint64DivExactWIN
     GENERIC Fullint64CpuFeatures
-    GENERIC Fullint64DivQWIN_recip
