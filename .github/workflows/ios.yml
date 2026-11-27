@@ -23,10 +23,11 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - name: The newest Xcode
+      - name: Xcode 26.0 (the .NET for iOS 26.0 workload asks for it), else the newest
         run: |
           ls -d /Applications/Xcode*.app
-          x=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          x=$(ls -d /Applications/Xcode_26.0*.app 2>/dev/null | sort -V | tail -1)
+          [ -n "$x" ] || x=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
           sudo xcode-select -s "$x"
           xcodebuild -version
       - uses: actions/setup-dotnet@v4
@@ -47,7 +48,7 @@ jobs:
       - name: Build the app for the simulator
         run: |
           dotnet build pack/test-ios -c Release -f net10.0-ios -p:RuntimeIdentifier=iossimulator-arm64 \
-            -p:FullIntVersion=$FULLINT_VERSION -o out/ios
+            -p:FullIntVersion=$FULLINT_VERSION -p:ValidateXcodeVersion=false -o out/ios
           ls -d out/ios/*.app
       - name: Run it on an iPhone simulator
         run: |
