@@ -109,31 +109,50 @@ jobs:
           ./build/fullint_tests | tail -3
           FULLINT_CPU=baseline ./build/fullint_tests | tail -3
 
-  # ---------------------------------------------------------------- Linux ARMv7 (armhf, emulated)
+  # ---------------------------------------------------------------- Linux ARMv7 (armhf)
+  # GitHub has no 32-bit ARM machine: an armhf container on the ARM64 runner - natively when its CPU
+  # runs AArch32 code (lscpu: "32-bit, 64-bit"), under QEMU otherwise. .NET's JIT does not survive
+  # QEMU (an assertion in its Thumb translator): the .NET suite runs only natively; ARMv7 .NET is
+  # tested on our own Neoverse-N1 (docker/cloud-arm32) as well.
   linux-arm32:
-    name: Linux ARMv7 (QEMU)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 150
+    name: Linux ARMv7
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
+      - name: Does the CPU run 32-bit ARM code?
+        id: cpu
+        run: |
+          lscpu | grep -E "Model name|op-mode" || true
+          if lscpu | grep -q "op-mode.*32-bit"; then echo "native=true" >> "$GITHUB_OUTPUT"; else echo "native=false" >> "$GITHUB_OUTPUT"; fi
       - uses: docker/setup-qemu-action@v3
+        if: steps.cpu.outputs.native != 'true'
         with:
           platforms: arm
-      - name: C++ (kernels, against GMP) and .NET in an armhf container
+      - name: The .NET SDK for linux-arm (cached)
+        if: steps.cpu.outputs.native == 'true'
+        uses: actions/cache@v4
+        with:
+          path: sdk-arm.tar.gz
+          key: dotnet-sdk-linux-arm-10.0
+      - name: C++ (kernels, against GMP), and .NET when native, in an armhf container
         run: |
-          docker run --rm --platform linux/arm/v7 -v "$PWD:/src" -w /src -e DEBIAN_FRONTEND=noninteractive \
-            -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e DOTNET_NOLOGO=1 ubuntu:24.04 bash -c '
+          if [ "${{ steps.cpu.outputs.native }}" = "true" ] && [ ! -f sdk-arm.tar.gz ]; then
+            curl -fsSL --retry 5 --retry-all-errors -o sdk-arm.tar.gz https://aka.ms/dotnet/10.0/dotnet-sdk-linux-arm.tar.gz
+          fi
+          docker run --rm --platform linux/arm/v7 -v "$PWD:/src" -w /src -e DEBIAN_FRONTEND=noninteractive             -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e DOTNET_NOLOGO=1 -e NATIVE=${{ steps.cpu.outputs.native }} ubuntu:24.04 bash -c '
             set -euo pipefail
-            apt-get update -q && apt-get install -y -q --no-install-recommends build-essential cmake ninja-build \
-              libgmp-dev libicu74 libssl3t64 zlib1g ca-certificates curl > /dev/null
+            apt-get update -q && apt-get install -y -q --no-install-recommends build-essential cmake ninja-build               libgmp-dev libicu74 libssl3t64 zlib1g ca-certificates > /dev/null
             cmake -S FullInt.Cpp -B /tmp/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DFULLINT_WITH_GMP=ON > /dev/null
             cmake --build /tmp/build --target fullint_arm64_kernels fullint_tests
             /tmp/build/fullint_arm64_kernels | tail -1
             /tmp/build/fullint_tests | tail -1
             FULLINT_CPU=baseline /tmp/build/fullint_tests | tail -1
-            mkdir -p /tmp/dotnet
-            curl -fsSL --retry 5 --retry-all-errors -o /tmp/sdk.tar.gz https://aka.ms/dotnet/10.0/dotnet-sdk-linux-arm.tar.gz
-            tar xzf /tmp/sdk.tar.gz -C /tmp/dotnet
+            if [ "$NATIVE" != "true" ]; then
+              echo "::notice::ARMv7 .NET skipped: no AArch32 on this runner, and .NET does not run under QEMU"
+              exit 0
+            fi
+            mkdir -p /tmp/dotnet && tar xzf sdk-arm.tar.gz -C /tmp/dotnet
             export PATH=/tmp/dotnet:$PATH DOTNET_ROOT=/tmp/dotnet DOTNET_ROLL_FORWARD=Major
             dotnet test FullInt.Tests -c Release -f net8.0'
 
