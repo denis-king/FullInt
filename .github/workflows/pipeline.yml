@@ -1,0 +1,336 @@
+# The whole pipeline, called by ci.yml (every push / pull request) and publish.yml (by hand):
+#   1. the library's tests on every platform (.NET against BigInteger, C++ against GMP); the jobs
+#      with a native backend keep the library they built as an artifact;
+#   2. pack: one .nupkg from the five native libraries, its contents checked;
+#   3. package-test: on a clean machine of every platform the package is installed into a test app
+#      (pack/test) from a local feed - the right core loaded, results against BigInteger, a coarse
+#      speed floor (at least 3x BigInteger on 4096-word numbers; the measured gain is 9-300x).
+# Benchmarks are not run here (shared virtual machines: 10-30% noise).
+name: Pipeline
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: The package version; empty - <the project's version without its suffix>-ci.<run number>
+        type: string
+        default: ''
+    outputs:
+      version:
+        description: The version packed
+        value: ${{ jobs.pack.outputs.version }}
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: 1
+
+defaults:
+  run:
+    shell: bash   # -eo pipefail: a failing test before "| tail" fails the step
+
+jobs:
+  # ================================================================ 1. the library's tests
+  windows:
+    name: Windows ${{ matrix.arch }}
+    runs-on: windows-2025
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [ x64, x86 ]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - name: .NET tests (net8.0, net48)
+        if: matrix.arch == 'x64'
+        run: dotnet test FullInt.Tests -c Release
+      - name: .NET Framework tests in a 32-bit process (the x86 kernels)
+        if: matrix.arch == 'x86'
+        run: dotnet test FullInt.Tests -c Release -f net48 -p:Platform=x86
+      - name: The native libraries for the package (win-x64, win-x86)
+        if: matrix.arch == 'x64'
+        run: dotnet build FullInt.AsmForNet -c Release -p:FullIntNativeRid=win-x64
+      - uses: actions/upload-artifact@v4
+        if: matrix.arch == 'x64'
+        with:
+          name: native-win-x64
+          path: FullInt.Asm/bin/win-x64/Release/FullIntOperations_win_x64.dll
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: matrix.arch == 'x64'
+        with:
+          name: native-win-x86
+          path: FullInt.Asm/bin/win-x86/Release/FullIntOperations_win_x86.dll
+          if-no-files-found: error
+      - name: GMP (vcpkg binary cache)
+        uses: actions/cache@v4
+        with:
+          path: ~/AppData/Local/vcpkg/archives
+          key: vcpkg-${{ matrix.arch }}-${{ hashFiles('FullInt.Cpp/vcpkg.json') }}
+      - name: C++ tests against GMP
+        shell: pwsh
+        run: |
+          $env:VCPKG_ROOT = $env:VCPKG_INSTALLATION_ROOT
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          Import-Module "$vs\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+          $a = if ('${{ matrix.arch }}' -eq 'x64') { 'amd64' } else { 'x86' }
+          Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments "-arch=$a -host_arch=amd64"
+          cmake --preset ${{ matrix.arch }}-bench -S FullInt.Cpp
+          if ($LASTEXITCODE) { exit 1 }
+          cmake --build FullInt.Cpp/out/build/${{ matrix.arch }}-bench --target fullint_tests
+          if ($LASTEXITCODE) { exit 1 }
+          FullInt.Cpp/out/build/${{ matrix.arch }}-bench/fullint_tests.exe | Select-Object -Last 3
+          if ($LASTEXITCODE) { exit 1 }
+          $env:FULLINT_CPU = 'baseline'
+          FullInt.Cpp/out/build/${{ matrix.arch }}-bench/fullint_tests.exe | Select-Object -Last 3
+          if ($LASTEXITCODE) { exit 1 }
+
+  linux:
+    name: Linux ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x64, runner: ubuntu-24.04 }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - name: Tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends nasm ninja-build libgmp-dev
+      - name: .NET tests
+        run: dotnet test FullInt.Tests -c Release -f net8.0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-linux-${{ matrix.arch }}
+          path: FullInt.Asm/bin/linux-${{ matrix.arch }}/Release/libFullIntOperations_linux_${{ matrix.arch }}.so
+          if-no-files-found: error
+      - name: C++ build
+        run: |
+          cmake -S FullInt.Cpp -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DFULLINT_WITH_GMP=ON
+          cmake --build build
+      - name: C++ kernels against the portable ones (ARM64)
+        if: matrix.arch == 'arm64'
+        run: ./build/fullint_arm64_kernels | tail -3
+      - name: C++ tests against GMP
+        run: |
+          ./build/fullint_tests | tail -3
+          FULLINT_CPU=baseline ./build/fullint_tests | tail -3
+      - name: The C++ library as a user takes it (install + find_package, add_subdirectory, FetchContent of this commit)
+        env:
+          FETCH: 1
+          FULLINT_GIT_REPOSITORY: ${{ github.server_url }}/${{ github.repository }}
+          FULLINT_GIT_TAG: ${{ github.sha }}
+        run: bash FullInt.Cpp/tests/package/run.sh
+
+  # GitHub has no 32-bit ARM machine: an armhf container on the ARM64 runner - natively when its CPU
+  # runs AArch32 code (lscpu: "32-bit, 64-bit"), under QEMU otherwise. .NET's JIT does not survive
+  # QEMU (an assertion in its Thumb translator): the .NET suite runs only natively; ARMv7 .NET is
+  # tested on our own Neoverse-N1 (docker/cloud-arm32) as well.
+  linux-arm32:
+    name: Linux ARMv7
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    outputs:
+      native: ${{ steps.cpu.outputs.native }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Does the CPU run 32-bit ARM code?
+        id: cpu
+        run: |
+          lscpu | grep -E "Model name|op-mode" || true
+          if lscpu | grep -q "op-mode.*32-bit"; then echo "native=true" >> "$GITHUB_OUTPUT"; else echo "native=false" >> "$GITHUB_OUTPUT"; fi
+      - uses: docker/setup-qemu-action@v3
+        if: steps.cpu.outputs.native != 'true'
+        with:
+          platforms: arm
+      - name: The .NET SDK for linux-arm (cached)
+        if: steps.cpu.outputs.native == 'true'
+        uses: actions/cache@v4
+        with:
+          path: sdk-arm.tar.gz
+          key: dotnet-sdk-linux-arm-10.0
+      - name: C++ (kernels, against GMP), the .NET suite when native, the .so for the package
+        run: |
+          if [ "${{ steps.cpu.outputs.native }}" = "true" ] && [ ! -f sdk-arm.tar.gz ]; then
+            curl -fsSL --retry 5 --retry-all-errors -o sdk-arm.tar.gz https://aka.ms/dotnet/10.0/dotnet-sdk-linux-arm.tar.gz
+          fi
+          docker run --rm --platform linux/arm/v7 -v "$PWD:/src" -w /src -e DEBIAN_FRONTEND=noninteractive \
+            -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e DOTNET_NOLOGO=1 -e NATIVE=${{ steps.cpu.outputs.native }} ubuntu:24.04 bash -c '
+            set -euo pipefail
+            apt-get update -q && apt-get install -y -q --no-install-recommends build-essential cmake ninja-build \
+              libgmp-dev libicu74 libssl3t64 zlib1g ca-certificates > /dev/null
+            bash FullInt.Asm/build/build-native.sh Release linux arm /tmp/native-obj /src/native-arm
+            cmake -S FullInt.Cpp -B /tmp/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DFULLINT_WITH_GMP=ON > /dev/null
+            cmake --build /tmp/build --target fullint_arm64_kernels fullint_tests
+            /tmp/build/fullint_arm64_kernels | tail -1
+            /tmp/build/fullint_tests | tail -1
+            FULLINT_CPU=baseline /tmp/build/fullint_tests | tail -1
+            if [ "$NATIVE" != "true" ]; then
+              echo "::notice::ARMv7 .NET skipped: no AArch32 on this runner, and .NET does not run under QEMU"
+              exit 0
+            fi
+            mkdir -p /tmp/dotnet && tar xzf sdk-arm.tar.gz -C /tmp/dotnet
+            export PATH=/tmp/dotnet:$PATH DOTNET_ROOT=/tmp/dotnet DOTNET_ROLL_FORWARD=Major
+            dotnet test FullInt.Tests -c Release -f net8.0'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-linux-arm
+          path: native-arm/libFullIntOperations_linux_arm.so
+          if-no-files-found: error
+
+  # the managed core: macOS, Windows ARM64 (and the C++ library with the AArch64 kernels on Apple Silicon)
+  managed:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macOS Apple Silicon, runner: macos-15 }
+          - { name: macOS Intel, runner: macos-15-intel }
+          - { name: Windows ARM64, runner: windows-11-arm }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - name: .NET tests (the managed core)
+        run: dotnet test FullInt.Tests -c Release -f net8.0
+      - name: C++ (AArch64 asm, Mach-O) against GMP
+        if: matrix.runner == 'macos-15'
+        run: |
+          brew install gmp ninja
+          cmake -S FullInt.Cpp -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DFULLINT_WITH_GMP=ON -DCMAKE_PREFIX_PATH="$(brew --prefix gmp)"
+          cmake --build build
+          ./build/fullint_arm64_kernels | tail -3
+          ./build/fullint_tests | tail -3
+
+  # ================================================================ 2. the package
+  pack:
+    name: Pack
+    needs: [ windows, linux, linux-arm32 ]
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: native-*
+          path: out/native
+      - name: The native libraries in out/native/<rid>
+        run: |
+          cd out/native
+          for d in native-*; do mv "$d" "${d#native-}"; done
+          find . -type f | sort
+      - name: Version
+        id: version
+        run: |
+          v="${{ inputs.version }}"
+          if [ -z "$v" ]; then
+            base=$(sed -n 's|.*<Version>\([^<-]*\).*</Version>.*|\1|p' FullInt.Core/FullInt.Core.csproj)
+            v="$base-ci.${{ github.run_number }}"
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "the package version: $v"
+      - name: dotnet pack
+        run: >
+          dotnet pack FullInt.Core -c Release -o out/nuget
+          -p:FullIntNativePackDir="$PWD/out/native/" -p:FullIntSkipNative=true
+          -p:Version=${{ steps.version.outputs.version }}
+      - name: The package's contents
+        run: |
+          v=${{ steps.version.outputs.version }}
+          pkg=out/nuget/FullInt.$v.nupkg
+          test -f "$pkg" && test -f out/nuget/FullInt.$v.snupkg
+          unzip -l "$pkg" | awk 'NR > 3 { print $4 }' | grep -v '^$' | sort | tee contents.txt
+          for f in \
+            runtimes/win-x64/native/FullIntOperations_win_x64.dll \
+            runtimes/win-x86/native/FullIntOperations_win_x86.dll \
+            runtimes/linux-x64/native/libFullIntOperations_linux_x64.so \
+            runtimes/linux-arm64/native/libFullIntOperations_linux_arm64.so \
+            runtimes/linux-arm/native/libFullIntOperations_linux_arm.so \
+            lib/net8.0/FullInt.dll lib/net8.0/FullInt.xml \
+            lib/netstandard2.0/FullInt.dll lib/netstandard2.0/FullInt.xml \
+            build/FullInt.targets buildTransitive/FullInt.targets README.md FullInt.nuspec; do
+            grep -qx "$f" contents.txt || { echo "::error::missing in the package: $f"; exit 1; }
+          done
+          unzip -p "$pkg" FullInt.nuspec > FullInt.nuspec
+          for p in "<id>FullInt</id>" "<version>$v</version>" "<authors>Denys Omelianenko</authors>" \
+                   '<license type="expression">MIT</license>' "<readme>README.md</readme>" \
+                   'url="https://github.com/denis-king/FullInt' ; do
+            grep -qF "$p" FullInt.nuspec || { echo "::error::the nuspec lacks: $p"; cat FullInt.nuspec; exit 1; }
+          done
+          echo "the package is complete"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nuget-package
+          path: |
+            out/nuget/*.nupkg
+            out/nuget/*.snupkg
+          if-no-files-found: error
+
+  # ================================================================ 3. the package installed
+  package-test:
+    name: Package on ${{ matrix.name }}
+    needs: [ pack, linux-arm32 ]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: Windows x64 (.NET 8), runner: windows-2025, args: "-f net8.0" }
+          - { name: Windows (.NET Framework AnyCPU), runner: windows-2025, args: "-f net48" }
+          - { name: Windows x86 (.NET Framework), runner: windows-2025, args: "-f net48 -p:Platform=x86" }
+          - { name: Linux x64, runner: ubuntu-24.04, args: "-f net8.0" }
+          - { name: Linux ARM64, runner: ubuntu-24.04-arm, args: "-f net8.0" }
+          - { name: Linux ARMv7, runner: ubuntu-24.04-arm, args: "-f net8.0", arm32: true }
+          - { name: macOS Apple Silicon (managed), runner: macos-15, args: "-f net8.0", core: FullIntCoreManaged }
+          - { name: macOS Intel (managed), runner: macos-15-intel, args: "-f net8.0", core: FullIntCoreManaged }
+          - { name: Windows ARM64 (managed), runner: windows-11-arm, args: "-f net8.0", core: FullIntCoreManaged }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        if: ${{ !matrix.arm32 }}
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/download-artifact@v4
+        with:
+          name: nuget-package
+          path: out/nuget
+      - name: Install the package into pack/test and run it
+        if: ${{ !matrix.arm32 }}
+        env:
+          EXPECT_CORE: ${{ matrix.core }}
+        run: dotnet run --project pack/test -c Release ${{ matrix.args }} -p:FullIntVersion=${{ needs.pack.outputs.version }}
+      - name: The .NET SDK for linux-arm (cached)
+        if: matrix.arm32 && needs.linux-arm32.outputs.native == 'true'
+        uses: actions/cache@v4
+        with:
+          path: sdk-arm.tar.gz
+          key: dotnet-sdk-linux-arm-10.0
+      - name: The same in an armhf container (natively)
+        if: matrix.arm32 && needs.linux-arm32.outputs.native == 'true'
+        run: |
+          [ -f sdk-arm.tar.gz ] || curl -fsSL --retry 5 --retry-all-errors -o sdk-arm.tar.gz https://aka.ms/dotnet/10.0/dotnet-sdk-linux-arm.tar.gz
+          docker run --rm --platform linux/arm/v7 -v "$PWD:/src" -w /src -e DEBIAN_FRONTEND=noninteractive \
+            -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e DOTNET_NOLOGO=1 ubuntu:24.04 bash -c '
+            set -euo pipefail
+            apt-get update -q && apt-get install -y -q --no-install-recommends libicu74 libssl3t64 zlib1g ca-certificates > /dev/null
+            mkdir -p /tmp/dotnet && tar xzf sdk-arm.tar.gz -C /tmp/dotnet
+            export PATH=/tmp/dotnet:$PATH DOTNET_ROOT=/tmp/dotnet DOTNET_ROLL_FORWARD=Major
+            dotnet run --project pack/test -c Release ${{ matrix.args }} -p:FullIntVersion=${{ needs.pack.outputs.version }}'

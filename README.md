@@ -80,12 +80,13 @@ The whole API, with the rules for division, signs and bit operations, is in [doc
 - `net8.0`, for .NET 8 and later;
 - `netstandard2.0`, for .NET Framework 4.6.1+, Mono and Unity.
 
-The native libraries come inside the package. Until it is published, build it locally:
+The native libraries come inside the package (win-x64, win-x86, linux-x64, linux-arm64, linux-arm). The previews are pre-release versions on nuget.org:
 
 ```powershell
-powershell -File pack/pack-nuget.ps1                # out/nuget/FullInt.<version>.nupkg (needs Docker for the Linux libraries)
-dotnet add package FullInt --prerelease --source out/nuget
+dotnet add package FullInt --prerelease
 ```
+
+Every CI run packs the package from all five native libraries and installs it on every platform; the package of a run is its artifact `nuget-package`. Locally: `powershell -File pack/pack-nuget.ps1` (out/nuget; Docker for the Linux libraries).
 
 **C++.** CMake; three ways, described in [docs/CPP_INSTALL.md](docs/CPP_INSTALL.md):
 - `cmake --install` and then `find_package(FullInt)`;

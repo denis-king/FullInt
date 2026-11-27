@@ -1,0 +1,115 @@
+# Publishing, by hand only (Actions -> Publish -> Run workflow, the version typed in):
+#   1. the whole pipeline (pipeline.yml) with that version: the tests on every platform, the
+#      package, the package installed and checked on every platform - anything red: nothing goes out;
+#   2. the version must be new on nuget.org and as a tag;
+#   3. dotnet nuget push (.nupkg and .snupkg) with the repository secret NUGET_API_KEY;
+#   4. the tag v<version> and a GitHub Release with the package (pre-release when the version has
+#      a suffix: 1.0.0-preview.1);
+#   5. once nuget.org lists it: the package installed from nuget.org on Windows, Linux and macOS.
+# The environment "nuget" can be set to wait for an approval (Settings -> Environments).
+name: Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'The version: 1.0.0-preview.1 (a preview) or 1.0.0 (a release)'
+        required: true
+        type: string
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    name: The version is new
+    runs-on: ubuntu-24.04
+    steps:
+      - name: A SemVer version, not on nuget.org, no tag
+        env:
+          V: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "$V" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$' || { echo "::error::not a version: $V"; exit 1; }
+          lv=$(echo "$V" | tr 'A-Z' 'a-z')
+          if curl -fsS https://api.nuget.org/v3-flatcontainer/fullint/index.json | grep -q "\"$lv\""; then
+            echo "::error::FullInt $V is on nuget.org already"; exit 1
+          fi
+          if gh api "repos/${{ github.repository }}/git/refs/tags/v$V" > /dev/null 2>&1; then
+            echo "::error::the tag v$V exists already"; exit 1
+          fi
+
+  pipeline:
+    needs: check
+    uses: ./.github/workflows/pipeline.yml
+    with:
+      version: ${{ inputs.version }}
+
+  publish:
+    name: nuget.org and the GitHub Release
+    needs: pipeline
+    runs-on: ubuntu-24.04
+    environment: nuget
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/download-artifact@v4
+        with:
+          name: nuget-package
+          path: out/nuget
+      - name: dotnet nuget push
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          [ -n "$NUGET_API_KEY" ] || { echo "::error::no NUGET_API_KEY secret (Settings -> Secrets and variables -> Actions)"; exit 1; }
+          dotnet nuget push "out/nuget/FullInt.${{ inputs.version }}.nupkg" --api-key "$NUGET_API_KEY" \
+            --source https://api.nuget.org/v3/index.json
+          dotnet nuget push "out/nuget/FullInt.${{ inputs.version }}.snupkg" --api-key "$NUGET_API_KEY" \
+            --source https://api.nuget.org/v3/index.json
+      - name: The tag and the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ inputs.version }}
+        run: |
+          pre=""; case "$V" in *-*) pre="--prerelease";; esac
+          notes="FullInt $V: https://www.nuget.org/packages/FullInt/$V"
+          if [ -f CHANGELOG.md ]; then notes="$notes"$'\n\n'"$(awk "/^## $V/{f=1; next} /^## /{f=0} f" CHANGELOG.md)"; fi
+          gh release create "v$V" out/nuget/*.nupkg out/nuget/*.snupkg --target "${{ github.sha }}" \
+            --title "FullInt $V" --notes "$notes" $pre
+
+  verify:
+    name: Installed from nuget.org on ${{ matrix.runner }}
+    needs: publish
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ windows-2025, ubuntu-24.04, ubuntu-24.04-arm, macos-15 ]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Wait until nuget.org lists the version (up to 30 min)
+        shell: bash
+        run: |
+          lv=$(echo "${{ inputs.version }}" | tr 'A-Z' 'a-z')
+          for i in $(seq 1 60); do
+            curl -fsS https://api.nuget.org/v3-flatcontainer/fullint/index.json | grep -q "\"$lv\"" && exit 0
+            sleep 30
+          done
+          echo "::error::not listed after 30 minutes"; exit 1
+      - name: Install from nuget.org into pack/test and run it
+        shell: bash
+        env:
+          EXPECT_CORE: ${{ matrix.runner == 'macos-15' && 'FullIntCoreManaged' || '' }}
+        run: |
+          rm -f pack/test/nuget.config   # nuget.org only
+          [ -n "$EXPECT_CORE" ] || unset EXPECT_CORE
+          dotnet run --project pack/test -c Release -f net8.0 -p:FullIntVersion=${{ inputs.version }}
