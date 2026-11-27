@@ -44,12 +44,15 @@ namespace FullNumerics
         /// (Math.BigMul) and the BCL's ulong formatting, no native call. ARM64 (Neoverse-N1, .NET 10,
         /// `cross --ops todec --short N`): 0.74 of the kernel's time at 2 words, 0.82 at 4, 0.87 at
         /// 8, 0.75 at 16, 0.89 at 32. x64 (Zen 3): the same at 2-4 words, slower from 8 (the kernel
-        /// there writes the digits faster); x86: slower from 4. So 32 on ARM64 and everything that is
-        /// not x86-64 / x86 (the managed core's ToDecString is slower still), 0 on x64 and x86.
+        /// there writes the digits faster); x86: slower from 4. ARMv7 (32-bit: Math.BigMul is four
+        /// multiplies there): the kernel (Div.s) is 3.4x faster at 2 words, 4x at 8, 2x at 32
+        /// (BigInteger / FullInt 5.8 / 1.7, 13.2 / 3.4, 24 / 11.8). So 32 on ARM64 and everything that
+        /// is not x86-64 / x86 / ARMv7 (the managed core's ToDecString is slower still), 0 there.
         /// </summary>
         public static int ShortWords { get; set; } =
             System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture
-                is System.Runtime.InteropServices.Architecture.X64 or System.Runtime.InteropServices.Architecture.X86 ? 0 : 32;
+                is System.Runtime.InteropServices.Architecture.X64 or System.Runtime.InteropServices.Architecture.X86
+                or System.Runtime.InteropServices.Architecture.Arm ? 0 : 32;
     }
 
     /// <summary>

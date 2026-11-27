@@ -440,8 +440,9 @@ namespace FullNumerics
                 if (n == 1) return 0;
 #if NET7_0_OR_GREATER
                 // 16-byte vectors: half the speed of the x64 AVX2 kernel on long values, which go
-                // there (the call costs ~10 ns); on x86 this beats the kernel at every length
-                if (n <= LongCompareWords || !Is64Bit)
+                // there (the call costs ~10 ns); on x86 this beats the kernel at every length; on
+                // ARMv7 (no vectors in .NET there) only up to 16 words
+                if (n <= QuickCompareWords)
                 {
                     int i = 1 + value1.Slice(1).CommonPrefixLength(value2.Slice(1));
                     if (i == n) return 0;
@@ -464,6 +465,11 @@ namespace FullNumerics
         private const int ShortCompareWords = 16;
         private const int LongCompareWords = 64;   // x64, measured: 64 words even, 128: the kernel 1.3x ahead
         private static readonly bool Is64Bit = Environment.Is64BitProcess;
+        // ARMv7 (Neoverse-N1 in AArch32, BigInteger / FullInt): this loop 1.7 at 16 words, 0.58-0.68 from
+        // 32; the kernel (Compare.s) from 32
+        private static readonly int QuickCompareWords = Is64Bit ? LongCompareWords
+            : System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture == System.Runtime.InteropServices.Architecture.Arm ? 16
+            : int.MaxValue;
 
         public bool IsABiggerOrEqualsB(FullInt value1, FullInt value2)
         {

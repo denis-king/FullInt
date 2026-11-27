@@ -64,7 +64,7 @@ Console.WriteLine(p.ToString("X"));          // D (default), X, x, B
 | `win-x64`, `linux-x64` | x86-64 assembly |
 | `win-x86` | x86 assembly |
 | `linux-arm64` | AArch64 assembly |
-| `linux-arm` (ARMv7, 32-bit) | ARMv7 assembly for add / subtract and multiplication, managed C# for the rest |
+| `linux-arm` (ARMv7, 32-bit) | ARMv7 assembly |
 | anything else | managed C#: the same results, slower |
 
 The package has two builds:

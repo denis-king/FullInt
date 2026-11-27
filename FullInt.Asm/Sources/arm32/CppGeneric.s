@@ -31,19 +31,6 @@
     GENERIC Fullint64SqrWIN
     GENERIC Fullint64MulLoWIN
     GENERIC Fullint64DivWin
-    GENERIC Fullint64Div2longWin
-    GENERIC Fullint64CompareWIN
-    GENERIC Fullint64CmpNWIN
-    GENERIC Fullint64ToDecStringWin
-    GENERIC Fullint64FromDecStringWin
-    GENERIC Fullint64AndWIN
-    GENERIC Fullint64OrWIN
-    GENERIC Fullint64XorWIN
-    GENERIC Fullint64ShlWIN
-    GENERIC Fullint64ShrWIN
     GENERIC Fullint64DivExactWIN
     GENERIC Fullint64CpuFeatures
-    GENERIC Fullint64Div2longWIN_recip
-    GENERIC Fullint64DivWIN_recip
     GENERIC Fullint64DivQWIN_recip
-    GENERIC Fullint64ToDecStringWIN_recip
