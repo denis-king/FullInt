@@ -334,3 +334,49 @@ jobs:
             mkdir -p /tmp/dotnet && tar xzf sdk-arm.tar.gz -C /tmp/dotnet
             export PATH=/tmp/dotnet:$PATH DOTNET_ROOT=/tmp/dotnet DOTNET_ROLL_FORWARD=Major
             dotnet run --project pack/test -c Release ${{ matrix.args }} -p:FullIntVersion=${{ needs.pack.outputs.version }}'
+
+  # the package in an iOS app on the iOS simulator (the managed core: the package has no iOS library):
+  # pack/test-ios built for iossimulator-arm64 in Debug (no trimming / AOT: minutes), launched on an
+  # iPhone simulator; the app runs pack/test's checks and prints "OK" (each line under the iOS log's
+  # date and process prefix)
+  package-ios:
+    name: Package on the iOS simulator (managed)
+    needs: pack
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xcode 26.0 (the .NET for iOS 26.0 workload asks for it), else the newest
+        run: |
+          x=$(ls -d /Applications/Xcode_26.0*.app 2>/dev/null | sort -V | tail -1)
+          [ -n "$x" ] || x=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          sudo xcode-select -s "$x"
+          xcodebuild -version
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: The iOS workload
+        run: dotnet workload install ios
+      - uses: actions/download-artifact@v4
+        with:
+          name: nuget-package
+          path: out/nuget
+      - name: Build the app for the simulator
+        run: |
+          dotnet build pack/test-ios -c Debug -f net10.0-ios -p:RuntimeIdentifier=iossimulator-arm64             -p:FullIntVersion=${{ needs.pack.outputs.version }} -p:ValidateXcodeVersion=false
+          echo "APP=$(ls -d pack/test-ios/bin/Debug/net10.0-ios/iossimulator-arm64/*.app)" >> "$GITHUB_ENV"
+      - name: Run it on an iPhone simulator
+        run: |
+          udid=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          d = json.load(sys.stdin)["devices"]
+          ios = sorted((k for k in d if "iOS" in k), key=lambda k: [int(x) for x in k.split("iOS-")[1].split("-")])
+          phones = [x for x in d[ios[-1]] if "iPhone" in x["name"]]
+          print(phones[0]["udid"])')
+          xcrun simctl boot "$udid"
+          xcrun simctl install "$udid" "$APP"
+          set +e
+          xcrun simctl launch --console-pty --terminate-running-process "$udid" com.fullint.packagetest 2>&1 | tee run.log
+          set -e
+          grep -q "core FullIntCoreManaged" run.log || { echo "::error::not the managed core"; exit 1; }
+          grep -qE '(^|\] )OK\s*$' run.log || { echo "::error::the checks failed"; exit 1; }

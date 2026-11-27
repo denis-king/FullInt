@@ -13,7 +13,8 @@ repository (tag `v1.0.0-preview.1`).
   and its siblings). Builds: `net8.0` and `netstandard2.0` (.NET Framework 4.6.1+, Mono, Unity).
 - **Native kernels in the package:** win-x64, win-x86, linux-x64, linux-arm64, linux-arm (ARMv7);
   every other platform (macOS, Windows ARM64, iOS, Android, WebAssembly) runs the managed core -
-  the same results, slower.
+  the same results, slower. CI installs and checks the package on Windows x64 / x86 / ARM64, Linux
+  x64 / ARM64 / ARMv7, macOS (Apple Silicon, Intel) and in an iOS app on the iOS simulator.
 - **C++:** `fullnumerics::FullInt` on the same kernels (Windows x64 / x86, Linux x64, ARM64, ARMv7;
   macOS on Apple Silicon builds and passes its tests); `find_package`, `add_subdirectory`,
   `FetchContent`.
