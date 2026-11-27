@@ -1,0 +1,177 @@
+# The C++ library as ready-built archives for a GitHub Release: headers, the static libraries
+# (Release and Debug, the Debug ones with a d: fullintd), the find_package files and the license -
+# unpack, point CMAKE_PREFIX_PATH at the folder, find_package(FullInt 1.0 CONFIG REQUIRED).
+# Every archive is checked before it is kept: a consumer built against its contents (Debug and
+# Release) and run. With a tag and "upload", the archives and their SHA-256 sums go to that tag's
+# Release; without, they stay in this run's artifacts.
+name: C++ release archives
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The release tag (v1.0.0-preview.1); empty - this branch, archives as artifacts only'
+        type: string
+        default: ''
+      upload:
+        description: Upload the archives to the tag's GitHub Release
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      ref: ${{ steps.v.outputs.ref }}
+    steps:
+      - id: v
+        run: |
+          t="${{ inputs.tag }}"
+          if [ -n "$t" ]; then
+            echo "version=${t#v}" >> "$GITHUB_OUTPUT"; echo "ref=$t" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=dev-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"; echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          fi
+
+  # the oldest toolchains in reach (GCC 11 on Ubuntu 22.04): a static library from a newer
+  # libstdc++ does not link with an older one
+  unix:
+    name: ${{ matrix.platform }}
+    needs: version
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: linux-x64, runner: ubuntu-22.04 }
+          - { platform: linux-arm64, runner: ubuntu-22.04-arm }
+          - { platform: macos-arm64, runner: macos-15, args: -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.ref }}
+      - name: Tools
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            sudo apt-get update && sudo apt-get install -y --no-install-recommends nasm ninja-build
+          else
+            brew install ninja
+          fi
+          cmake --version | head -1; c++ --version | head -1
+      - name: Build, install, check, pack
+        run: bash FullInt.Cpp/tests/package/archive.sh "FullInt-cpp-${{ needs.version.outputs.version }}-${{ matrix.platform }}" out ${{ matrix.args }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cpp-${{ matrix.platform }}
+          path: out/*.tar.gz
+          if-no-files-found: error
+
+  # ARMv7 (armhf): an Ubuntu 22.04 container on the ARM64 runner (natively when its CPU runs AArch32
+  # code, under QEMU otherwise - the C++ build and test run fine there)
+  linux-armv7:
+    name: linux-armv7
+    needs: version
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.ref }}
+      - id: cpu
+        run: |
+          lscpu | grep -E "Model name|op-mode" || true
+          if lscpu | grep -q "op-mode.*32-bit"; then echo "native=true" >> "$GITHUB_OUTPUT"; else echo "native=false" >> "$GITHUB_OUTPUT"; fi
+      - uses: docker/setup-qemu-action@v3
+        if: steps.cpu.outputs.native != 'true'
+        with:
+          platforms: arm
+      - name: Build, install, check, pack
+        run: |
+          docker run --rm --platform linux/arm/v7 -v "$PWD:/src" -w /src -e DEBIAN_FRONTEND=noninteractive ubuntu:22.04 bash -c '
+            set -euo pipefail
+            apt-get update -q && apt-get install -y -q --no-install-recommends build-essential cmake ninja-build > /dev/null
+            cmake --version | head -1; c++ --version | head -1
+            bash FullInt.Cpp/tests/package/archive.sh "FullInt-cpp-${{ needs.version.outputs.version }}-linux-armv7" out'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cpp-linux-armv7
+          path: out/*.tar.gz
+          if-no-files-found: error
+
+  # MSVC, the dynamic runtime (/MD, /MDd): link with Visual Studio 2022 or newer
+  windows:
+    name: windows-${{ matrix.arch }}
+    needs: version
+    runs-on: windows-2025
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [ x64, x86 ]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.ref }}
+      - name: Build, install, check, pack
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Invoke-Checked([scriptblock]$cmd) { & $cmd; if ($LASTEXITCODE) { throw "failed ($LASTEXITCODE): $cmd" } }
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          Import-Module "$vs\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+          $a = if ('${{ matrix.arch }}' -eq 'x64') { 'amd64' } else { 'x86' }
+          Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments "-arch=$a -host_arch=amd64"
+          cl 2>&1 | Select-Object -First 1
+          $name = 'FullInt-cpp-${{ needs.version.outputs.version }}-windows-${{ matrix.arch }}'
+          $w = "$env:RUNNER_TEMP/w".Replace('\', '/')
+          $p = "$w/$name"
+          $gen = @('-G', 'Ninja Multi-Config')
+          Invoke-Checked { cmake -S FullInt.Cpp -B "$w/lib" @gen -DFULLINT_BUILD_TOOLS=OFF }
+          foreach ($c in 'Debug', 'Release') {
+            Invoke-Checked { cmake --build "$w/lib" --config $c --target fullint }
+            Invoke-Checked { cmake --install "$w/lib" --config $c --prefix $p }
+          }
+          Get-ChildItem $p -Recurse -File | ForEach-Object { '  ' + $_.FullName.Substring($w.Length + 1) }
+          Invoke-Checked { cmake -S FullInt.Cpp/tests/package -B "$w/find" @gen -DFULLINT_CONSUME=find_package "-DCMAKE_PREFIX_PATH=$p" }
+          foreach ($c in 'Debug', 'Release') {
+            Invoke-Checked { cmake --build "$w/find" --config $c }
+            Write-Host "  $c`: " -NoNewline; Invoke-Checked { & "$w/find/$c/package_test.exe" }
+          }
+          New-Item -ItemType Directory -Force out | Out-Null
+          Compress-Archive -Path $p -DestinationPath "out/$name.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cpp-windows-${{ matrix.arch }}
+          path: out/*.zip
+          if-no-files-found: error
+
+  upload:
+    name: The GitHub Release
+    needs: [ version, unix, linux-armv7, windows ]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cpp-*
+          path: out
+          merge-multiple: true
+      - name: SHA-256 sums
+        run: |
+          cd out
+          sha256sum FullInt-cpp-* | tee "FullInt-cpp-${{ needs.version.outputs.version }}-SHA256SUMS.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cpp-release
+          path: out/*
+      - name: Upload to the Release ${{ inputs.tag }}
+        if: inputs.upload && inputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ inputs.tag }}" out/* --clobber -R "${{ github.repository }}"
