@@ -8,11 +8,15 @@
 # dedicated machines, macOS from the manual workflow bench-macos.yml.
 name: CI
 
+# once per push (not per commit: the newest one), a newer push cancels the run in progress; a push
+# of documentation alone runs nothing
 on:
   push:
     branches: [ master ]
+    paths-ignore: [ 'docs/**', '**/*.md', 'LICENSE' ]
   pull_request:
     branches: [ master ]
+    paths-ignore: [ 'docs/**', '**/*.md', 'LICENSE' ]
   workflow_dispatch:
 
 concurrency:
