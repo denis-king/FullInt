@@ -1,7 +1,7 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <!-- The FullInt package in an iOS app (the simulator, .github/workflows/ios.yml): pack/test's checks
        (Program.cs, shared) run at the app's start, the result goes to stdout ("OK" / "N failed") and
-       the app exits with its code - simctl launch --console-pty shows both. -->
+       the app exits with its code - simctl launch with its console option shows both. -->
   <PropertyGroup>
     <TargetFramework>net10.0-ios</TargetFramework>
     <OutputType>Exe</OutputType>
