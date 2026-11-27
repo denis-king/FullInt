@@ -48,8 +48,12 @@ jobs:
       - name: Build the app for the simulator
         run: |
           dotnet build pack/test-ios -c Release -f net10.0-ios -p:RuntimeIdentifier=iossimulator-arm64 \
-            -p:FullIntVersion=$FULLINT_VERSION -p:ValidateXcodeVersion=false -o out/ios
-          ls -d out/ios/*.app
+            -p:FullIntVersion=$FULLINT_VERSION -p:ValidateXcodeVersion=false
+          # (not -o: the app bundle is assembled in the build's own folder, -o leaves it without
+          # Microsoft.iOS.dll)
+          app=$(ls -d pack/test-ios/bin/Release/net10.0-ios/iossimulator-arm64/*.app)
+          echo "APP=$app" >> "$GITHUB_ENV"
+          ls "$app" | head -30
       - name: Run it on an iPhone simulator
         run: |
           udid=$(xcrun simctl list devices available -j | python3 -c '
@@ -60,7 +64,7 @@ jobs:
           print(phones[0]["udid"])')
           echo "simulator $udid"
           xcrun simctl boot "$udid"
-          xcrun simctl install "$udid" out/ios/*.app
+          xcrun simctl install "$udid" "$APP"
           set +e
           xcrun simctl launch --console-pty --terminate-running-process "$udid" com.fullint.packagetest 2>&1 | tee run.log
           set -e
