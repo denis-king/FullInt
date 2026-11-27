@@ -137,3 +137,131 @@ ENTRY Fullint64SubCmpNWIN
     mov r1, #0
     pop {r4-r11, pc}
 END Fullint64SubCmpNWIN
+
+// -----------------------------------------------------------------------------
+//  uint64_t Fullint64AddWIN(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB,
+//                           int lenR)
+//  r = a + b over lenR words (the operands' missing top words 0); the carry out of r's top word.
+//  The common words through .Laddn, the longer one's rest with the carry, then the carry word and
+//  zeros.
+ENTRY Fullint64AddWIN
+    push {r4-r11, lr}
+    ldr r4, [sp, #36]           // lenB
+    ldr r12, [sp, #40]          // lenR
+    cmp r3, r4                  // the longer operand in r0 / r3
+    movlo r5, r0
+    movlo r0, r1
+    movlo r1, r5
+    movlo r5, r3
+    movlo r3, r4
+    movlo r4, r5
+    add r0, r0, r3, lsl #3      // the ends
+    add r1, r1, r4, lsl #3
+    add r2, r2, r12, lsl #3
+    sub r3, r3, r4              // the longer one's own words
+    cmp r4, r12                 // the common words: min(lenB, lenR)
+    movhi r4, r12
+    sub r12, r12, r4            // r's words left
+    sub sp, sp, #8
+    stmia sp, {r3, r12}
+    mov r3, r4
+    bl .Laddn                   // C: the carry
+    mov r6, #0
+    adc r6, r6, #0              // (kept across the compares below)
+    ldmia sp, {r3, r12}
+    add sp, sp, #8
+    cmp r3, r12                 // the rest of the longer one: min(its words, r's left)
+    movhi r3, r12
+    sub r12, r12, r3
+    cmp r6, #1                  // C = the carry again
+    teq r3, #0
+    beq 2f
+1:  ldmdb r0!, {r4, r5}
+    adcs r4, r4, #0
+    adcs r5, r5, #0
+    stmdb r2!, {r4, r5}
+    sub r3, r3, #1
+    teq r3, #0
+    bne 1b
+2:  mov r0, #0
+    adc r0, r0, #0              // the carry
+    mov r1, #0
+    teq r12, #0
+    popeq {r4-r11, pc}          // r full: the carry out
+    mov r4, #0
+    stmdb r2!, {r0, r4}         // the carry word, then zeros; 0 out
+    mov r0, #0
+3:  subs r12, r12, #1
+    popeq {r4-r11, pc}
+    stmdb r2!, {r0, r4}
+    b 3b
+END Fullint64AddWIN
+
+//  int Fullint64SubWIN(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB,
+//                      int lenR)
+//  |a - b| over lenR words, the sign of a - b returned (Compare first: the larger one less the
+//  smaller); the smaller one's top words past the larger one's are zeros.
+ENTRY Fullint64SubWIN
+    push {r4-r11, lr}
+    sub sp, sp, #16
+    stmia sp, {r0-r3}           // a, b, r, lenA
+    mov r2, r3                  // Compare(a, b, lenA, lenB)
+    ldr r3, [sp, #(16 + 36)]
+    bl Fullint64CompareWIN
+    mov r11, r0                 // the sign
+    ldmia sp, {r0-r3}
+    ldr r4, [sp, #(16 + 36)]    // lenB
+    ldr r12, [sp, #(16 + 40)]   // lenR
+    add sp, sp, #16
+    teq r11, #0
+    beq 8f
+    cmp r11, #0                 // b larger: swap
+    movlt r5, r0
+    movlt r0, r1
+    movlt r1, r5
+    movlt r5, r3
+    movlt r3, r4
+    movlt r4, r5
+    add r0, r0, r3, lsl #3
+    add r1, r1, r4, lsl #3
+    add r2, r2, r12, lsl #3
+    cmp r4, r3                  // the common words: min(lenL, lenG, lenR)
+    movhi r4, r3
+    cmp r4, r12
+    movhi r4, r12
+    sub r3, r3, r4              // the larger one's own words
+    sub r12, r12, r4
+    sub sp, sp, #16
+    stmia sp, {r3, r11, r12}    // (.Lsubn takes r4-r11)
+    mov r3, r4
+    bl .Lsubn                   // C clear: a borrow (into the larger one's rest)
+    mov r6, #0
+    adc r6, r6, #0              // (kept across the compares below)
+    ldmia sp, {r3, r11, r12}
+    add sp, sp, #16
+    cmp r3, r12
+    movhi r3, r12
+    sub r12, r12, r3
+    cmp r6, #1                  // C = no borrow, again
+    teq r3, #0
+    beq 2f
+1:  ldmdb r0!, {r4, r5}
+    sbcs r4, r4, #0
+    sbcs r5, r5, #0
+    stmdb r2!, {r4, r5}
+    sub r3, r3, #1
+    teq r3, #0
+    bne 1b
+2:  mov r4, #0                  // zeros on top
+    mov r5, #0
+3:  subs r12, r12, #1
+    blt 4f
+    stmdb r2!, {r4, r5}
+    b 3b
+4:  mov r0, r11
+    pop {r4-r11, pc}
+8:  mov r4, #0                  // a == b: r = 0
+    mov r5, #0
+    add r2, r2, r12, lsl #3
+    b 3b
+END Fullint64SubWIN

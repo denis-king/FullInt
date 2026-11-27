@@ -23,11 +23,8 @@
     .size \name, . - \name
 .endm
 
-    GENERIC Fullint64AddWIN
     GENERIC Fullint64AddNHdrWIN
     GENERIC Fullint64SubCmpNHdrWIN
-    GENERIC Fullint64SubWIN
     GENERIC Fullint64ToDecFracWIN
     GENERIC Fullint64DivWin
-    GENERIC Fullint64DivExactWIN
     GENERIC Fullint64CpuFeatures

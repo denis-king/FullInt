@@ -22,6 +22,18 @@ namespace FullNumerics
         private static extern unsafe ulong Fullint64SubCmpNWIN(ulong* a, ulong* b, ulong* r, long n);
         [DllImport(dll)]
         private static extern unsafe ulong Fullint64MultWIN(ulong* a, ulong* b, ulong* r, int lenA, int lenB, int lenR);
+        [DllImport(dll)]
+        private static extern unsafe ulong Fullint64AddWIN(ulong* a, ulong* b, ulong* r, int lenA, int lenB, int lenR);
+        [DllImport(dll)]
+        private static extern unsafe int Fullint64SubWIN(ulong* a, ulong* b, ulong* r, int lenA, int lenB, int lenR);
+        [DllImport(dll)]
+        private static extern unsafe ulong Fullint64DivExactWIN(ulong* a, ulong* q, int len, ulong d);
+        [DllImport(dll, EntryPoint = "Fullint64AddWIN"), SuppressGCTransition]
+        private static extern unsafe ulong Fullint64AddWIN_Fast(ulong* a, ulong* b, ulong* r, int lenA, int lenB, int lenR);
+        [DllImport(dll, EntryPoint = "Fullint64SubWIN"), SuppressGCTransition]
+        private static extern unsafe int Fullint64SubWIN_Fast(ulong* a, ulong* b, ulong* r, int lenA, int lenB, int lenR);
+        [DllImport(dll, EntryPoint = "Fullint64DivExactWIN"), SuppressGCTransition]
+        private static extern unsafe ulong Fullint64DivExactWIN_Fast(ulong* a, ulong* q, int len, ulong d);
 
         // short calls without the GC transition (it costs more than the work there); long ones keep
         // it, so a collection is not held up for their whole length
@@ -47,7 +59,13 @@ namespace FullNumerics
                 b = t;
             }
             int la = a.Length, lb = b.Length, lr = r.Length;
-            if (lb == 0 || lr < la || lr > la + 1) return base.Add(a, b, r);
+            if (lb == 0 || lr < la || lr > la + 1)
+            {
+                fixed (ulong* qa = a, qb = b, qr = r)   // the general case (AddSubN.s's AddWIN)
+                    return lr <= FastWords
+                        ? Fullint64AddWIN_Fast(qa, qb, qr, la, lb, lr)
+                        : Fullint64AddWIN(qa, qb, qr, la, lb, lr);
+            }
             fixed (ulong* pa = a, pb = b, pr = r)
             {
                 ulong c = lb <= FastWords
@@ -70,7 +88,14 @@ namespace FullNumerics
         public new unsafe int Sub(Span<ulong> a, Span<ulong> b, Span<ulong> r)
         {
             int n = a.Length;
-            if (n == 0 || n != b.Length || r.Length < n) return base.Sub(a, b, r);
+            if (n == 0 || n != b.Length || r.Length < n)
+            {
+                if (r.Length < Math.Max(a.Length, b.Length)) return base.Sub(a, b, r);
+                fixed (ulong* qa = a, qb = b, qr = r)   // different lengths (AddSubN.s's SubWIN)
+                    return r.Length <= FastWords
+                        ? Fullint64SubWIN_Fast(qa, qb, qr, a.Length, b.Length, r.Length)
+                        : Fullint64SubWIN(qa, qb, qr, a.Length, b.Length, r.Length);
+            }
             fixed (ulong* pa = a, pb = b, pr = r)
             {
                 int top = r.Length - n;
@@ -99,6 +124,15 @@ namespace FullNumerics
         private static extern unsafe void Fullint64SqrWIN(ulong* a, ulong* r, int lenA, int lenR);
         [DllImport(dll, EntryPoint = "Fullint64SqrWIN"), SuppressGCTransition]
         private static extern unsafe void Fullint64SqrWIN_Fast(ulong* a, ulong* r, int lenA, int lenR);
+
+        // q = a / d for a multiple of d (the Toom-Cook interpolation; ToomOps.s): 0 out when a was one
+        public new unsafe ulong DivExact(Span<ulong> a, ulong d, Span<ulong> q)
+        {
+            fixed (ulong* pa = a, pq = q)
+                return a.Length <= FastWords
+                    ? Fullint64DivExactWIN_Fast(pa, pq, a.Length, d)
+                    : Fullint64DivExactWIN(pa, pq, a.Length, d);
+        }
 
         // r = a² (Sqr.s: the products of different words once, doubled, the squares added): r at least
         // 2·a.Length words, the words above zero
