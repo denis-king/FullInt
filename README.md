@@ -104,7 +104,8 @@ In every case the project links `FullInt::FullInt`.
 | Linux x64 | x86-64 assembly | ✅ | ✅ GCC, Clang |
 | Linux ARM64 | AArch64 assembly | ✅ | ✅ GCC, Clang |
 | Linux ARMv7 (32-bit, armhf) | ARMv7 assembly | ✅ | ✅ GCC |
-| macOS, Windows ARM64, Android, iOS, others | managed C# (.NET only) | ✅ same results, slower | — |
+| macOS | .NET: managed C#; C++: AArch64 assembly on Apple Silicon | ✅ same results, slower (CI on Apple Silicon and Intel) | ✅ Apple Clang, Apple Silicon (CI) |
+| Windows ARM64, Android, iOS, others | managed C# (.NET only) | ✅ same results, slower | — |
 
 If the native library cannot be loaded, the .NET library switches to its managed core without a word. `FULLINT_FORCE_MANAGED=1` forces it. The details, including the ABIs and the ARM ports, are in [docs/PLATFORMS.md](docs/PLATFORMS.md).
 
@@ -114,7 +115,7 @@ Every operation is checked differentially, on random and edge-case numbers from 
 - **.NET:** against `BigInteger`, on the native and the managed core, on .NET 8 and .NET Framework 4.8, x64 and x86;
 - **C++:** against GMP, with every kernel variant: the CPU's own and `FULLINT_CPU=baseline`.
 
-The suites run on Windows x64 and x86, Linux x64, Linux ARM64 and Linux ARMv7 on our machines; CI (GitHub Actions, on every push) runs the suites on Windows x64, x86 and ARM64, Linux x64, ARM64 and ARMv7 (under QEMU), and macOS (Apple Silicon and Intel). The runs: https://github.com/denis-king/FullInt/actions
+The suites run on Windows x64 and x86, Linux x64, Linux ARM64 and Linux ARMv7 on our machines; CI (GitHub Actions, on every push) runs the suites on Windows x64, x86 and ARM64, Linux x64, ARM64 and ARMv7, and macOS (Apple Silicon and Intel); the NuGet package itself is packed from the five native libraries and installed and checked on every one of them. The runs: https://github.com/denis-king/FullInt/actions
 
 ## Building from source
 

@@ -22,6 +22,7 @@ JIT, before measuring).
 | Windows x64 | everything (0.13-1.0) | Parse of one word 1.17; a few cells at 1.01-1.03 | 1.1-97x faster; ToString 2-4 words 0.88-0.98 in this run (1.06-1.08 alone) |
 | Windows x86 | almost everything (0.11-1.0) | div / mod at 8-256 words up to 1.1 | - |
 | Linux ARM64 | add / sub, shifts, `and`, compare, mul from 4096 | div / mod 1.1-1.4, ToString 1.05-1.47 (2-1024 words), mul at 16-1024 up to 1.2, Parse from 256 up to 1.2 | 1.0-53x; add of 2 words, ToString of 4: 0.96 |
+| macOS Apple Silicon (GitHub's shared M1: indicative) | add / sub, shifts, `and`, compare (0.3-1.0) | div 0.9-1.35, Parse 1.0-1.5, mul at 16-1024 up to 1.16 | managed core: 1.0-20x, add / sub of 2-4 words 0.83-0.94; Intel Mac: add / sub 0.63-0.98 ([the macOS report](2026-11-27-macos-github.md)) |
 | Linux ARMv7 | mul (0.24-0.84, 0.40-0.56 from 1024), mod, ToString, compare, Parse from 16, everything from 1024 | shifts / `and` from 16 words 1.1-1.7, the quotient at 2-64 words up to 1.25, Parse 1-8 words up to 1.3 | mul 3-20x from 8 words, div 2.8-11x from 4, ToString up to 458x; operations on 1-8 words that allocate 0.34-0.8 (the runtime's 8-byte-aligned `ulong[]` allocation on 32-bit ARM) |
 
 ## C++ against GMP

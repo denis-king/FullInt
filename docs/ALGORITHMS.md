@@ -87,7 +87,7 @@ Karatsuba and the Toom levels are written in the upper layer (C# / C++) over the
   - lengths around every threshold.
 - **Identities**: `(a·b)/b == a`, `a == q·b + r` with `|r| < |b|`, `Parse(ToString(a)) == a`.
 - **Platforms**: Windows x64 and x86, Linux x64 (Docker), Linux ARM64 (a phone and a cloud machine), Linux ARMv7 (the cloud machine running AArch32 code).
-- **CI**: CI (GitHub Actions, on every push) runs the suites on Windows x64, x86 and ARM64, Linux x64, ARM64 and ARMv7 (under QEMU), and macOS (Apple Silicon and Intel).
+- **CI**: CI (GitHub Actions, on every push) runs the suites on Windows x64, x86 and ARM64, Linux x64, ARM64 and ARMv7, and macOS (Apple Silicon and Intel).
 - **Planned**: a long randomized run on a schedule.
 
 ## References
