@@ -1,0 +1,67 @@
+# The FullInt package in an iOS app on the iOS simulator (by hand for now; into pipeline.yml once
+# it is steady): the package of the newest green CI run on master (its artifact "nuget-package"),
+# pack/test-ios built for iossimulator-arm64, installed on an iPhone simulator and launched; the app
+# runs pack/test's checks (the managed core: the package has no iOS library) and exits with their
+# result.
+name: iOS simulator
+
+on:
+  workflow_dispatch:
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: 1
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  ios:
+    name: Package on the iOS simulator
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: The newest Xcode
+        run: |
+          ls -d /Applications/Xcode*.app
+          x=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          sudo xcode-select -s "$x"
+          xcodebuild -version
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: The iOS workload
+        run: dotnet workload install ios
+      - name: The package of the newest green CI run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          id=$(gh run list -R ${{ github.repository }} --workflow ci.yml --branch master --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          echo "CI run $id"
+          gh run download "$id" -R ${{ github.repository }} -n nuget-package -D out/nuget
+          ls out/nuget
+          v=$(ls out/nuget/*.nupkg | sed -E 's|.*/FullInt\.(.*)\.nupkg|\1|')
+          echo "FULLINT_VERSION=$v" >> "$GITHUB_ENV"
+      - name: Build the app for the simulator
+        run: |
+          dotnet build pack/test-ios -c Release -f net10.0-ios -p:RuntimeIdentifier=iossimulator-arm64 \
+            -p:FullIntVersion=$FULLINT_VERSION -o out/ios
+          ls -d out/ios/*.app
+      - name: Run it on an iPhone simulator
+        run: |
+          udid=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          d = json.load(sys.stdin)["devices"]
+          ios = sorted((k for k in d if "iOS" in k), key=lambda k: [int(x) for x in k.split("iOS-")[1].split("-")])
+          phones = [x for x in d[ios[-1]] if "iPhone" in x["name"]]
+          print(phones[0]["udid"])')
+          echo "simulator $udid"
+          xcrun simctl boot "$udid"
+          xcrun simctl install "$udid" out/ios/*.app
+          set +e
+          xcrun simctl launch --console-pty --terminate-running-process "$udid" com.fullint.packagetest 2>&1 | tee run.log
+          set -e
+          grep -q "core FullIntCoreManaged" run.log || { echo "::error::not the managed core"; exit 1; }
+          grep -qx "OK" <(tr -d '\r' < run.log) || { echo "::error::the checks failed"; exit 1; }

@@ -23,7 +23,10 @@ Console.WriteLine($"{RuntimeInformation.FrameworkDescription}, {RuntimeInformati
                   $"process {RuntimeInformation.ProcessArchitecture}: core {coreName}");
 
 string? expectEnv = Environment.GetEnvironmentVariable("EXPECT_CORE");   // (empty: not set - a CI matrix leaves it so)
+// (iOS: no native library in the package - the managed core; the app gets no environment there)
+bool ios = RuntimeInformation.IsOSPlatform(OSPlatform.Create("IOS"));
 string expected = !string.IsNullOrEmpty(expectEnv) ? expectEnv!
+                  : ios ? "FullIntCoreManaged"
                   : (RuntimeInformation.ProcessArchitecture == Architecture.X86 ? "FullIntCoreNative32"
                     : RuntimeInformation.ProcessArchitecture == Architecture.Arm ? "FullIntCoreNativeArm32"
                     : "FullIntCoreNative64");

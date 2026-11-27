@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The FullInt package in an iOS app (the simulator, .github/workflows/ios.yml): pack/test's checks
+       (Program.cs, shared) run at the app's start, the result goes to stdout ("OK" / "N failed") and
+       the app exits with its code - simctl launch --console-pty shows both. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-ios</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <SupportedOSPlatformVersion>15.0</SupportedOSPlatformVersion>
+    <ApplicationId>com.fullint.packagetest</ApplicationId>
+    <ApplicationTitle>FullInt package test</ApplicationTitle>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+    <FullIntVersion Condition="'$(FullIntVersion)' == ''">1.0.0-preview.1</FullIntVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="FullInt" Version="$(FullIntVersion)" />
+    <Compile Include="../test/Program.cs" Link="Program.cs" />
+  </ItemGroup>
+</Project>
