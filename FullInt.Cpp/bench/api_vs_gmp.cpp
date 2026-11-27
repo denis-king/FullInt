@@ -37,7 +37,9 @@
 #include <windows.h>
 #else
 #include <pthread.h>
+#if defined(__linux__)
 #include <sched.h>
+#endif
 #endif
 
 using fullnumerics::FullInt;
@@ -196,7 +198,7 @@ int main(int argc, char** argv)
 #if defined(_WIN32)
     SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
     SetThreadAffinityMask(GetCurrentThread(), 1ull << benchCpu);
-#else
+#elif defined(__linux__)   // (macOS: no affinity API - the scheduler decides)
     cpu_set_t cpus;   // one core, as on Windows (the priority: the default)
     CPU_ZERO(&cpus);
     CPU_SET(benchCpu, &cpus);

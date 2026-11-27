@@ -24,7 +24,9 @@
 #define NOMINMAX
 #include <windows.h>
 #else
+#if defined(__linux__)
 #include <sched.h>
+#endif
 #endif
 
 using namespace fullnumerics;
@@ -63,7 +65,7 @@ int main(int argc, char** argv)
 #if defined(_WIN32)
     SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
     SetThreadAffinityMask(GetCurrentThread(), 1ull << cpu);
-#else
+#elif defined(__linux__)   // (macOS: no affinity API - the scheduler decides)
     cpu_set_t cpus;
     CPU_ZERO(&cpus);
     CPU_SET(cpu, &cpus);

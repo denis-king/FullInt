@@ -132,7 +132,8 @@ jobs:
             /tmp/build/fullint_tests | tail -1
             FULLINT_CPU=baseline /tmp/build/fullint_tests | tail -1
             mkdir -p /tmp/dotnet
-            curl -sSL https://aka.ms/dotnet/10.0/dotnet-sdk-linux-arm.tar.gz | tar xz -C /tmp/dotnet
+            curl -fsSL --retry 5 --retry-all-errors -o /tmp/sdk.tar.gz https://aka.ms/dotnet/10.0/dotnet-sdk-linux-arm.tar.gz
+            tar xzf /tmp/sdk.tar.gz -C /tmp/dotnet
             export PATH=/tmp/dotnet:$PATH DOTNET_ROOT=/tmp/dotnet DOTNET_ROLL_FORWARD=Major
             dotnet test FullInt.Tests -c Release -f net8.0'
 
