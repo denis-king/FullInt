@@ -145,8 +145,9 @@ void Fullint64NttScaleWIN_portable(uint32_t* x, int64_t n, uint32_t p, uint32_t 
 void Fullint64NttLoadWIN_portable(const uint64_t* a, int64_t la, uint32_t* x, int64_t L, uint32_t p);
 uint64_t Fullint64NttCrtWIN_portable(const uint32_t* x0, const uint32_t* x1, const uint32_t* x2, int64_t nd,
                                      uint64_t* r, int64_t len, const uint64_t* k);
-#if FULLINT_ARM64_ASM
-// every NTT kernel in AArch64 asm (NttNeon.s: the levels, Point, Scale on NEON; Load, the CRT scalar)
+#if FULLINT_ARM_ASM
+// every NTT kernel in ARM asm (arm64/NttNeon.s, arm32/NttNeon.s: the levels, Point, Scale on NEON;
+// Load, the CRT scalar). ARMv7: only with NEON (Cpu::Neon)
 void Fullint64NttDif1WIN_neon(uint32_t* x, int64_t L, int64_t h, const uint32_t* w, const uint32_t* wq, uint32_t p);
 void Fullint64NttDif2WIN_neon(uint32_t* x, int64_t L, int64_t h, const uint32_t* w, const uint32_t* wq, uint32_t p);
 void Fullint64NttDif3WIN_neon(uint32_t* x, int64_t L, const uint32_t* w, const uint32_t* wq, uint32_t p);

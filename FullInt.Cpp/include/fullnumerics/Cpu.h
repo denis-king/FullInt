@@ -19,6 +19,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#if FULLINT_ARM32 && defined(__linux__)
+#include <sys/auxv.h>
+#endif
 
 namespace fullnumerics {
 
@@ -27,7 +30,8 @@ struct Cpu
     // Recip is not a CPU feature: the division by reciprocal (DivRecip.asm, ToDecStringRecip.asm)
     // runs on any x86-64; set unless FULLINT_CPU=baseline (then the original kernels run)
     // Sse2: x86 only (x64 has it always; its kernels are the AVX2 ones)
-    enum : int { Bmi2 = 1, Adx = 2, Avx2 = 4, Recip = 8, Sse2 = 16 };
+    // Neon: ARMv7 only (optional there: HWCAP_NEON; AArch64 has it always)
+    enum : int { Bmi2 = 1, Adx = 2, Avx2 = 4, Recip = 8, Sse2 = 16, Neon = 32 };
 
     static int Detect() noexcept
     {
@@ -38,6 +42,8 @@ struct Cpu
         return Fullint64CpuFeatures() | Recip;
 #elif FULLINT_X86
         return Fullint64CpuFeatures() | Recip;   // x86: SSE2 (x86/Cpu.asm) and the reciprocal division
+#elif FULLINT_ARM32 && defined(__linux__)
+        return Recip | ((getauxval(AT_HWCAP) & (1ul << 12)) ? Neon : 0);   // HWCAP_NEON: arm32/NttNeon.s
 #else
         return Recip;   // AArch64: the divisions by reciprocal (no 128 / 64 division instruction)
 #endif
@@ -104,7 +110,7 @@ struct Cpu
         return Has(Recip) ? "all: AArch64 asm (Div, ToDecString: recip); thresholds: wide multiplier"
                           : "all: AArch64 asm (baseline); thresholds: wide multiplier";
 #elif FULLINT_GENERIC_KERNELS && FULLINT_ARM32_ASM
-        return "ARMv7 asm over the portable C++ kernels";
+        return Has(Neon) ? "all: ARMv7 asm (NTT: NEON)" : "all: ARMv7 asm (NTT: portable C++, no NEON)";
 #elif FULLINT_GENERIC_KERNELS
         return "all: portable C++ (built without the ARM asm kernels)";
 #endif

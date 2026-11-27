@@ -39,6 +39,11 @@ bool Available() { return true; }
 #define NTT(name) Fullint64Ntt##name##WIN_neon     // NttNeon.s: every kernel
 #define NTT_V(name) Fullint64Ntt##name##WIN_neon
 #define NTT_CRT Fullint64NttCrtWIN_neon
+#elif FULLINT_ARM32_ASM
+// ARMv7: arm32/NttNeon.s when the CPU has NEON (optional there), the portable kernels otherwise
+#define NTT(name) (Cpu::Has(Cpu::Neon) ? Fullint64Ntt##name##WIN_neon : Fullint64Ntt##name##WIN_portable)
+#define NTT_V(name) NTT(name)
+#define NTT_CRT (Cpu::Has(Cpu::Neon) ? Fullint64NttCrtWIN_neon : Fullint64NttCrtWIN_portable)
 #else
 #define NTT(name) Fullint64Ntt##name##WIN_portable
 #define NTT_V(name) Fullint64Ntt##name##WIN_portable

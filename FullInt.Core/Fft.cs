@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using System.Buffers;
 
 namespace FullNumerics
@@ -58,7 +59,9 @@ namespace FullNumerics
         /// from 48 words (the half), there 1.1-4.4 times the Toom levels (48: a·b 2.9, a² 4.3;
         /// C++ against GMP 2.4 / 3.6).
         /// </summary>
-        public static int NttThreshold { get; set; } = Environment.Is64BitProcess ? 896 : 256;
+        public static int NttThreshold { get; set; } = Environment.Is64BitProcess ? 896
+            : RuntimeInformation.ProcessArchitecture == Architecture.Arm ? 1024   // ARMv7 NEON (C++: 1024 0.55 of GMP, Toom 0.88)
+            : 256;
 
         // the transforms of a fixed factor (NttOps.Image) when the core has the NTT kernels and the
         // products of words words would take them (the rule of the dispatcher); otherwise null
@@ -72,7 +75,11 @@ namespace FullNumerics
 
         // the same rule as NativeFft: the x64 core's flag through an instance property
         private static bool NativeNtt(IFullIntCore core) =>
-            core is FullIntCoreNative64 x64 ? x64.HasNttKernels : core is FullIntCoreNative32 x86 && x86.HasNttKernels;
+            core is FullIntCoreNative64 x64 ? x64.HasNttKernels : core is FullIntCoreNative32 x86 ? x86.HasNttKernels
+#if NET5_0_OR_GREATER
+            : core is FullIntCoreNativeArm32 arm32 ? arm32.HasNttKernels
+#endif
+            : false;
 
         /// <summary>
         /// The words of a product modulo β^m - 1 that MultiplyMod takes for at least

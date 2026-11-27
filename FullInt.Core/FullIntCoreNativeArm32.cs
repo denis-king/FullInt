@@ -45,6 +45,29 @@ namespace FullNumerics
         private static extern unsafe ulong Fullint64MultWIN_Fast(ulong* a, ulong* b, ulong* r, int lenA, int lenB, int lenR);
 
         private const int FastWords = 1024;          // add / sub: up to ~1 us
+
+        // the number-theoretic transforms (arm32/NttNeon.s): NEON, optional on ARMv7 - HWCAP_NEON in
+        // the process's auxiliary vector (FULLINT_CPU=baseline: off)
+        private static readonly bool Neon = DetectNeon();
+        internal bool HasNttKernels => Neon;
+        internal static bool NttAvailable() => Neon;
+
+        private static bool DetectNeon()
+        {
+            if (Environment.GetEnvironmentVariable("FULLINT_CPU") == "baseline") return false;
+            try
+            {
+                var auxv = System.IO.File.ReadAllBytes("/proc/self/auxv");   // (type, value) pairs of 32 bits
+                for (int i = 0; i + 8 <= auxv.Length; i += 8)
+                {
+                    uint type = BitConverter.ToUInt32(auxv, i), value = BitConverter.ToUInt32(auxv, i + 4);
+                    if (type == 0) break;
+                    if (type == 16) return (value & (1u << 12)) != 0;   // AT_HWCAP, HWCAP_NEON
+                }
+            }
+            catch (Exception) { }
+            return false;
+        }
         private const long FastProducts = 64 * 64;   // the product: up to ~8 us (word products)
 
         // r = a + b over r.Length words (the contract of FullIntCoreManaged.Add): the common case -

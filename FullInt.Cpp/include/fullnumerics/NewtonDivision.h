@@ -29,6 +29,13 @@ struct NewtonDivision
     static inline int Threshold = Cpu::ArmNarrow() ? 2048 : 16384;
     static inline int LongQuotientThreshold = Cpu::ArmNarrow() ? 2048 : 8192;
     static inline int CyclicFrom = Cpu::ArmNarrow() ? 2048 : 4096;
+#elif FULLINT_ARM32
+    // ARMv7 with NEON (the NTT from 1024): from 2048 (Neoverse-N1 in AArch32, of GMP's time at
+    // 4096 words: a / b 0.77, Burnikel–Ziegler 1.06; a % b 0.77 / 0.95; from 1024: 1024 words
+    // a % b 0.93 / 0.81); without NEON as x86 without AVX2
+    static inline int Threshold = Cpu::Has(Cpu::Neon) ? 2048 : 16384;
+    static inline int LongQuotientThreshold = Cpu::Has(Cpu::Neon) ? 2048 : 8192;
+    static inline int CyclicFrom = Cpu::Has(Cpu::Neon) ? 2048 : 4096;
 #else
     // x86: with the NTT (AVX2) Newton pays off from 1024 words (C#, x86: a % b 0.78 of
     // Burnikel–Ziegler, a / b 0.70); without it from 16384

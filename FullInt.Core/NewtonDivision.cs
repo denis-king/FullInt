@@ -24,6 +24,14 @@ namespace FullNumerics
         // x86 with the NTT kernels (AVX2): the products are 5-10 times faster there, and Newton
         // pays off as early as on x64 (read before the thresholds below are initialized)
         private static readonly bool X86Ntt = !Environment.Is64BitProcess && FullIntCoreNative32.NttAvailable();
+        // ARMv7 with NEON (the NTT kernels): from 2048 (C++ there: 4096 words a / b 0.77 of GMP's
+        // time against Burnikel–Ziegler's 1.06)
+        private static readonly bool Arm32Ntt =
+#if NET5_0_OR_GREATER
+            FullIntCoreNativeArm32.NttAvailable();
+#else
+            false;
+#endif
 
         /// <summary>
         /// The engine divides through the Newton reciprocal from this many words of divisor and
@@ -36,14 +44,14 @@ namespace FullNumerics
         /// quotients alone) 1024 0.95, 2048 0.88, 4096 0.70, 16384 0.60; x86 with the NTT % 1024
         /// 0.78, 4096 0.59, 32768 0.47; / 1024 0.70, 4096 0.51, 32768 0.43.
         /// </summary>
-        public static int Threshold { get; set; } = Environment.Is64BitProcess ? 2048 : X86Ntt ? 1024 : 16384;
+        public static int Threshold { get; set; } = Environment.Is64BitProcess ? 2048 : X86Ntt ? 1024 : Arm32Ntt ? 2048 : 16384;
 
         /// <summary>
         /// Same, when the quotient is at least twice the divisor (the reciprocal serves several
         /// blocks): 4N / N x64 0.70 at 4096 words (2048: 0.93), 0.60 at 8192, 0.41 at 65536;
         /// x86 0.83 at 8192, 0.76 at 16384, 0.61 at 65536.
         /// </summary>
-        public static int LongQuotientThreshold { get; set; } = Environment.Is64BitProcess ? 2048 : X86Ntt ? 1024 : 8192;
+        public static int LongQuotientThreshold { get; set; } = Environment.Is64BitProcess ? 2048 : X86Ntt ? 1024 : Arm32Ntt ? 2048 : 8192;
 
         /// <summary>
         /// Whether the engine should divide a by b (lengths in words) through the Newton reciprocal
@@ -64,7 +72,7 @@ namespace FullNumerics
         /// 0.67 at 16384, 0.51 at 32768; 4N / N 0.70 at 4096 (0.97), 0.60 at 8192, 0.41 at 65536.
         /// x86 (managed butterflies): from 4096 (2N / N at 65536: 0.69, with the FFT threshold 0.93).
         /// </summary>
-        public static int CyclicFrom { get; set; } = Environment.Is64BitProcess ? 2048 : X86Ntt ? 1024 : 4096;
+        public static int CyclicFrom { get; set; } = Environment.Is64BitProcess ? 2048 : X86Ntt ? 1024 : Arm32Ntt ? 2048 : 4096;
 
         /// <summary>Reciprocals of at most this many words are one division (at least 2).</summary>
         public static int InverseBase { get; set; } = 64;

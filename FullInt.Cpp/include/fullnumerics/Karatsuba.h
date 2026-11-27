@@ -49,9 +49,11 @@ struct Karatsuba
 #elif FULLINT_WORD64
     static inline int NttThreshold = 896;   // (and from 448 when filled: 512, 768 words)
 #elif FULLINT_ARM32
-    // ARMv7 (Neoverse-N1 in AArch32, the portable C++ NTT): 128 words 22.4 us without it, 90 us
+    // ARMv7 (Neoverse-N1 in AArch32). NEON (arm32/NttNeon.s): from 1024 words - 1024 0.55 of GMP's
+    // time (Toom-6: 0.88), 4096 0.51 (the portable NTT: 1.52); from 512 256 words lost (0.98 /
+    // 0.84). Without NEON (the portable C++ NTT): from 4096 - 128 words 22.4 us without it, 90 us
     // with it from 128; 1024 words 524 / 818 us (from 2048); 4096 3.74 / 3.69 ms
-    static inline int NttThreshold = 4096;
+    static inline int NttThreshold = Cpu::Has(Cpu::Neon) ? 1024 : 4096;
 #else
     static inline int NttThreshold = 256;
 #endif
