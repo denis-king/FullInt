@@ -8,17 +8,17 @@ The same algorithms run in the .NET library (C#, `FullInt.Core`) and the C++ one
 
 ### Kernels (assembly, `FullInt.Asm/Sources`)
 
-| Kernel | x64 baseline | x64 with BMI2 / ADX / AVX2 | x86 | ARM64 |
-|---|---|---|---|---|
-| Add, subtract | `adc` / `sbb` loops | | 32-bit port | `adcs` / `sbcs`, `ldp` / `stp` |
-| Compare, AND / OR / XOR, shifts | scalar | AVX2 (`CompareAvx2`, `LogicAvx2`, `ShiftAvx2`) | scalar | scalar |
-| Multiply basecase | product scanning (`Mult`) | `mulx` + `adcx` / `adox` (`MultAdx`) | 32-bit port | `mul` / `umulh` |
-| Square, low half of a product | `Sqr` | `SqrAdx`, `MulLoAdx` | ✓ | ✓ |
-| Divide by one word | `div` | precomputed reciprocal (`DivRecip`, Möller–Granlund) | `div` | reciprocal (no 128/64 `udiv`) |
-| Long division | estimate + correction (`Div`) | reciprocal of the top words | ✓ | reciprocal |
-| Decimal text, both ways | base 10¹⁹ (`ToDecString`, `FromDecString`), the fraction method for short numbers | | ✓ | ✓ |
-| NTT butterflies | — | AVX2 (`NttAvx2`) | AVX2 | NEON (`NttNeon`) |
-| Schönhage–Strassen butterflies | — | `FftAdx` | C# / C++ | C# / C++ |
+| Kernel | x64 baseline | x64 with BMI2 / ADX / AVX2 | x86 | ARM64 | ARMv7 (32-bit digits) |
+|---|---|---|---|---|---|
+| Add, subtract | `adc` / `sbb` loops | | 32-bit port | `adcs` / `sbcs`, `ldp` / `stp` | `adcs` / `sbcs`, `ldm` / `stm` |
+| Compare, AND / OR / XOR, shifts | scalar | AVX2 (`CompareAvx2`, `LogicAvx2`, `ShiftAvx2`) | scalar | scalar | scalar |
+| Multiply basecase | product scanning (`Mult`) | `mulx` + `adcx` / `adox` (`MultAdx`) | 32-bit port | `mul` / `umulh` | `umaal`, two rows a pass |
+| Square, low half of a product | `Sqr` | `SqrAdx`, `MulLoAdx` | ✓ | ✓ | ✓ |
+| Divide by one word | `div` | precomputed reciprocal (`DivRecip`, Möller–Granlund) | `div` | reciprocal (no 128/64 `udiv`) | reciprocal (its first guess on VFP: no `udiv` on every ARMv7) |
+| Long division, approximate quotient | estimate + correction (`Div`) | reciprocal of the top words | ✓ | reciprocal | reciprocal; the multiply-subtract on the complement (one `umaal` a digit) |
+| Decimal text, both ways | base 10¹⁹ (`ToDecString`, `FromDecString`), the fraction method for short numbers | | ✓ | ✓ | ✓ |
+| NTT butterflies | — | AVX2 (`NttAvx2`) | AVX2 | NEON (`NttNeon`) | NEON when present (`NttNeon`, generated) |
+| Schönhage–Strassen butterflies | — | `FftAdx` | C# / C++ | C# / C++ | C# / C++ |
 
 The kernel set is picked at start-up with `cpuid`; `FULLINT_CPU=baseline` forces the baseline set. On .NET a call into a kernel costs about 12–16 ns, and the short calls skip the GC transition on .NET 8 (`SuppressGCTransition`). The shortest operations (one or two words, short compares) stay in C#.
 
@@ -79,15 +79,16 @@ Karatsuba and the Toom levels are written in the upper layer (C# / C++) over the
 ## Correctness strategy
 
 - **Reference oracles.** The .NET suite checks every operation against `System.Numerics.BigInteger`; the C++ suite against GMP.
-- **Both cores and every kernel set.** The .NET suite runs on the native and the managed core (`FULLINT_FORCE_MANAGED=1`); the C++ suite with the CPU's kernels and with `FULLINT_CPU=baseline`; on ARM64 every assembly kernel is also checked word for word against its portable C++ version (`fullint_arm64_kernels`).
+- **Both cores and every kernel set.** The .NET suite runs on the native and the managed core (`FULLINT_FORCE_MANAGED=1`); the C++ suite with the CPU's kernels and with `FULLINT_CPU=baseline`; on ARM64 and ARMv7 every assembly kernel is also checked word for word against its portable C++ version (`fullint_arm64_kernels`).
 - **Edge cases, not only uniform random words.** The generators include:
   - all-ones words, single set bits, powers of two ± 1;
   - divisors whose top word is `0x8000…0000` or `0xFFFF…FFFF`;
   - quotient digits that hit `2⁶⁴ − 1`;
   - lengths around every threshold.
 - **Identities**: `(a·b)/b == a`, `a == q·b + r` with `|r| < |b|`, `Parse(ToString(a)) == a`.
-- **Platforms**: Windows x64 and x86, Linux x64 (Docker), Linux ARM64 (a phone and a cloud machine).
-- **Planned**: a fixed-seed CI run on every commit and a long randomized run on a schedule.
+- **Platforms**: Windows x64 and x86, Linux x64 (Docker), Linux ARM64 (a phone and a cloud machine), Linux ARMv7 (the cloud machine running AArch32 code).
+- **CI**: CI (GitHub Actions, on every push) runs the suites on Windows x64, x86 and ARM64, Linux x64, ARM64 and ARMv7 (under QEMU), and macOS (Apple Silicon and Intel).
+- **Planned**: a long randomized run on a schedule.
 
 ## References
 

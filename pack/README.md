@@ -8,7 +8,7 @@ Fast arbitrary-precision integers for .NET. `FullInt` follows the API of `System
 
 - **Limbs and kernels.**
   - 64-bit limbs.
-  - Hand-written assembly kernels, chosen for the CPU at start-up: BMI2 / ADX and AVX2 on x64, x86, ARM64, ARMv7 (NEON).
+  - Hand-written assembly kernels for x64 (BMI2 / ADX and AVX2 versions chosen at start-up), x86, ARM64 and ARMv7 (NEON).
 - **Algorithms.**
   - Multiplication: Karatsuba, Toom-Cook and NTT.
   - Division: Newton and Burnikel–Ziegler.

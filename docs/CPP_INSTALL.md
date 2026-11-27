@@ -7,6 +7,7 @@
 | Windows x64, x86 | NASM | MSVC; NASM is bundled in `Tools/nasm` |
 | Linux x64 | NASM elf64 | GCC or Clang, `nasm` |
 | Linux ARM64 | AArch64 GNU assembly | GCC or Clang |
+| Linux ARMv7 (armhf) | ARMv7 GNU assembly (the NTT on NEON when the CPU has it) | GCC or Clang |
 
 All platforms need C++20 and CMake 3.21 or later.
 
@@ -81,9 +82,10 @@ As a subproject it builds the library only: no tests, no benchmarks, no install 
 | Option | Default | Effect |
 |---|---|---|
 | `FULLINT_INSTALL` | ON when top level | The install rules and the `find_package` files |
-| `FULLINT_BUILD_TOOLS` | ON when top level | The ARM64 kernel tests and probes |
+| `FULLINT_BUILD_TOOLS` | ON when top level | The ARM kernel tests (ARM64, ARMv7) and probes |
 | `FULLINT_WITH_GMP` | OFF | The tests and benchmarks against GMP (needs GMP, e.g. the vcpkg feature `gmp`) |
 | `FULLINT_ARM64_ASM` | ON | ARM64: the assembly kernels (OFF: the portable C++ ones) |
+| `FULLINT_ARM32_ASM` | ON | ARMv7: the assembly kernels (OFF: the portable C++ ones) |
 
 ## Headers
 

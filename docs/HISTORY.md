@@ -51,7 +51,8 @@ Coming back to the project, now with an AI pair programmer, in a few weeks:
 - **kernels per CPU:** a baseline set plus `mulx` / `adcx` / `adox` (BMI2 + ADX) and AVX2
   versions chosen at start-up by `cpuid`; register-resident kernels for short numbers;
 - **platforms:** a 32-bit x86 port of every kernel, a managed fallback core, .NET Framework
-  through netstandard2.0;
+  through netstandard2.0; Linux x64; AArch64 kernels (NEON for the NTT), measured on a phone and a
+  cloud server; ARMv7 kernels in 32-bit digits (`umaal`, the NTT on NEON);
 - **C++:** a native library on the same kernels (FullInt.Cpp), the only way to compare with
   GMP without the .NET call overheads.
 
@@ -64,5 +65,6 @@ Coming back to the project, now with an AI pair programmer, in a few weeks:
 - against `BigInteger` (FullInt .NET): from 8 words on 4-20 times faster multiplication,
   3-200+ times faster division, 3-38 times faster `ToString`.
 
-Still open: the short-number API overheads (operators returning a new value), 32-bit x86
-division on mid-size numbers, Linux and ARM64 builds.
+Still open: ARM64 division and `ToString` (1.1-1.5x GMP's time), the short operations of .NET on
+32-bit ARM (the runtime allocates a `ulong[]` slowly there), native kernels for macOS and Windows
+ARM64. The numbers on every platform: [benchmarks/2026-11-27-all-platforms.md](benchmarks/2026-11-27-all-platforms.md).

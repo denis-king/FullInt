@@ -1,6 +1,8 @@
 # FullInt
 
-Fast arbitrary-precision integers for .NET and C++. In .NET, `FullInt` is an alternative to `System.Numerics.BigInteger` with the same API and a faster engine: 64-bit limbs, hand-written assembly kernels for x64, x86 and ARM64, and sub-quadratic algorithms. In C++, `fullnumerics::FullInt` runs on the same kernels.
+[![CI](https://github.com/denis-king/FullInt/actions/workflows/ci.yml/badge.svg)](https://github.com/denis-king/FullInt/actions/workflows/ci.yml)
+
+Fast arbitrary-precision integers for .NET and C++. In .NET, `FullInt` is an alternative to `System.Numerics.BigInteger` with the same API and a faster engine: 64-bit limbs, hand-written assembly kernels for x64, x86, ARM64 and ARMv7, and sub-quadratic algorithms. In C++, `fullnumerics::FullInt` runs on the same kernels.
 
 > **Status: preview before 1.0.** The API is settled and tested against `BigInteger` and GMP. The NuGet package builds and installs on every supported platform, but it is not published yet; see [Installing](#installing).
 
@@ -16,7 +18,7 @@ FullInt keeps the API and replaces the engine:
 
 | | `FullInt` |
 |---|---|
-| Word | 64 bits; assembly kernels per CPU (BMI2 / ADX and AVX2 on x64, NEON on ARM64), chosen at start-up |
+| Word | 64 bits; assembly kernels per CPU (BMI2 / ADX and AVX2 on x64, NEON on ARM64 and ARMv7), chosen at start-up |
 | Multiplication | schoolbook, Karatsuba, Toom-3 / 4 / 6, NTT |
 | Division | schoolbook, Burnikel–Ziegler, Newton |
 | Decimal text | divide and conquer, both ways |
@@ -103,7 +105,7 @@ In every case the project links `FullInt::FullInt`.
 | Linux ARMv7 (32-bit, armhf) | ARMv7 assembly | ✅ | ✅ GCC |
 | macOS, Windows ARM64, Android, iOS, others | managed C# (.NET only) | ✅ same results, slower | — |
 
-If the native library cannot be loaded, the .NET library switches to its managed core without a word. `FULLINT_FORCE_MANAGED=1` forces it. The details, including the ABIs and the ARM64 port, are in [docs/PLATFORMS.md](docs/PLATFORMS.md).
+If the native library cannot be loaded, the .NET library switches to its managed core without a word. `FULLINT_FORCE_MANAGED=1` forces it. The details, including the ABIs and the ARM ports, are in [docs/PLATFORMS.md](docs/PLATFORMS.md).
 
 ## Correctness
 
@@ -111,7 +113,7 @@ Every operation is checked differentially, on random and edge-case numbers from 
 - **.NET:** against `BigInteger`, on the native and the managed core, on .NET 8 and .NET Framework 4.8, x64 and x86;
 - **C++:** against GMP, with every kernel variant: the CPU's own and `FULLINT_CPU=baseline`.
 
-The suites run on Windows x64 and x86, Linux x64, Linux ARM64 and Linux ARMv7.
+The suites run on Windows x64 and x86, Linux x64, Linux ARM64 and Linux ARMv7 on our machines; CI (GitHub Actions, on every push) runs the suites on Windows x64, x86 and ARM64, Linux x64, ARM64 and ARMv7 (under QEMU), and macOS (Apple Silicon and Intel). The runs: https://github.com/denis-king/FullInt/actions
 
 ## Building from source
 
@@ -161,7 +163,7 @@ docs/                documentation
 | [USE_CASES.md](docs/USE_CASES.md) | Where big integers are used and where FullInt fits (not for production cryptography) |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Layers, data representation, native interop, build pipeline |
 | [ALGORITHMS.md](docs/ALGORITHMS.md) | Algorithms, complexity, thresholds |
-| [PLATFORMS.md](docs/PLATFORMS.md) | ABIs, toolchains, ARM64, NuGet packaging |
+| [PLATFORMS.md](docs/PLATFORMS.md) | ABIs, toolchains, ARM64, ARMv7, NuGet packaging |
 | [HISTORY.md](docs/HISTORY.md) | From byte arithmetic to the race with GMP |
 | [benchmarks/](docs/benchmarks/) | Measurements |
 

@@ -19,8 +19,9 @@ This document describes the code as it is today. The target design is summarized
 ┌────────────▼─────────────┐          ┌────────────▼─────────────┐
 │ FullIntCoreBase          │          │ FullIntCoreManaged       │
 │  pins spans → IntPtr     │          │  managed C# fallback     │
-│ ├ FullIntCoreNative64    │          └──────────────────────────┘
-│ └ FullIntCoreNative32    │
+│ ├ FullIntCoreNative64    │          └─────────────┬────────────┘
+│ └ FullIntCoreNative32    │          FullIntCoreNativeArm32 (ARMv7):
+│                          │          the managed core + the kernels
 │    [DllImport] ...WIN    │
 └────────────┬─────────────┘
              │ P/Invoke, logical names FullIntOperations64 / 32
@@ -30,11 +31,12 @@ This document describes the code as it is today. The target design is summarized
 │ FullIntOperations_win_x86.dll        (Sources/x86)           │
 │ libFullIntOperations_linux_x64.so    (Sources/x64, System V) │
 │ libFullIntOperations_linux_arm64.so  (Sources/arm64)         │
+│ libFullIntOperations_linux_arm.so    (Sources/arm32, ARMv7)  │
 │  the same entry names and contracts on every platform        │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-`FullIntCoreFactory.Create()` picks the core from `Environment.OSVersion` and `RuntimeInformation.ProcessArchitecture`: Windows x64 and Linux x64 / arm64 get `FullIntCoreNative64`, Windows x86 gets `FullIntCoreNative32`. Every other combination, a library that fails to load, or `FULLINT_FORCE_MANAGED=1` falls back to `FullIntCoreManaged`.
+`FullIntCoreFactory.Create()` picks the core from `Environment.OSVersion` and `RuntimeInformation.ProcessArchitecture`: Windows x64 and Linux x64 / arm64 get `FullIntCoreNative64`, Windows x86 gets `FullIntCoreNative32`, Linux ARMv7 gets `FullIntCoreNativeArm32` (the managed core with the ARMv7 kernels in place of its loops). Every other combination, a library that fails to load, or `FULLINT_FORCE_MANAGED=1` falls back to `FullIntCoreManaged`.
 
 ## Data representation
 
