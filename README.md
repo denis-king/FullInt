@@ -32,11 +32,11 @@ How many times faster than `BigInteger` on .NET 10 (Windows x64, Ryzen 7 7730U; 
 | `Parse` | 1.7 | 2.1 | 2.6 | 2.8 | 3.9 | 4.7 | 6.9 | 10 |
 | `a + b` | 1.5 | 1.4 | 2.3 | 2.4 | 3.7 | 3.4 | 2.7 | 2.6 |
 
-FullInt is at least as fast in every measured cell, from a single word up. The gain grows with the size, because the algorithms differ in complexity. Against .NET 8's `BigInteger` the division gains are far larger (219× at 4096 words), because .NET 10 sped its division up. On ARM64 (Neoverse-N1, .NET 10) the gains are smaller: multiplication 1.1–25×, division 1.1–15×, `ToString` up to 53×. A few operations on 2–4 words are on par (0.98–1.0). The full tables, the other operations and the raw times are in [docs/benchmarks/2026-11-26-net-vs-biginteger.md](docs/benchmarks/2026-11-26-net-vs-biginteger.md). On 32-bit ARM (ARMv7) multiplication is 3–5× and division 3–7× faster than `BigInteger` from 8 words, but operations on 1–8 words are slower, because the runtime allocates 64-bit arrays slowly there: [docs/benchmarks/2026-11-27-arm32.md](docs/benchmarks/2026-11-27-arm32.md).
+FullInt is at least as fast in every measured cell, from a single word up. The gain grows with the size, because the algorithms differ in complexity. Against .NET 8's `BigInteger` the division gains are far larger (219× at 4096 words), because .NET 10 sped its division up. On ARM64 (Neoverse-N1, .NET 10) the gains are smaller: multiplication 1.2–25×, division 1.1–15×, `ToString` up to 53×; a few operations on 2–4 words are on par (0.96–1.0). On 32-bit ARM (ARMv7) multiplication is 3–20× and division 3–11× faster than `BigInteger` from 8 words, but operations on 1–8 words that allocate their result are slower (0.34–0.8), because the runtime allocates 64-bit arrays slowly there. The full tables, the other operations and the raw times: [docs/benchmarks/2026-11-26-net-vs-biginteger.md](docs/benchmarks/2026-11-26-net-vs-biginteger.md) (.NET 8 and .NET 10) and [docs/benchmarks/2026-11-27-all-platforms.md](docs/benchmarks/2026-11-27-all-platforms.md) (every platform, C++ and .NET).
 
 For values that fit in 64 or 128 bits, `long` and `Int128` beat both.
 
-The C++ library on the same kernels runs close to GMP 6.3 on x64; the measurements are in [docs/HISTORY.md](docs/HISTORY.md).
+The C++ library on the same kernels runs at or ahead of GMP 6.3 on x64 and x86 (0.11–1.0 of its time in almost every cell) and on ARMv7 for most operations; on ARM64 it is behind in division (1.1–1.4×) and `ToString` (up to 1.5×). The tables: [docs/benchmarks/2026-11-27-all-platforms.md](docs/benchmarks/2026-11-27-all-platforms.md); the way there: [docs/HISTORY.md](docs/HISTORY.md).
 
 ## Quick start
 

@@ -8,7 +8,7 @@ Fast arbitrary-precision integers for .NET. `FullInt` follows the API of `System
 
 - **Limbs and kernels.**
   - 64-bit limbs.
-  - Hand-written assembly kernels, chosen for the CPU at start-up: BMI2 / ADX and AVX2 on x64, and ARM64.
+  - Hand-written assembly kernels, chosen for the CPU at start-up: BMI2 / ADX and AVX2 on x64, x86, ARM64, ARMv7 (NEON).
 - **Algorithms.**
   - Multiplication: Karatsuba, Toom-Cook and NTT.
   - Division: Newton and Burnikel–Ziegler.
@@ -26,7 +26,7 @@ How many times faster than `BigInteger` on .NET 10 (Windows x64, Ryzen 7 7730U; 
 | `Parse` | 1.7 | 2.1 | 2.6 | 2.8 | 3.9 | 4.7 | 6.9 | 10 |
 | `a + b` | 1.5 | 1.4 | 2.3 | 2.4 | 3.7 | 3.4 | 2.7 | 2.6 |
 
-FullInt is at least as fast in every measured cell, from a single word up, and the gain grows with the size. On ARM64 the gains are smaller, and a few operations on 2–4 words are on par. For values that fit in 64 or 128 bits, `long` and `Int128` beat both. Details: https://github.com/denis-king/FullInt/blob/master/docs/benchmarks/2026-11-26-net-vs-biginteger.md
+FullInt is at least as fast in every measured cell, from a single word up, and the gain grows with the size. On ARM64 the gains are smaller, and a few operations on 2–4 words are on par. On 32-bit ARM multiplication and division are 3–20× faster from 8 words, but operations on 1–8 words are slower there (the runtime allocates 64-bit arrays slowly on 32-bit ARM). For values that fit in 64 or 128 bits, `long` and `Int128` beat both. Details: https://github.com/denis-king/FullInt/blob/master/docs/benchmarks/2026-11-27-all-platforms.md
 
 Typical uses:
 - cryptography experiments and number theory;
