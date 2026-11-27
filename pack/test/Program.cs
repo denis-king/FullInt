@@ -22,8 +22,9 @@ string coreName = core.GetType().Name;
 Console.WriteLine($"{RuntimeInformation.FrameworkDescription}, {RuntimeInformation.OSDescription.Trim()}, " +
                   $"process {RuntimeInformation.ProcessArchitecture}: core {coreName}");
 
-string expected = Environment.GetEnvironmentVariable("EXPECT_CORE")
-                  ?? (RuntimeInformation.ProcessArchitecture == Architecture.X86 ? "FullIntCoreNative32"
+string? expectEnv = Environment.GetEnvironmentVariable("EXPECT_CORE");   // (empty: not set - a CI matrix leaves it so)
+string expected = !string.IsNullOrEmpty(expectEnv) ? expectEnv!
+                  : (RuntimeInformation.ProcessArchitecture == Architecture.X86 ? "FullIntCoreNative32"
                     : RuntimeInformation.ProcessArchitecture == Architecture.Arm ? "FullIntCoreNativeArm32"
                     : "FullIntCoreNative64");
 Check($"core {coreName}, expected {expected}", coreName == expected);
