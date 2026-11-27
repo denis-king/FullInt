@@ -46,6 +46,14 @@ namespace FullNumerics
 						return NativeOrManaged(() => new FullIntCoreNative64());
 #endif
 					}
+					else if (arch == Architecture.Arm)
+					{
+#if NET5_0_OR_GREATER
+						// ARMv7 (Sources/arm32, libFullIntOperations_linux_arm.so): the managed core
+						// with the ARMv7 kernels where they exist
+						return NativeOrManaged(() => new FullIntCoreNativeArm32());
+#endif
+					}
 					else if (arch == Architecture.Arm64)
 					{
 #if NET5_0_OR_GREATER

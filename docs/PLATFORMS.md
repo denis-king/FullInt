@@ -17,7 +17,7 @@ is the same source. A newer build (`net10.0`) is added only when it brings somet
 
 Core selection at run time (`FullIntCoreFactory`): by OS and process architecture, then one probe
 call into the native library; if it is missing or unusable, the managed core is used silently.
-A 32-bit Windows process uses the x86 asm core (`FullIntOperations_win_x86.dll`); other 32-bit processes (ARM32) use the managed core.
+A 32-bit Windows process uses the x86 asm core (`FullIntOperations_win_x86.dll`); a Linux ARMv7 process the managed core with the ARMv7 kernels (`FullIntCoreNativeArm32`, `libFullIntOperations_linux_arm.so`); other 32-bit processes the managed core.
 
 Tested on Windows: .NET 8 x64 (asm and managed), .NET Framework 4.8 x64 (asm and managed),
 .NET Framework 4.8 x86 (x86 asm): the whole suite passes on each.
@@ -33,9 +33,21 @@ Tested on Windows: .NET 8 x64 (asm and managed), .NET Framework 4.8 x64 (asm and
 | `osx-arm64` (Apple Silicon) | AArch64 asm | `clang` | ❌ not started |
 | `win-arm64` | AArch64 asm | `clang --target=aarch64-pc-windows-msvc` or `armasm64` | ❌ not started |
 | `win-x86` | x86 (32-bit) asm, a port of the x64 kernels (`Sources/x86`) | NASM `-f win32 --prefix _` + MSVC `link.exe` (`Hostx64\x86`) | ✅ all kernels; built next to win-x64 |
-| `linux-arm` (32-bit) | managed fallback | — | ✅ complete; no asm planned |
+| `linux-arm` (ARMv7, armhf) | ARMv7 asm (`Sources/arm32`, GNU syntax, ARM state, `umaal`): equal-length add / sub, the schoolbook product; the rest: the managed core (C#) / the portable C++ kernels | gcc (`cc -shared -nostdlib`) → `libFullIntOperations_linux_arm.so`; the C++ library adds `CppGeneric.s` (jumps to the portable kernels) | ✅ C# (145 tests) and C++ (kernels against the portable ones, the library against GMP), natively on Neoverse-N1 in AArch32 (an armhf container on the cloud machine). Division and the decimal conversions in asm: not yet |
 | `linux-musl-*`, `browser-wasm`, `ios-*`, `android-*`, others | managed fallback | — | ✅ complete (all tests pass on it) |
 | `ios-arm64` | AArch64 asm, later | static library + `DllImport("__Internal")` (iOS forbids loading dynamic libraries) | managed until then |
+
+## ARMv7 (32-bit Linux, armhf)
+
+`Sources/arm32` holds the ARMv7 kernels (GNU syntax, ARM state, `.eabi_attribute 28, 1`: without the hard-float marking the armhf loader refuses the `.so`). They work in 32-bit digits, the words staying big-endian 64-bit limbs as everywhere else:
+- `AddSubN.s`: `Fullint64AddNWIN`, `SubNWIN`, `SubCmpNWIN` - two words (four digits) a pass with `ldmdb` / `stmdb`, the carry kept in C across passes (the loop counts with `sub` and `teq #0`, neither touches C);
+- `Mult.s`: `Fullint64MultWIN` - one pass per word of the shorter operand, its two digits at once (two rows, two carry chains): four `umaal` per word of the longer one, one load / store of r per word; any `lenR` (a truncated product stops at r's top word).
+
+The C++ library builds them over the portable C++ kernels (`kernels_generic.cpp`, `..._generic` names when `FULLINT_ARM32_ASM` is on); `CppGeneric.s` gives the other entries' names as jumps to those. The .NET library's `.so` is the kernels alone; `FullIntCoreNativeArm32` is the managed core with them for Add / Sub / Mult / Sqr / MultLow. CMake tells ARMv7 by the pointer size: an armhf userland on a 64-bit kernel reports `aarch64`.
+
+Tested natively on the cloud machine's Neoverse-N1 in AArch32 (an `ubuntu:24.04` armhf container, `--platform linux/arm/v7`, core 1): the kernels against the portable ones (`fullint_arm64_kernels`, 145166 checks), the library against GMP 6.3 (276150), the .NET suite on .NET 10 (145 tests; the native core picked).
+
+Measured there (2026-11-27), C++ against GMP (FullInt / GMP time): multiplication 0.58-0.63 at 2-32 words, 0.76-0.78 at 64-128, 0.94-1.01 at 256-1024 (the portable NTT pays off only from 4096 words on this CPU: `NttThreshold` 4096); add / sub 0.5-0.97. Division (2-3.9x GMP) and ToString (2-8.5x) still run on the portable C++ kernels: their ARMv7 kernels (3-by-2 division by reciprocal in 32-bit digits, as `Sources/x86/DivRecip.asm`) are the next step. .NET 10 against `BigInteger` (BigInteger / FullInt time): multiplication 1.4 at 4 words, 3-4 from 8 words; ToString 1.7-66; division 1.2-2.9 from 8 words (0.56 at 2, 0.80 at 128); Parse 1-3. Add / sub of 1-8 words are slower than `BigInteger` (0.33-0.8): the runtime allocates a `ulong[]` on 32-bit ARM through its 8-byte-alignment path - `new ulong[2]` 101 ns against `new uint[4]` 37 ns there - and that, not the kernel, sets the time of a short result.
 
 ## x86 (32-bit Windows)
 

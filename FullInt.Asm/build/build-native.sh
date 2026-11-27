@@ -2,7 +2,7 @@
 # ---------------------------------------------------------------------------
 #  Builds the FullInt native kernels on Linux and macOS.
 #
-#  Usage: build-native.sh <Debug|Release> <linux|osx> <x64|arm64> <objDir> <binDir>
+#  Usage: build-native.sh <Debug|Release> <linux|osx> <x64|arm64|arm> <objDir> <binDir>
 #
 #  linux-x64: the x64 sources with NASM -f elf64 (abi.inc gives every entry the System V
 #  arguments: the same names and contracts as Windows), linked into
@@ -15,7 +15,7 @@
 set -euo pipefail
 
 if [[ $# -ne 5 ]]; then
-    echo "usage: build-native.sh <Debug|Release> <linux|osx> <x64|arm64> <objDir> <binDir>" >&2
+    echo "usage: build-native.sh <Debug|Release> <linux|osx> <x64|arm64|arm> <objDir> <binDir>" >&2
     exit 1
 fi
 
@@ -68,6 +68,23 @@ case "$OS-$ARCH" in
         "${CC:-cc}" -shared -nostdlib -Wl,-z,noexecstack -Wl,-z,defs \
             -o "$BIN/libFullIntOperations_linux_arm64.so" "$OBJ"/*.o
         echo "=== Build finished: $BIN/libFullIntOperations_linux_arm64.so ===" ;;
+    linux-arm)
+        # ARMv7 (armhf): the ARMv7 kernels (Sources/arm32, GNU syntax) without CppGeneric.s (the C++
+        # library's jumps to its portable kernels), linked into libFullIntOperations_linux_arm.so;
+        # the .NET ARMv7 core (FullIntCoreNativeArm32.cs) imports these entries and keeps the
+        # managed paths for the rest. CC may be a cross compiler (arm-linux-gnueabihf-gcc, or
+        # clang --target=armv7-linux-gnueabihf with -fuse-ld=lld).
+        DBG=()
+        [[ "$CONFIG" == "Debug" ]] && DBG=(-g)
+        mkdir -p "$OBJ" "$BIN"
+        echo "=== Compiling asm files (ARMv7 ELF) $CONFIG ==="
+        for f in "$ASM_ROOT/Sources/arm32/"*.s; do
+            name="$(basename "$f" .s)"
+            [[ "$name" == "CppGeneric" ]] && continue
+            ${CC:-cc} -c "${DBG[@]}" -Wa,-I"$ASM_ROOT/Sources/arm32" "$f" -o "$OBJ/$name.o"
+        done
+        ${CC:-cc} -shared -nostdlib -Wl,-z,noexecstack -Wl,-z,defs             -o "$BIN/libFullIntOperations_linux_arm.so" "$OBJ"/*.o
+        echo "=== Build finished: $BIN/libFullIntOperations_linux_arm.so ===" ;;
     osx-arm64)
         # TODO(osx-arm64): the same sources with -Wa,--defsym,FULLINT_MACHO=1 (abi.inc adds the
         #   underscore), cc -dynamiclib -o libFullIntOperations_osx_arm64.dylib; untested (no Mac)

@@ -100,6 +100,7 @@ In every case the project links `FullInt::FullInt`.
 | Windows x86 | x86 assembly | ✅ | ✅ MSVC |
 | Linux x64 | x86-64 assembly | ✅ | ✅ GCC, Clang |
 | Linux ARM64 | AArch64 assembly | ✅ | ✅ GCC, Clang |
+| Linux ARMv7 (32-bit, armhf) | ARMv7 assembly: add / subtract, multiplication; the rest managed C# (.NET) or portable C++ | ✅ | ✅ GCC |
 | macOS, Windows ARM64, Android, iOS, others | managed C# (.NET only) | ✅ same results, slower | — |
 
 If the native library cannot be loaded, the .NET library switches to its managed core without a word. `FULLINT_FORCE_MANAGED=1` forces it. The details, including the ABIs and the ARM64 port, are in [docs/PLATFORMS.md](docs/PLATFORMS.md).
@@ -110,7 +111,7 @@ Every operation is checked differentially, on random and edge-case numbers from 
 - **.NET:** against `BigInteger`, on the native and the managed core, on .NET 8 and .NET Framework 4.8, x64 and x86;
 - **C++:** against GMP, with every kernel variant: the CPU's own and `FULLINT_CPU=baseline`.
 
-The suites run on Windows x64 and x86, Linux x64 and Linux ARM64.
+The suites run on Windows x64 and x86, Linux x64, Linux ARM64 and Linux ARMv7.
 
 ## Building from source
 
@@ -141,13 +142,13 @@ The C++ library and its tests against GMP: [docs/CPP_INSTALL.md](docs/CPP_INSTAL
 
 ```
 FullInt.Core/        the .NET library (assembly and package FullInt, namespace FullNumerics)
-FullInt.Asm/         assembly kernels: Sources/x64, Sources/x86 (NASM), Sources/arm64 (GNU as); build scripts
+FullInt.Asm/         assembly kernels: Sources/x64, Sources/x86 (NASM), Sources/arm64, Sources/arm32 (GNU as); build scripts
 FullInt.AsmForNet/   MSBuild glue: builds the native library and copies it next to the outputs
 FullInt.Cpp/         the C++ library (CMake), its tests and benchmarks against GMP
 FullInt.Tests/       MSTest: differential tests against BigInteger
 FullInt.Benchmarks/  benchmarks: against BigInteger (cross), asm A/B (ab.ps1), BenchmarkDotNet suites
 pack/                the NuGet package: build script, .targets, package README, consumer test
-docker/              Linux x64 / ARM64 test images
+docker/              Linux x64 / ARM64 / ARMv7 test images
 docs/                documentation
 ```
 

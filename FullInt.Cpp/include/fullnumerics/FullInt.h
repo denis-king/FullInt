@@ -554,7 +554,7 @@ inline FullInt operator>>(const FullInt& a, int shift) { return FullIntEngine::s
 
 // GMP style: result = a op b into result's buffer (no new number per call in a loop);
 // result may be a or b
-#if FULLINT_WORD64
+#if !FULLINT_X86
 inline void Add(FullInt& result, const FullInt& a, const FullInt& b) { FullIntEngine::addInto(result, a, b, false); }
 inline void Subtract(FullInt& result, const FullInt& a, const FullInt& b) { FullIntEngine::addInto(result, a, b, true); }
 #else

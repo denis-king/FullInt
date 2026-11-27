@@ -125,7 +125,7 @@ struct FullIntCore
             return;
         }
 #endif
-#if FULLINT_X64 || FULLINT_ARM64
+#if FULLINT_X64 || FULLINT_ARM64 || FULLINT_ARM32
         Fullint64SqrWIN(a.data(), r.data(), (int)a.size(), (int)r.size());
 #else
         Mult(a, a, r);

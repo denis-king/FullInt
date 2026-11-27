@@ -64,6 +64,7 @@
     <FullIntNativeAsset Include="$(FullIntNativePackDir)win-x86\FullIntOperations_win_x86.dll" Rid="win-x86" />
     <FullIntNativeAsset Include="$(FullIntNativePackDir)linux-x64\libFullIntOperations_linux_x64.so" Rid="linux-x64" />
     <FullIntNativeAsset Include="$(FullIntNativePackDir)linux-arm64\libFullIntOperations_linux_arm64.so" Rid="linux-arm64" />
+    <FullIntNativeAsset Include="$(FullIntNativePackDir)linux-arm\libFullIntOperations_linux_arm.so" Rid="linux-arm" />
 
     <None Include="@(FullIntNativeAsset)" Pack="true" PackagePath="runtimes/%(Rid)/native/" Visible="false" />
     <None Include="..\pack\README.md" Pack="true" PackagePath="/" Visible="false" />

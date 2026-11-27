@@ -103,8 +103,10 @@ struct Cpu
                               : "all: AArch64 asm (baseline); thresholds: narrow multiplier";
         return Has(Recip) ? "all: AArch64 asm (Div, ToDecString: recip); thresholds: wide multiplier"
                           : "all: AArch64 asm (baseline); thresholds: wide multiplier";
+#elif FULLINT_GENERIC_KERNELS && FULLINT_ARM32_ASM
+        return "ARMv7 asm over the portable C++ kernels";
 #elif FULLINT_GENERIC_KERNELS
-        return "all: portable C++ (built without the AArch64 kernels)";
+        return "all: portable C++ (built without the ARM asm kernels)";
 #endif
         if (!Has(Recip)) return "all: baseline";
         if (Has(Sse2)) return Has(Bmi2 | Adx) ? "Mult: adx; And/Or/Xor, Compare: sse2; Div, ToDecString: recip; other: baseline"   // x86

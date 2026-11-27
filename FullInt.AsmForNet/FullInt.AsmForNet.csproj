@@ -25,7 +25,7 @@
 
   <!-- ===================== target platform ===================== -->
   <PropertyGroup>
-    <FullIntNativeSupportedRids>win-x64;win-x86;linux-x64;linux-arm64</FullIntNativeSupportedRids>
+    <FullIntNativeSupportedRids>win-x64;win-x86;linux-x64;linux-arm64;linux-arm</FullIntNativeSupportedRids>
 
     <FullIntNativeRid Condition="'$(FullIntNativeRid)' == ''">$(RuntimeIdentifier)</FullIntNativeRid>
   </PropertyGroup>
@@ -36,6 +36,8 @@
     <_FullIntHostOS Condition="$([MSBuild]::IsOSPlatform('OSX'))">osx</_FullIntHostOS>
     <_FullIntHostArch>$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)</_FullIntHostArch>
     <_FullIntHostArch>$(_FullIntHostArch.ToLowerInvariant())</_FullIntHostArch>
+    <!-- a 32-bit ARM userland on a 64-bit kernel (armhf on AArch64) reports the kernel's arm64 -->
+    <_FullIntHostArch Condition="'$(_FullIntHostOS)' == 'linux' and '$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture)' == 'Arm'">arm</_FullIntHostArch>
     <FullIntNativeRid>$(_FullIntHostOS)-$(_FullIntHostArch)</FullIntNativeRid>
   </PropertyGroup>
 

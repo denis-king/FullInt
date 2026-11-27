@@ -2,6 +2,7 @@
 #   win-x64, win-x86   here (FullInt.AsmForNet: NASM + MSVC link.exe)
 #   linux-x64          in Docker (docker/linux-x64 image: NASM elf64)
 #   linux-arm64        in Docker under QEMU (docker/linux-arm64 image: cc for AArch64)
+#   linux-arm          in Docker under QEMU (docker/linux-arm image: cc for ARMv7, armhf)
 # The libraries go to out/native/<rid>/, the package (.nupkg and .snupkg) to out/nuget/.
 # Nothing is published.
 #   powershell -File pack/pack-nuget.ps1
@@ -35,6 +36,9 @@ if (-not $SkipLinux) {
     Write-Host '== linux-arm64 (QEMU)'
     Invoke-Checked { docker build --platform linux/arm64 -t fullint-linux-arm64 "$root/docker/linux-arm64" }
     Invoke-Checked { docker run --rm --platform linux/arm64 -e ARCH=arm64 -v "${root}:/src:ro" -v "${native}:/out" fullint-linux-arm64 bash -c $script }
+    Write-Host '== linux-arm (QEMU)'
+    Invoke-Checked { docker build --platform linux/arm/v7 -t fullint-linux-arm "$root/docker/linux-arm" }
+    Invoke-Checked { docker run --rm --platform linux/arm/v7 -e ARCH=arm -v "${root}:/src:ro" -v "${native}:/out" fullint-linux-arm bash -c $script }
 }
 
 # ---- the package ----

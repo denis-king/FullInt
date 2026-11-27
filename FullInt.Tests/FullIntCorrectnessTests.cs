@@ -31,8 +31,13 @@ namespace FullNumerics.Tests
             // Linux x64 / arm64 (.NET 5+): the 64-bit asm core, its library resolved to the .so
             bool linuxX64 = linux && (arch == System.Runtime.InteropServices.Architecture.X64
                 || arch == System.Runtime.InteropServices.Architecture.Arm64) && Environment.Version.Major >= 5;
+            // Linux ARMv7 (.NET 5+): the managed core with the ARMv7 kernels
+            bool linuxArm = linux && arch == System.Runtime.InteropServices.Architecture.Arm && Environment.Version.Major >= 5;
             var expected = forced ? typeof(FullIntCoreManaged)
                 : linuxX64 ? typeof(FullIntCoreNative64)
+#if NET5_0_OR_GREATER
+                : linuxArm ? typeof(FullIntCoreNativeArm32)
+#endif
                 : !windows ? typeof(FullIntCoreManaged)
                 : arch == System.Runtime.InteropServices.Architecture.X64 ? typeof(FullIntCoreNative64)
                 : arch == System.Runtime.InteropServices.Architecture.X86 ? typeof(FullIntCoreNative32)

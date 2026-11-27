@@ -17,7 +17,7 @@
 #include <cstdint>
 
 // The target, for the code that differs by it:
-//   FULLINT_X64 / FULLINT_X86 / FULLINT_ARM64  the CPU;
+//   FULLINT_X64 / FULLINT_X86 / FULLINT_ARM64 / FULLINT_ARM32  the CPU (ARM32: ARMv7-A, AArch32);
 //   FULLINT_X86_FAMILY  the asm kernels with cpuid dispatch (their x86 vector / BMI2 versions);
 //   FULLINT_WORD64      a 64-bit CPU: the engine's 64-bit paths and thresholds (x64 and ARM64);
 //   FULLINT_GENERIC_KERNELS  the portable C++ kernels built (the reference; the kernels
@@ -26,20 +26,36 @@
 #define FULLINT_X64 1
 #define FULLINT_X86 0
 #define FULLINT_ARM64 0
+#define FULLINT_ARM32 0
 #elif defined(_M_IX86) || defined(__i386__)
 #define FULLINT_X64 0
 #define FULLINT_X86 1
 #define FULLINT_ARM64 0
+#define FULLINT_ARM32 0
 #elif defined(_M_ARM64) || defined(__aarch64__)
 #define FULLINT_X64 0
 #define FULLINT_X86 0
 #define FULLINT_ARM64 1
+#define FULLINT_ARM32 0
+#elif defined(__arm__) && defined(__ARM_ARCH) && __ARM_ARCH >= 7
+#define FULLINT_X64 0
+#define FULLINT_X86 0
+#define FULLINT_ARM64 0
+#define FULLINT_ARM32 1
 #else
-#error "FullInt: x64, x86 and ARM64 so far"
+#error "FullInt: x64, x86, ARM64 and ARMv7 so far"
 #endif
 #define FULLINT_X86_FAMILY (FULLINT_X64 || FULLINT_X86)
 #define FULLINT_WORD64 (FULLINT_X64 || FULLINT_ARM64)
-#define FULLINT_GENERIC_KERNELS FULLINT_ARM64
+#define FULLINT_GENERIC_KERNELS (FULLINT_ARM64 || FULLINT_ARM32)
+// the asm kernels built over the portable C++ ones (CMake: FULLINT_ARM64_ASM / FULLINT_ARM32_ASM)
+#ifndef FULLINT_ARM64_ASM
+#define FULLINT_ARM64_ASM 0
+#endif
+#ifndef FULLINT_ARM32_ASM
+#define FULLINT_ARM32_ASM 0
+#endif
+#define FULLINT_ARM_ASM (FULLINT_ARM64_ASM || FULLINT_ARM32_ASM)
 
 #if FULLINT_X86_FAMILY && !defined(_WIN32) && !(defined(__linux__) && FULLINT_X64)
 #error "FullInt asm kernels: Windows (x64, x86) and Linux x64 so far"
@@ -107,10 +123,10 @@ uint64_t Fullint64NttCrtWIN(const uint32_t* x0, const uint32_t* x1, const uint32
 
 // R = A² without BMI2 / ADX (x64 Sqr.asm, mul / adc; AArch64 Sqr.s), the same contract as
 // Fullint64SqrWIN_adx
-#if FULLINT_X64 || FULLINT_ARM64
+#if FULLINT_X64 || FULLINT_ARM64 || FULLINT_ARM32
 void Fullint64SqrWIN(const uint64_t* a, uint64_t* r, int lenA, int lenR);
 #endif
-#if FULLINT_ARM64
+#if FULLINT_ARM64 || FULLINT_ARM32
 // the low half of a product (AArch64 Sqr.s; the contract of Fullint64MulLoWIN_adx)
 void Fullint64MulLoWIN(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int n);
 
@@ -147,8 +163,8 @@ uint64_t Fullint64NttCrtWIN_neon(const uint32_t* x0, const uint32_t* x1, const u
 #endif
 #endif
 
-#if FULLINT_GENERIC_KERNELS && FULLINT_ARM64_ASM
-// the portable C++ versions of the entries with an AArch64 kernel (FullInt.Asm/Sources/arm64):
+#if FULLINT_GENERIC_KERNELS && FULLINT_ARM_ASM
+// the portable C++ versions of the entries with an ARM kernel (FullInt.Asm/Sources/arm64, arm32):
 // the reference for the tests and the A/B timings (kernels_generic.cpp)
 uint64_t Fullint64AddWIN_generic(const uint64_t* a, const uint64_t* b, uint64_t* r, int lenA, int lenB, int lenR);
 uint64_t Fullint64AddNWIN_generic(const uint64_t* a, const uint64_t* b, uint64_t* r, int64_t n);

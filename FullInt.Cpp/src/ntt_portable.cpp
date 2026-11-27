@@ -14,8 +14,13 @@
 // levels, Dif3 / Dit3 the last (first) three - here level by level: the permuted order the
 // forward transform leaves is undone by the inverse, the pointwise product does not care.
 #include <fullnumerics/kernels.h>
+#include <fullnumerics/FullHelper.h>
 
-#if FULLINT_ARM64
+#if FULLINT_ARM64 || FULLINT_ARM32
+
+#if !defined(__SIZEOF_INT128__)
+struct U128 { uint64_t lo, hi; };
+#endif
 
 namespace {
 
@@ -200,10 +205,20 @@ uint64_t Fullint64NttCrtWIN_portable(const uint32_t* x0, const uint32_t* x1, con
         t = t >= p3 ? t - p3 : t;
         t = t >= p3 ? t - p3 : t;
         uint64_t v3 = MulShoup(t, inv123, inv123s, p3);
+#if defined(__SIZEOF_INT128__)
         return v1 + p1 * v2 + (unsigned __int128)p1p2 * v3;
+#else
+        // (ARMv7: no 128-bit integer) {lo, hi}
+        uint64_t lo, hi = fullnumerics::FullHelper::BigMul(p1p2, v3, &lo);
+        uint64_t a = v1 + p1 * v2;   // < p1·p2 + p1 < 2^64
+        lo += a;
+        hi += lo < a;
+        return U128{ lo, hi };
+#endif
     };
     // two digits a word: acc += value(2w) + value(2w + 1)·2^32 (< 2^123), the word out, acc >>= 64
     // - one 128-bit carry chain a word
+#if defined(__SIZEOF_INT128__)
     unsigned __int128 acc = 0;
     for (int64_t w = 0; w < len; w++)
     {
@@ -213,6 +228,19 @@ uint64_t Fullint64NttCrtWIN_portable(const uint32_t* x0, const uint32_t* x1, con
     }
     // (nd = 2·len) the carry out of the top word: below 2^64 for the products here
     return (uint64_t)acc;
+#else
+    uint64_t accLo = 0, accHi = 0;
+    for (int64_t w = 0; w < len; w++)
+    {
+        U128 e = value(2 * w), o = value(2 * w + 1);
+        uint64_t oLo = o.lo << 32, oHi = o.hi << 32 | o.lo >> 32;   // o·2^32 (< 2^122)
+        accLo += e.lo; accHi += e.hi + (accLo < e.lo);
+        accLo += oLo;  accHi += oHi + (accLo < oLo);
+        r[len - 1 - w] = accLo;
+        accLo = accHi; accHi = 0;
+    }
+    return accLo;
+#endif
 }
 
 #endif

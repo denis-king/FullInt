@@ -56,6 +56,10 @@ namespace FullNumerics
                 if (arch == Architecture.X64) return "libFullIntOperations_linux_x64.so";
                 if (arch == Architecture.Arm64) return "libFullIntOperations_linux_arm64.so";
             }
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) && name == NativeNames.Lib32)
+            {
+                if (arch == Architecture.Arm) return "libFullIntOperations_linux_arm.so";   // ARMv7 (Sources/arm32)
+            }
             return null;
         }
 

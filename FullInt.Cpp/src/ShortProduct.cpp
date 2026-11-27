@@ -43,8 +43,8 @@ void Karatsuba::MultiplyLow(CSpan a, CSpan b, Span r)
             Fullint64MulLoWIN_adx(a.data(), b.data(), r.data(), (int)la, (int)lb, (int)n);
             return;
         }
-#elif FULLINT_ARM64
-        if (n <= la + lb)   // AArch64 Sqr.s
+#elif FULLINT_ARM64 || FULLINT_ARM32
+        if (n <= la + lb)   // AArch64 Sqr.s; ARMv7 (portable C++ or arm32 asm)
         {
             Fullint64MulLoWIN(a.data(), b.data(), r.data(), (int)la, (int)lb, (int)n);
             return;

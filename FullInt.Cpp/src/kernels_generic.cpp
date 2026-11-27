@@ -19,10 +19,10 @@
 #error "kernels_generic.cpp: only for the targets without asm kernels (kernels.h)"
 #endif
 
-// The entries with an AArch64 kernel (FullInt.Asm/Sources/arm64, FULLINT_ARM64_ASM): this file's
+// The entries with an ARM kernel (FullInt.Asm/Sources/arm64 / arm32, FULLINT_ARM64_ASM / FULLINT_ARM32_ASM): this file's
 // version is named ..._generic then - the reference to test and time the kernel against, and the
 // kernel's own fallback for the cases it leaves out.
-#if FULLINT_ARM64_ASM
+#if FULLINT_ARM_ASM
 #define FULLINT_GENERIC(name) name##_generic
 #else
 #define FULLINT_GENERIC(name) name
@@ -538,15 +538,15 @@ void FULLINT_GENERIC(Fullint64ShrWIN)(const uint64_t* a, uint64_t* r, int lenA, 
         std::memset(r, 0, (size_t)lenR * 8);
         return;
     }
+    // from the low end up, the zero words last: in place (r = a, lenR = lenA) each word is read
+    // before anything is written over it
     int lead = lenR - count;
-    for (int k = 0; k < lead; k++) r[k] = 0;
-    uint64_t prev = 0;
-    for (int i = 0; i < count; i++)
+    for (int i = count - 1; i >= 0; i--)
     {
-        uint64_t cur = a[i];
+        uint64_t cur = a[i], prev = i > 0 ? a[i - 1] : 0;
         r[lead + i] = s == 0 ? cur : cur >> s | prev << (64 - s);
-        prev = cur;
     }
+    for (int k = 0; k < lead; k++) r[k] = 0;
 }
 
 uint64_t FULLINT_GENERIC(Fullint64DivExactWIN)(const uint64_t* a, uint64_t* q, int len, uint64_t d)

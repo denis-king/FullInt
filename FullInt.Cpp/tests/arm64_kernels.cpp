@@ -19,8 +19,8 @@
 #include <utility>
 #include <vector>
 
-#if !(FULLINT_GENERIC_KERNELS && FULLINT_ARM64_ASM)
-#error "arm64_kernels.cpp: the AArch64 build with its kernels (FULLINT_ARM64_ASM)"
+#if !(FULLINT_GENERIC_KERNELS && FULLINT_ARM_ASM)
+#error "arm64_kernels.cpp: an ARM build with its asm kernels (FULLINT_ARM64_ASM / FULLINT_ARM32_ASM)"
 #endif
 
 namespace {
