@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <!-- The FullInt package in an iOS app (the simulator, .github/workflows/ios.yml): pack/test's checks
        (Program.cs, shared) run at the app's start, the result goes to stdout ("OK" / "N failed") and
        the app exits with its code - simctl launch with its console option shows both. -->
@@ -17,5 +17,7 @@
   <ItemGroup>
     <PackageReference Include="FullInt" Version="$(FullIntVersion)" />
     <Compile Include="../test/Program.cs" Link="Program.cs" />
+    <!-- the app calls no iOS API: the trimmer would drop Microsoft.iOS, which the runtime loads at start -->
+    <TrimmerRootAssembly Include="Microsoft.iOS" />
   </ItemGroup>
 </Project>
