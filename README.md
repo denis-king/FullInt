@@ -88,10 +88,11 @@ dotnet add package FullInt --prerelease
 
 Every CI run packs the package from all five native libraries and installs it on every platform; the package of a run is its artifact `nuget-package`. Locally: `powershell -File pack/pack-nuget.ps1` (out/nuget; Docker for the Linux libraries).
 
-**C++.** CMake; three ways, described in [docs/CPP_INSTALL.md](docs/CPP_INSTALL.md):
+**C++.** CMake; four ways, described in [docs/CPP_INSTALL.md](docs/CPP_INSTALL.md):
+- a ready-built archive from a [GitHub Release](https://github.com/denis-king/FullInt/releases) (Windows x64 / x86, Linux x64 / ARM64 / ARMv7, macOS Apple Silicon) and `find_package(FullInt)`;
 - `cmake --install` and then `find_package(FullInt)`;
 - `add_subdirectory`;
-- `FetchContent` from this repository.
+- `FetchContent` from this repository at a release tag (`v1.0.0-preview.1`).
 
 In every case the project links `FullInt::FullInt`.
 

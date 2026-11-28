@@ -8,6 +8,7 @@
 | Linux x64 | NASM elf64 | GCC or Clang, `nasm` |
 | Linux ARM64 | AArch64 GNU assembly | GCC or Clang |
 | Linux ARMv7 (armhf) | ARMv7 GNU assembly (the NTT on NEON when the CPU has it) | GCC or Clang |
+| macOS on Apple Silicon | AArch64 GNU assembly (Mach-O) | Apple Clang |
 
 All platforms need C++20 and CMake 3.21 or later.
 
@@ -24,6 +25,32 @@ using fullnumerics::FullInt;
 FullInt x = fullnumerics::Pow(FullInt(3), 1000) * FullInt::Parse("123456789012345678901234567890");
 std::cout << x.ToString() << "\n";
 ```
+
+## 0. Ready-built: the release archives
+
+Every GitHub Release (https://github.com/denis-king/FullInt/releases) carries the library built and
+installed, one archive per platform, with their SHA-256 sums:
+
+| Archive | Built with | Link with |
+|---|---|---|
+| `FullInt-cpp-<version>-windows-x64.zip`, `-windows-x86.zip` | MSVC (Visual Studio 2022), `/MD` | Visual Studio 2022 or newer |
+| `FullInt-cpp-<version>-linux-x64.tar.gz`, `-linux-arm64`, `-linux-armv7` | GCC 11 (Ubuntu 22.04), position-independent | GCC 11+ or Clang with libstdc++ 11+ |
+| `FullInt-cpp-<version>-macos-arm64.tar.gz` | Apple Clang, macOS 11+ | Xcode / Apple Clang |
+
+Each holds what section 1 installs (headers, the Release and Debug libraries, the `find_package`
+files, the license) and was checked before upload: a consumer built against it in both
+configurations and run. Unpack it anywhere and point `CMAKE_PREFIX_PATH` at the folder:
+
+```sh
+cmake -S . -B build -DCMAKE_PREFIX_PATH=/path/to/FullInt-cpp-1.0.0-preview.1-linux-x64
+```
+
+```cmake
+find_package(FullInt 1.0 CONFIG REQUIRED)
+target_link_libraries(app PRIVATE FullInt::FullInt)
+```
+
+No NASM and no assembler needed.
 
 ## 1. Install, then `find_package`
 
@@ -69,7 +96,7 @@ add_subdirectory(third_party/FullInt/FullInt.Cpp)
 include(FetchContent)
 FetchContent_Declare(FullInt
     GIT_REPOSITORY https://github.com/denis-king/FullInt
-    GIT_TAG        master            # a release tag once there is one
+    GIT_TAG        v1.0.0-preview.1  # a release tag (master: the newest)
     GIT_SHALLOW    TRUE
     SOURCE_SUBDIR  FullInt.Cpp)
 FetchContent_MakeAvailable(FullInt)
@@ -102,6 +129,8 @@ powershell -File FullInt.Cpp/tests/package/run.ps1 -Arch x64 [-Fetch]   # Window
 ```sh
 bash FullInt.Cpp/tests/package/run.sh                                    # Linux; FETCH=1 adds FetchContent
 ```
+
+The release archives are built and checked by `.github/workflows/cpp-release.yml` (`tests/package/archive.sh`).
 
 Results on 2026-11-26, version 1.0.0:
 - Windows x64 and x86 (MSVC): `find_package` in Debug and Release, and `add_subdirectory`, all passed.
