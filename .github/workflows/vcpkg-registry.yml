@@ -99,6 +99,8 @@ jobs:
           tc="$RUNNER_TEMP/vcpkg/scripts/buildsystems/vcpkg.cmake"
           if [ "$RUNNER_OS" = Windows ]; then
             gen=(-A ${{ matrix.arch }}); exe="$t/build/Release/package_test.exe"
+            # a -static triplet: the static CRT (/MT), as its libraries are built
+            case "${{ matrix.triplet }}" in *-static) gen+=('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>');; esac
           else
             gen=(-G Ninja -DCMAKE_BUILD_TYPE=Release); exe="$t/build/package_test"
           fi

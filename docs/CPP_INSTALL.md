@@ -86,7 +86,8 @@ find_package(FullInt CONFIG REQUIRED)
 target_link_libraries(app PRIVATE FullInt::FullInt)
 ```
 
-The port builds a static library (every triplet, `-static` ones too); NASM for the x86 / x64
+The port builds a static library (every triplet, `-static` ones too: with those the project links
+the static CRT as well, `CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>`); NASM for the x86 / x64
 kernels comes through vcpkg on Windows, and from the system on Linux x64 (`apt install nasm`).
 
 ## 1. Install, then `find_package`
