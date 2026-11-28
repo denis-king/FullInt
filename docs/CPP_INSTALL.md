@@ -52,6 +52,43 @@ target_link_libraries(app PRIVATE FullInt::FullInt)
 
 No NASM and no assembler needed.
 
+## vcpkg
+
+The port `fullint` lives in this repository's own vcpkg registry (the branch `vcpkg-registry`);
+every release adds its version there, and CI installs it through vcpkg on Windows x64 / x86,
+Linux x64 / ARM64 and macOS Apple Silicon. In a manifest-mode project, next to `vcpkg.json`
+(`"dependencies": [ "fullint" ]`), a `vcpkg-configuration.json` names the registry:
+
+```json
+{
+  "default-registry": {
+    "kind": "git",
+    "repository": "https://github.com/microsoft/vcpkg",
+    "baseline": "<a commit of microsoft/vcpkg>"
+  },
+  "registries": [
+    {
+      "kind": "git",
+      "repository": "https://github.com/denis-king/FullInt",
+      "reference": "vcpkg-registry",
+      "baseline": "<a commit of the branch vcpkg-registry>",
+      "packages": [ "fullint" ]
+    }
+  ]
+}
+```
+
+`vcpkg x-update-baseline` fills both baselines with the newest commits (and moves them on later).
+Then, with the vcpkg toolchain (`-DCMAKE_TOOLCHAIN_FILE=<vcpkg>/scripts/buildsystems/vcpkg.cmake`):
+
+```cmake
+find_package(FullInt CONFIG REQUIRED)
+target_link_libraries(app PRIVATE FullInt::FullInt)
+```
+
+The port builds a static library (every triplet, `-static` ones too); NASM for the x86 / x64
+kernels comes through vcpkg on Windows, and from the system on Linux x64 (`apt install nasm`).
+
 ## 1. Install, then `find_package`
 
 Build and install once:

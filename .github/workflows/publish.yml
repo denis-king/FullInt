@@ -10,6 +10,8 @@
 #   4. the tag v<version> and a GitHub Release (pre-release when the version has a suffix:
 #      1.0.0-preview.1);
 #   5. the C++ archives (cpp-release.yml): built from the tag, checked, uploaded to the Release;
+#      the vcpkg registry (vcpkg-registry.yml, the branch vcpkg-registry): the version added, then
+#      installed through vcpkg on every platform;
 #   6. once nuget.org lists it: the package installed from nuget.org on Windows, Linux and macOS.
 # "nuget" / "cpp" off leave that part out (a fix of one part only, by exception).
 # The environment "nuget" waits for an approval before step 3 (Settings -> Environments).
@@ -27,7 +29,7 @@ on:
         type: boolean
         default: true
       cpp:
-        description: The C++ archives to the Release
+        description: The C++ archives to the Release, the version to the vcpkg registry
         type: boolean
         default: true
 
@@ -128,6 +130,14 @@ jobs:
     with:
       tag: v${{ inputs.version }}
       upload: true
+
+  vcpkg:
+    name: vcpkg registry
+    needs: publish
+    if: inputs.cpp
+    uses: ./.github/workflows/vcpkg-registry.yml
+    with:
+      tag: v${{ inputs.version }}
 
   verify:
     name: Installed from nuget.org on ${{ matrix.runner }}

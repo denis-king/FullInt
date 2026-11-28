@@ -1,0 +1,109 @@
+# The vcpkg registry (the branch vcpkg-registry of this repository): a released version added -
+# the port (vcpkg/port with the tag's version and source SHA-512, vcpkg/update-registry.sh), the
+# versions database and the baseline - then pushed, and checked: on every platform the port has
+# a project installs fullint through vcpkg from the registry, finds it (find_package) and runs the
+# package test. publish.yml calls it after the Release; by hand it adds an existing tag.
+# (ARMv7 is not in the check: vcpkg has no ready-built tool for 32-bit ARM.)
+name: vcpkg registry
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The release tag (v1.0.0-preview.1)'
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+
+concurrency:
+  group: vcpkg-registry
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  update:
+    name: The registry
+    runs-on: ubuntu-24.04
+    outputs:
+      baseline: ${{ steps.push.outputs.baseline }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: The port of ${{ inputs.tag }} into the branch vcpkg-registry
+        run: |
+          git fetch -q origin vcpkg-registry:vcpkg-registry 2> /dev/null || echo "no branch yet: it is made"
+          bash vcpkg/update-registry.sh "${{ inputs.tag }}" "$RUNNER_TEMP/registry"
+      - name: Push
+        id: push
+        run: |
+          cd "$RUNNER_TEMP/registry"
+          git push origin vcpkg-registry
+          echo "baseline=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  test:
+    name: vcpkg install on ${{ matrix.triplet }}
+    needs: update
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { triplet: x64-windows, runner: windows-2025, arch: x64 }
+          - { triplet: x86-windows, runner: windows-2025, arch: Win32 }
+          - { triplet: x64-windows-static, runner: windows-2025, arch: x64 }
+          - { triplet: x64-linux, runner: ubuntu-24.04 }
+          - { triplet: arm64-linux, runner: ubuntu-24.04-arm, system: 1 }
+          - { triplet: arm64-osx, runner: macos-15 }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: |
+          case "$RUNNER_OS" in
+            Linux) sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends nasm ninja-build > /dev/null ;;
+            macOS) brew install ninja ;;
+          esac
+      - name: vcpkg
+        run: |
+          # (vcpkg downloads no CMake / Ninja for ARM64 Linux: the system's)
+          if [ -n "${{ matrix.system }}" ]; then echo "VCPKG_FORCE_SYSTEM_BINARIES=1" >> "$GITHUB_ENV"; fi
+          git clone -q --depth 1 https://github.com/microsoft/vcpkg "$RUNNER_TEMP/vcpkg"
+          if [ "$RUNNER_OS" = Windows ]; then "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.bat" -disableMetrics; else "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics; fi
+      - name: A project using the registry
+        run: |
+          t="$RUNNER_TEMP/project"; mkdir -p "$t"
+          cp vcpkg/test/vcpkg.json "$t/"
+          cat > "$t/vcpkg-configuration.json" <<EOF
+          {
+            "default-registry": { "kind": "git", "repository": "https://github.com/microsoft/vcpkg", "baseline": "$(git -C "$RUNNER_TEMP/vcpkg" rev-parse HEAD)" },
+            "registries": [
+              { "kind": "git", "repository": "${{ github.server_url }}/${{ github.repository }}", "reference": "vcpkg-registry",
+                "baseline": "${{ needs.update.outputs.baseline }}", "packages": [ "fullint" ] }
+            ]
+          }
+          EOF
+          cat "$t/vcpkg-configuration.json"
+      - name: Install, build, run
+        run: |
+          t="$RUNNER_TEMP/project"
+          tc="$RUNNER_TEMP/vcpkg/scripts/buildsystems/vcpkg.cmake"
+          if [ "$RUNNER_OS" = Windows ]; then
+            gen=(-A ${{ matrix.arch }}); exe="$t/build/Release/package_test.exe"
+          else
+            gen=(-G Ninja -DCMAKE_BUILD_TYPE=Release); exe="$t/build/package_test"
+          fi
+          cmake -S vcpkg/test -B "$t/build" "${gen[@]}" -DCMAKE_TOOLCHAIN_FILE="$tc" \
+            -DVCPKG_MANIFEST_DIR="$t" -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} \
+            || { cat "$t"/build/vcpkg-manifest-install.log 2> /dev/null | tail -60; exit 1; }
+          cmake --build "$t/build" --config Release
+          "$exe"
