@@ -1,22 +1,35 @@
-# Publishing, by hand only (Actions -> Publish -> Run workflow, the version typed in):
-#   1. the whole pipeline (pipeline.yml) with that version: the tests on every platform, the
+# Publishing, by hand only (Actions -> Publish -> Run workflow, the version typed in). One version
+# for everything: the NuGet package and the C++ archives of a version come from one commit and one
+# tag (a part with no changes is published again, "no changes" in its CHANGELOG lines).
+#   1. checks: a SemVer version, new on nuget.org and as a tag, and a "## <version>" section in
+#      CHANGELOG.md (the package's release notes and the Release's text);
+#   2. the whole pipeline (pipeline.yml) with that version: the tests on every platform, the
 #      package, the package installed and checked on every platform - anything red: nothing goes out;
-#   2. the version must be new on nuget.org and as a tag;
-#   3. dotnet nuget push (the .nupkg, and the .snupkg beside it with it) with a one-hour key from nuget.org's Trusted
-#      Publishing (no secret stored);
-#   4. the tag v<version> and a GitHub Release with the package (pre-release when the version has
-#      a suffix: 1.0.0-preview.1);
-#   5. once nuget.org lists it: the package installed from nuget.org on Windows, Linux and macOS.
-# The environment "nuget" can be set to wait for an approval (Settings -> Environments).
+#   3. dotnet nuget push (the .nupkg, and the .snupkg beside it with it) with a one-hour key from
+#      nuget.org's Trusted Publishing (no secret stored);
+#   4. the tag v<version> and a GitHub Release (pre-release when the version has a suffix:
+#      1.0.0-preview.1);
+#   5. the C++ archives (cpp-release.yml): built from the tag, checked, uploaded to the Release;
+#   6. once nuget.org lists it: the package installed from nuget.org on Windows, Linux and macOS.
+# "nuget" / "cpp" off leave that part out (a fix of one part only, by exception).
+# The environment "nuget" waits for an approval before step 3 (Settings -> Environments).
 name: Publish
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'The version: 1.0.0-preview.1 (a preview) or 1.0.0 (a release)'
+        description: 'The version: 1.0.0-preview.2 (a preview) or 1.0.0 (a release)'
         required: true
         type: string
+      nuget:
+        description: The NuGet package to nuget.org
+        type: boolean
+        default: true
+      cpp:
+        description: The C++ archives to the Release
+        type: boolean
+        default: true
 
 concurrency:
   group: publish
@@ -27,22 +40,28 @@ permissions:
 
 jobs:
   check:
-    name: The version is new
+    name: The version is new, CHANGELOG has it
     runs-on: ubuntu-24.04
     steps:
-      - name: A SemVer version, not on nuget.org, no tag
+      - uses: actions/checkout@v4
+      - name: Checks
         env:
           V: ${{ inputs.version }}
           GH_TOKEN: ${{ github.token }}
         run: |
+          [ "${{ inputs.nuget }}" = true ] || [ "${{ inputs.cpp }}" = true ] || { echo "::error::nothing to publish: nuget and cpp both off"; exit 1; }
           echo "$V" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$' || { echo "::error::not a version: $V"; exit 1; }
-          lv=$(echo "$V" | tr 'A-Z' 'a-z')
-          if curl -fsS https://api.nuget.org/v3-flatcontainer/fullint/index.json | grep -q "\"$lv\""; then
-            echo "::error::FullInt $V is on nuget.org already"; exit 1
+          if [ "${{ inputs.nuget }}" = true ]; then
+            lv=$(echo "$V" | tr 'A-Z' 'a-z')
+            if curl -fsS https://api.nuget.org/v3-flatcontainer/fullint/index.json | grep -q "\"$lv\""; then
+              echo "::error::FullInt $V is on nuget.org already"; exit 1
+            fi
           fi
           if gh api "repos/${{ github.repository }}/git/refs/tags/v$V" > /dev/null 2>&1; then
             echo "::error::the tag v$V exists already"; exit 1
           fi
+          awk -v h="## $V" '$0 == h {f=1; next} /^## /{f=0} f' CHANGELOG.md | grep -q '[^[:space:]]' \
+            || { echo "::error::CHANGELOG.md has no section \"## $V\" (or it is empty): write what changed first"; exit 1; }
 
   pipeline:
     needs: check
@@ -71,11 +90,13 @@ jobs:
           name: nuget-package
           path: out/nuget
       - name: A short-lived nuget.org key (Trusted Publishing)
+        if: inputs.nuget
         id: login
         uses: NuGet/login@v1
         with:
           user: Denys.Omelianenko
       - name: dotnet nuget push
+        if: inputs.nuget
         env:
           NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
         # (the .snupkg next to the .nupkg goes with it: a second push of it is a 409)
@@ -88,14 +109,30 @@ jobs:
           V: ${{ inputs.version }}
         run: |
           pre=""; case "$V" in *-*) pre="--prerelease";; esac
-          notes="FullInt $V: https://www.nuget.org/packages/FullInt/$V"
-          if [ -f CHANGELOG.md ]; then notes="$notes"$'\n\n'"$(awk "/^## $V/{f=1; next} /^## /{f=0} f" CHANGELOG.md)"; fi
-          gh release create "v$V" out/nuget/*.nupkg out/nuget/*.snupkg --target "${{ github.sha }}" \
-            --title "FullInt $V" --notes "$notes" $pre
+          files=""; notes=""
+          if [ "${{ inputs.nuget }}" = true ]; then
+            files="out/nuget/FullInt.$V.nupkg out/nuget/FullInt.$V.snupkg"
+            notes="NuGet: https://www.nuget.org/packages/FullInt/$V"$'\n'
+          fi
+          if [ "${{ inputs.cpp }}" = true ]; then
+            notes="${notes}C++: the archives below (docs/CPP_INSTALL.md), or FetchContent at the tag v$V"$'\n'
+          fi
+          notes="$notes"$'\n'"$(awk -v h="## $V" '$0 == h {f=1; next} /^## /{f=0} f' CHANGELOG.md)"
+          gh release create "v$V" $files --target "${{ github.sha }}" --title "FullInt $V" --notes "$notes" $pre
+
+  cpp:
+    name: C++ archives
+    needs: publish
+    if: inputs.cpp
+    uses: ./.github/workflows/cpp-release.yml
+    with:
+      tag: v${{ inputs.version }}
+      upload: true
 
   verify:
     name: Installed from nuget.org on ${{ matrix.runner }}
     needs: publish
+    if: inputs.nuget
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false

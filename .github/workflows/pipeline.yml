@@ -247,11 +247,22 @@ jobs:
           fi
           echo "version=$v" >> "$GITHUB_OUTPUT"
           echo "the package version: $v"
+      - name: The release notes (the version's CHANGELOG.md section, when it has one)
+        run: |
+          V="${{ steps.version.outputs.version }}"
+          awk -v h="## $V" '$0 == h {f=1; next} /^## /{f=0} f' CHANGELOG.md | sed -e '/./,$!d' > notes.md
+          if [ -s notes.md ]; then
+            printf '\nAll changes: https://github.com/denis-king/FullInt/blob/master/CHANGELOG.md\n' >> notes.md
+            echo "FULLINT_NOTES=$PWD/notes.md" >> "$GITHUB_ENV"; cat notes.md
+          else
+            echo "no CHANGELOG section for $V: the project's release notes"
+          fi
       - name: dotnet pack
         run: >
           dotnet pack FullInt.Core -c Release -o out/nuget
           -p:FullIntNativePackDir="$PWD/out/native/" -p:FullIntSkipNative=true
           -p:Version=${{ steps.version.outputs.version }}
+          -p:FullIntReleaseNotesFile="${FULLINT_NOTES:-}"
       - name: The package's contents
         run: |
           v=${{ steps.version.outputs.version }}

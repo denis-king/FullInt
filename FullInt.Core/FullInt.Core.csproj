@@ -39,6 +39,8 @@
     <!-- a CI build maps its source paths (/_/...): nuget.org's "Deterministic" and "Source Link"
          checks pass on the published symbols -->
     <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+    <!-- the version's section of CHANGELOG.md (the pipeline cuts it out at pack time) -->
+    <PackageReleaseNotes Condition="'$(FullIntReleaseNotesFile)' != '' And Exists('$(FullIntReleaseNotesFile)')">$([System.IO.File]::ReadAllText('$(FullIntReleaseNotesFile)'))</PackageReleaseNotes>
     <!-- the native libraries to pack: <dir>/<rid>/<file> -->
     <FullIntNativePackDir Condition="'$(FullIntNativePackDir)' == ''">$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', 'out', 'native'))</FullIntNativePackDir>
   </PropertyGroup>

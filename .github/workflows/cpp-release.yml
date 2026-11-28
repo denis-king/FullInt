@@ -3,7 +3,8 @@
 # unpack, point CMAKE_PREFIX_PATH at the folder, find_package(FullInt 1.0 CONFIG REQUIRED).
 # Every archive is checked before it is kept: a consumer built against its contents (Debug and
 # Release) and run. With a tag and "upload", the archives and their SHA-256 sums go to that tag's
-# Release; without, they stay in this run's artifacts.
+# Release; without, they stay in this run's artifacts. publish.yml calls it after making the Release;
+# by hand it (re)builds the archives of an existing tag.
 name: C++ release archives
 
 on:
@@ -17,6 +18,14 @@ on:
         description: Upload the archives to the tag's GitHub Release
         type: boolean
         default: false
+  workflow_call:   # publish.yml, after the Release is made
+    inputs:
+      tag:
+        type: string
+        required: true
+      upload:
+        type: boolean
+        default: true
 
 permissions:
   contents: write

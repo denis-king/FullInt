@@ -1,6 +1,10 @@
 # Changelog
 
-The publish workflow takes the section of a version for its GitHub Release.
+One version for the NuGet package and the C++ library. The publish workflow requires a section
+`## <version>` here and takes it for the package's release notes on nuget.org and for the GitHub
+Release. Within a section: **Breaking changes** first (before 1.0.0 allowed in any preview; after
+it only in a new major version, an API first marked `[Obsolete]` in a minor one), then Added,
+Changed, Fixed, and a line for each of .NET and C++ ("no changes" when it has none).
 
 ## 1.0.0-preview.1
 
