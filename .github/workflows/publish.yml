@@ -2,7 +2,7 @@
 #   1. the whole pipeline (pipeline.yml) with that version: the tests on every platform, the
 #      package, the package installed and checked on every platform - anything red: nothing goes out;
 #   2. the version must be new on nuget.org and as a tag;
-#   3. dotnet nuget push (.nupkg and .snupkg) with a one-hour key from nuget.org's Trusted
+#   3. dotnet nuget push (the .nupkg, and the .snupkg beside it with it) with a one-hour key from nuget.org's Trusted
 #      Publishing (no secret stored);
 #   4. the tag v<version> and a GitHub Release with the package (pre-release when the version has
 #      a suffix: 1.0.0-preview.1);
@@ -78,10 +78,9 @@ jobs:
       - name: dotnet nuget push
         env:
           NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+        # (the .snupkg next to the .nupkg goes with it: a second push of it is a 409)
         run: |
           dotnet nuget push "out/nuget/FullInt.${{ inputs.version }}.nupkg" --api-key "$NUGET_API_KEY" \
-            --source https://api.nuget.org/v3/index.json
-          dotnet nuget push "out/nuget/FullInt.${{ inputs.version }}.snupkg" --api-key "$NUGET_API_KEY" \
             --source https://api.nuget.org/v3/index.json
       - name: The tag and the GitHub Release
         env:
