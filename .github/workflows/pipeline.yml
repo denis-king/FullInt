@@ -386,8 +386,14 @@ jobs:
           print(phones[0]["udid"])')
           xcrun simctl boot "$udid"
           xcrun simctl install "$udid" "$APP"
-          set +e
-          xcrun simctl launch --console-pty --terminate-running-process "$udid" com.fullint.packagetest 2>&1 | tee run.log
-          set -e
+          # the app's console now and then reaches no one on a freshly booted simulator (the app ran,
+          # nothing printed): up to three launches until it prints
+          for attempt in 1 2 3; do
+            set +e
+            xcrun simctl launch --console-pty --terminate-running-process "$udid" com.fullint.packagetest 2>&1 | tee run.log
+            set -e
+            grep -q "process Arm64" run.log && break
+            echo "::warning::launch $attempt: no output from the app"
+          done
           grep -q "core FullIntCoreManaged" run.log || { echo "::error::not the managed core"; exit 1; }
           grep -qE '(^|\] )OK\s*$' run.log || { echo "::error::the checks failed"; exit 1; }
