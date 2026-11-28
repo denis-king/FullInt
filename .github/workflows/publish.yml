@@ -2,7 +2,8 @@
 #   1. the whole pipeline (pipeline.yml) with that version: the tests on every platform, the
 #      package, the package installed and checked on every platform - anything red: nothing goes out;
 #   2. the version must be new on nuget.org and as a tag;
-#   3. dotnet nuget push (.nupkg and .snupkg) with the repository secret NUGET_API_KEY;
+#   3. dotnet nuget push (.nupkg and .snupkg) with a one-hour key from nuget.org's Trusted
+#      Publishing (no secret stored);
 #   4. the tag v<version> and a GitHub Release with the package (pre-release when the version has
 #      a suffix: 1.0.0-preview.1);
 #   5. once nuget.org lists it: the package installed from nuget.org on Windows, Linux and macOS.
@@ -49,11 +50,17 @@ jobs:
     with:
       version: ${{ inputs.version }}
 
+  # nuget.org's Trusted Publishing: no stored key - the job's GitHub OIDC token (id-token) is
+  # exchanged for a one-hour key; the nuget.org policy (owner Denys.Omelianenko) names this
+  # repository, publish.yml and the environment nuget
   publish:
     name: nuget.org and the GitHub Release
     needs: pipeline
     runs-on: ubuntu-24.04
     environment: nuget
+    permissions:
+      contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -63,11 +70,15 @@ jobs:
         with:
           name: nuget-package
           path: out/nuget
+      - name: A short-lived nuget.org key (Trusted Publishing)
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: Denys.Omelianenko
       - name: dotnet nuget push
         env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
         run: |
-          [ -n "$NUGET_API_KEY" ] || { echo "::error::no NUGET_API_KEY secret (Settings -> Secrets and variables -> Actions)"; exit 1; }
           dotnet nuget push "out/nuget/FullInt.${{ inputs.version }}.nupkg" --api-key "$NUGET_API_KEY" \
             --source https://api.nuget.org/v3/index.json
           dotnet nuget push "out/nuget/FullInt.${{ inputs.version }}.snupkg" --api-key "$NUGET_API_KEY" \
